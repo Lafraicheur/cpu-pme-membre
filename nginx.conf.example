@@ -1,0 +1,10 @@
+server {
+    listen 80;
+    server_name ton-domaine.com;
+    root /var/www/cpu-dashboard/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
