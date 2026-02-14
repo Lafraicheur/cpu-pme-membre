@@ -1,9 +1,9 @@
+import { useState } from "react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import {
   Home,
   Building2,
   Users,
-  CreditCard,
   Shield,
   Rocket,
   FileText,
@@ -18,32 +18,43 @@ import {
   ChevronRight,
   LogOut,
   Settings,
+  Lock,
+  ArrowUpCircle,
 } from "lucide-react";
 import logo from "@/assets/logo-cpu-pme.png";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { Feature } from "@/types/subscription";
+import { getRequiredTier, TIER_CONFIGS } from "@/lib/permissions";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface NavItem {
   icon: React.ElementType;
   label: string;
   href: string;
   badge?: number;
+  requiredFeature?: Feature;
 }
 
 const navItems: NavItem[] = [
   { icon: Home, label: "Accueil", href: "/" },
-  // { icon: Building2, label: "Mon Entreprise", href: "/mon-entreprise" },
-  { icon: Users, label: "Annuaire", href: "/annuaire" },
-  // { icon: CreditCard, label: "Abonnement", href: "/abonnement", badge: 1 },
+  { icon: Users, label: "Annuaire", href: "/annuaire", requiredFeature: "directory.read" },
   { icon: Shield, label: "KYC & Conformité", href: "/kyc" },
-  { icon: Rocket, label: "Incubateur", href: "/incubateur" },
-  { icon: FileText, label: "Appels d'offres", href: "/appels-offres", badge: 3 },
-  { icon: GraduationCap, label: "Formation", href: "/formation" },
-  { icon: ShoppingCart, label: "Marketplace", href: "/marketplace" },
-  { icon: Wallet, label: "Financement", href: "/financement" },
-  { icon: Building2, label: "Affiliation", href: "/affiliation" },
-  { icon: BarChart3, label: "Data Hub", href: "/data-hub" },
-  { icon: Calendar, label: "Événements", href: "/evenements", badge: 2 },
+  { icon: Rocket, label: "Incubateur", href: "/incubateur", requiredFeature: "incubator.access" },
+  { icon: FileText, label: "Appels d'offres", href: "/appels-offres", badge: 3, requiredFeature: "ao.consultation" },
+  { icon: GraduationCap, label: "Formation", href: "/formation", requiredFeature: "formation.learner" },
+  { icon: ShoppingCart, label: "Marketplace", href: "/marketplace", requiredFeature: "marketplace.buyer" },
+  { icon: Wallet, label: "Financement", href: "/financement", requiredFeature: "financing.requests" },
+  { icon: Building2, label: "Affiliation", href: "/affiliation", requiredFeature: "affiliation.access" },
+  { icon: BarChart3, label: "Data Hub", href: "/data-hub", requiredFeature: "datahub.access" },
+  { icon: Calendar, label: "Événements", href: "/evenements", badge: 2, requiredFeature: "events.participation" },
   { icon: HeadphonesIcon, label: "Support", href: "/support" },
   { icon: History, label: "Historique", href: "/historique" },
 ];
@@ -56,12 +67,15 @@ interface SidebarProps {
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, canAccess, user } = useAuth();
+  const [lockedModal, setLockedModal] = useState<{ label: string; tierName: string } | null>(null);
 
   const handleLogout = () => {
     logout();
     navigate("/auth");
   };
+
+  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Basic";
 
   return (
     <aside
@@ -78,11 +92,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             alt="CPU-PME"
             className="h-10 w-auto flex-shrink-0 rounded"
           />
-          {/* {!collapsed && (
-            <span className="font-bold text-sidebar-primary-foreground whitespace-nowrap animate-fade-in">
-              CPU-PME
-            </span>
-          )} */}
         </div>
         <button
           onClick={onToggle}
@@ -97,39 +106,69 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <ul className="space-y-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.href;
-            return (
-              <li key={item.label}>
-                <Link
-                  to={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-                    isActive
+            const isLocked = item.requiredFeature ? !canAccess(item.requiredFeature) : false;
+            const requiredTier = item.requiredFeature ? getRequiredTier(item.requiredFeature) : null;
+            const requiredTierName = requiredTier ? TIER_CONFIGS[requiredTier].name : null;
+
+            const linkContent = (
+              <div
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+                  isLocked
+                    ? "cursor-not-allowed text-sidebar-foreground/60"
+                    : isActive
                       ? "bg-primary text-primary-foreground shadow-glow"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <item.icon
+                  size={20}
+                  className={cn(
+                    "flex-shrink-0 transition-transform duration-200",
+                    !isActive && !isLocked && "group-hover:scale-110"
                   )}
-                >
-                  <item.icon
-                    size={20}
-                    className={cn(
-                      "flex-shrink-0 transition-transform duration-200",
-                      !isActive && "group-hover:scale-110"
-                    )}
-                  />
-                  {!collapsed && (
-                    <span className="text-sm font-medium truncate animate-fade-in">
-                      {item.label}
-                    </span>
-                  )}
-                  {item.badge && !collapsed && (
-                    <span className="ml-auto bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full">
-                      {item.badge}
-                    </span>
-                  )}
-                  {item.badge && collapsed && (
-                    <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full">
-                      {item.badge}
-                    </span>
-                  )}
+                />
+                {!collapsed && (
+                  <span className="text-sm font-medium truncate animate-fade-in">
+                    {item.label}
+                  </span>
+                )}
+                {isLocked && !collapsed && (
+                  <Lock size={14} className="ml-auto flex-shrink-0 text-sidebar-foreground/50" />
+                )}
+                {isLocked && collapsed && (
+                  <Lock size={10} className="absolute -bottom-0.5 -right-0.5 text-sidebar-foreground/50" />
+                )}
+                {!isLocked && item.badge && !collapsed && (
+                  <span className="ml-auto bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+                {!isLocked && item.badge && collapsed && (
+                  <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+            );
+
+            if (isLocked) {
+              return (
+                <li key={item.label}>
+                  <div
+                    onClick={() => setLockedModal({ label: item.label, tierName: requiredTierName || "supérieur" })}
+                    className="cursor-pointer"
+                  >
+                    {linkContent}
+                  </div>
+                </li>
+              );
+            }
+
+            return (
+              <li key={item.label}>
+                <Link to={item.href}>
+                  {linkContent}
                 </Link>
               </li>
             );
@@ -170,6 +209,41 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           {!collapsed && <span className="text-sm font-medium">Déconnexion</span>}
         </button>
       </div>
+      {/* Modal upgrade */}
+      <Dialog open={!!lockedModal} onOpenChange={(open) => { if (!open) setLockedModal(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader className="text-center">
+            <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
+              <Lock className="w-7 h-7 text-amber-500" />
+            </div>
+            <DialogTitle>Fonctionnalité verrouillée</DialogTitle>
+            <DialogDescription className="pt-2">
+              L'accès à <span className="font-semibold text-foreground">{lockedModal?.label}</span> nécessite le plan <span className="font-semibold text-primary">{lockedModal?.tierName}</span>.
+              <br />
+              Vous êtes actuellement sur le plan <span className="font-semibold">{currentTierName}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-4">
+            <Button
+              className="w-full gap-2"
+              onClick={() => {
+                setLockedModal(null);
+                navigate("/subscription-selector");
+              }}
+            >
+              <ArrowUpCircle className="w-4 h-4" />
+              Passer au plan {lockedModal?.tierName}
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setLockedModal(null)}
+            >
+              Plus tard
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
