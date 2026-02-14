@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useAuth } from "@/contexts/AuthContext";
+import { TIER_CONFIGS } from "@/lib/permissions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +33,8 @@ import {
   DollarSign,
   Layers,
   Heart,
+  Lock,
+  ArrowUpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { regions } from "@/data/regions";
@@ -136,10 +141,14 @@ const statusConfig = {
 
 export default function AppelsOffres() {
   const { canAccess } = useSubscription();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const canSubmit = canAccess('ao.submission');
   const canPublish = canAccess('ao.publishing');
+  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Basic";
 
-  const [userMode, setUserMode] = useState<UserMode>("soumissionnaire");
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [userMode, setUserMode] = useState<UserMode>(canSubmit ? "soumissionnaire" : "soumissionnaire");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedAO, setSelectedAO] = useState<AppelOffre | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -237,18 +246,29 @@ export default function AppelsOffres() {
           </div>
 
           <div className="inline-flex items-center gap-2 bg-muted p-1 rounded-lg">
-            <button
-              onClick={() => setUserMode("soumissionnaire")}
-              className={cn(
-                "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
-                userMode === "soumissionnaire"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Send className="w-4 h-4" />
-              Soumissionnaire
-            </button>
+            {canSubmit ? (
+              <button
+                onClick={() => setUserMode("soumissionnaire")}
+                className={cn(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2",
+                  userMode === "soumissionnaire"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Send className="w-4 h-4" />
+                Soumissionnaire
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 text-muted-foreground/60"
+              >
+                <Send className="w-4 h-4" />
+                Soumissionnaire
+                <Lock className="w-3 h-3" />
+              </button>
+            )}
             {canPublish && (
               <button
                 onClick={() => setUserMode("acheteur")}
@@ -270,7 +290,18 @@ export default function AppelsOffres() {
           <Tabs defaultValue="explorer" className="space-y-6">
             <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
               <TabsTrigger value="explorer">Explorer</TabsTrigger>
-              <TabsTrigger value="mes-soumissions">Mes Soumissions</TabsTrigger>
+              {canSubmit ? (
+                <TabsTrigger value="mes-soumissions">Mes Soumissions</TabsTrigger>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(true)}
+                  className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground/60 ring-offset-background transition-all"
+                >
+                  Mes Soumissions
+                  <Lock className="w-3 h-3" />
+                </button>
+              )}
               <TabsTrigger value="favoris">Favoris</TabsTrigger>
             </TabsList>
 
@@ -462,15 +493,24 @@ export default function AppelsOffres() {
                                 <Eye className="w-4 h-4" />
                                 Détails
                               </Button>
-                              {(ao.status === "open" || ao.status === "closing_soon") && canSubmit ? (
-                                <Button className="flex-1 gap-1" onClick={() => handleSubmit(ao)}>
-                                  <Send className="w-4 h-4" />
+                              {canSubmit ? (
+                                (ao.status === "open" || ao.status === "closing_soon") ? (
+                                  <Button className="flex-1 gap-1" onClick={() => handleSubmit(ao)}>
+                                    <Send className="w-4 h-4" />
+                                    Postuler
+                                  </Button>
+                                ) : (
+                                  <Button disabled className="flex-1">Clôturé</Button>
+                                )
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  className="flex-1 gap-1"
+                                  onClick={() => setShowUpgradeModal(true)}
+                                >
+                                  <Lock className="w-3 h-3" />
                                   Postuler
                                 </Button>
-                              ) : canSubmit ? (
-                                <Button disabled className="flex-1">Clôturé</Button>
-                              ) : (
-                                <Button disabled className="flex-1">Argent requis</Button>
                               )}
                             </div>
                           </div>
@@ -660,6 +700,41 @@ export default function AppelsOffres() {
                   Publier l'Appel d'Offres
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        {/* Modal upgrade soumission */}
+        <Dialog open={showUpgradeModal} onOpenChange={setShowUpgradeModal}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader className="text-center">
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
+                <Lock className="w-7 h-7 text-amber-500" />
+              </div>
+              <DialogTitle>Soumission verrouillée</DialogTitle>
+              <DialogDescription className="pt-2">
+                Pour soumettre des offres aux appels d'offres, vous devez passer au plan <span className="font-semibold text-primary">Argent</span> ou supérieur.
+                <br />
+                Vous êtes actuellement sur le plan <span className="font-semibold">{currentTierName}</span>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 pt-4">
+              <Button
+                className="w-full gap-2"
+                onClick={() => {
+                  setShowUpgradeModal(false);
+                  navigate("/subscription-selector");
+                }}
+              >
+                <ArrowUpCircle className="w-4 h-4" />
+                Passer au plan Argent
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setShowUpgradeModal(false)}
+              >
+                Plus tard
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

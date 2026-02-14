@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Store,
   Search,
@@ -33,9 +41,13 @@ import {
   RotateCcw,
   MessageSquare,
   BadgeCheck,
+  Lock,
+  ArrowUpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { regions } from "@/data/regions";
+import { useAuth } from "@/contexts/AuthContext";
+import { TIER_CONFIGS } from "@/lib/permissions";
 
 // Import des composants
 import { MarketplaceOverview } from "@/components/marketplace/MarketplaceOverview";
@@ -170,7 +182,12 @@ export default function Marketplace() {
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [cart, setCart] = useState<number[]>([]);
   const [showProductWizard, setShowProductWizard] = useState(false);
-  const [isVendeur] = useState(true); // Mock - à remplacer par vraie logique
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const navigate = useNavigate();
+  const { canAccess, user } = useAuth();
+  const canSell = canAccess("marketplace.seller");
+  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Basic";
 
   const addToCart = (productId: number) => {
     if (!cart.includes(productId)) {
@@ -222,7 +239,7 @@ export default function Marketplace() {
   const renderContent = () => {
     switch (activeSection) {
       case "apercu":
-        return <MarketplaceOverview isVendeur={isVendeur} onNavigate={(tab) => setActiveSection(tab as MenuSection)} />;
+        return <MarketplaceOverview isVendeur={canSell} onNavigate={(tab) => setActiveSection(tab as MenuSection)} />;
 
       case "mes-commandes":
         return <AcheteurCommandes />;
@@ -343,25 +360,52 @@ export default function Marketplace() {
                     );
                   })}
 
-                  {isVendeur && (
+                  <div className="pt-4 pb-2">
+                    <p className="text-xs font-semibold text-muted-foreground px-3 flex items-center justify-between">
+                      VENDRE
+                      {!canSell && <Lock className="w-3 h-3" />}
+                    </p>
+                  </div>
+                  {canSell ? (
+                    menuItems.vendre.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Button
+                          key={item.id}
+                          variant={activeSection === item.id ? "secondary" : "ghost"}
+                          className="w-full justify-start gap-2"
+                          onClick={() => setActiveSection(item.id)}
+                        >
+                          <Icon className="w-4 h-4" />
+                          {item.label}
+                        </Button>
+                      );
+                    })
+                  ) : (
                     <>
-                      <div className="pt-4 pb-2">
-                        <p className="text-xs font-semibold text-muted-foreground px-3">VENDRE</p>
-                      </div>
-                      {menuItems.vendre.map((item) => {
+                      {menuItems.vendre.slice(0, 4).map((item) => {
                         const Icon = item.icon;
                         return (
                           <Button
                             key={item.id}
-                            variant={activeSection === item.id ? "secondary" : "ghost"}
-                            className="w-full justify-start gap-2"
-                            onClick={() => setActiveSection(item.id)}
+                            variant="ghost"
+                            className="w-full justify-start gap-2 text-muted-foreground/60 cursor-not-allowed"
+                            onClick={() => setShowUpgradeModal(true)}
                           >
                             <Icon className="w-4 h-4" />
-                            {item.label}
+                            <span className="flex-1 text-left">{item.label}</span>
+                            <Lock className="w-3 h-3" />
                           </Button>
                         );
                       })}
+                      <Button
+                        variant="outline"
+                        className="w-full justify-center gap-2 mt-2 border-dashed text-primary"
+                        onClick={() => setShowUpgradeModal(true)}
+                      >
+                        <ArrowUpCircle className="w-4 h-4" />
+                        Débloquer Vendeur
+                      </Button>
                     </>
                   )}
                 </div>
@@ -399,11 +443,47 @@ export default function Marketplace() {
         </div>
       </div>
 
-      <ProductWizard 
-        open={showProductWizard} 
+      <ProductWizard
+        open={showProductWizard}
         onOpenChange={setShowProductWizard}
         onSubmit={(data) => console.log("Product submitted:", data)}
       />
+
+      {/* Modal upgrade vendeur */}
+      <Dialog open={showUpgradeModal} onOpenChange={setShowUpgradeModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader className="text-center">
+            <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
+              <Lock className="w-7 h-7 text-amber-500" />
+            </div>
+            <DialogTitle>Accès Vendeur verrouillé</DialogTitle>
+            <DialogDescription className="pt-2">
+              Pour vendre sur la Marketplace, vous devez passer au plan <span className="font-semibold text-primary">Argent</span> ou supérieur.
+              <br />
+              Vous êtes actuellement sur le plan <span className="font-semibold">{currentTierName}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 pt-4">
+            <Button
+              className="w-full gap-2"
+              onClick={() => {
+                setShowUpgradeModal(false);
+                navigate("/subscription-selector");
+              }}
+            >
+              <ArrowUpCircle className="w-4 h-4" />
+              Passer au plan Argent
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setShowUpgradeModal(false)}
+            >
+              Plus tard
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

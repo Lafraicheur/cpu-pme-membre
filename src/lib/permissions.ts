@@ -17,6 +17,7 @@ export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
       'formation.learner',
       'events.participation',
       'support.standard',
+      'marketplace.buyer',
     ],
   },
   ARGENT: {
