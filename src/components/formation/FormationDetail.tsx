@@ -18,6 +18,7 @@ import { toast } from "sonner";
 interface FormationDetailProps {
   formationId: string;
   onBack: () => void;
+  onStartLearning?: (formationId: string) => void;
 }
 
 const mockFormation = {
@@ -52,7 +53,7 @@ const mockFormation = {
   ],
 };
 
-export function FormationDetail({ formationId, onBack }: FormationDetailProps) {
+export function FormationDetail({ formationId, onBack, onStartLearning }: FormationDetailProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [showEnrollDialog, setShowEnrollDialog] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -63,6 +64,9 @@ export function FormationDetail({ formationId, onBack }: FormationDetailProps) {
   const handleEnroll = () => {
     toast.success("Inscription réussie ! Vous pouvez commencer la formation.");
     setShowEnrollDialog(false);
+    if (onStartLearning) {
+      onStartLearning(formationId);
+    }
   };
 
   return (
