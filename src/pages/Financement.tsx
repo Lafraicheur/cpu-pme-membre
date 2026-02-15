@@ -12,7 +12,8 @@ import { DossierBuilder } from "@/components/financement/DossierBuilder";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { 
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
   Wallet,
   FileText,
   Plus,
@@ -45,11 +46,15 @@ import {
   HandCoins,
   Star,
   Banknote,
-  Timer
+  Timer,
+  Lock,
+  ArrowUpCircle
 } from "lucide-react";
 import { regions } from "@/data/regions";
 import { getSectorN1List } from "@/data/sectors";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useAuth } from "@/contexts/AuthContext";
+import { TIER_CONFIGS } from "@/lib/permissions";
 
 // Types et statuts du financement
 const financingTypes = [
@@ -149,10 +154,13 @@ const mockPartners = [
 
 export default function Financement() {
   const { canAccess } = useSubscription();
+  const { user } = useAuth();
   const canReceiveDonations = canAccess('financing.donations');
+  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Argent";
 
   const [activeTab, setActiveTab] = useState("accueil");
   const [showWizard, setShowWizard] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDossierBuilder, setShowDossierBuilder] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [selectedDossier, setSelectedDossier] = useState<typeof mockDossiers[0] | null>(null);
@@ -192,7 +200,7 @@ export default function Financement() {
               <Wallet className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{formatCurrency(stats.totalRequested)}</p>
+              <p className="text-lg font-bold">{formatCurrency(stats.totalRequested)}</p>
               <p className="text-sm text-muted-foreground">Montants demandés</p>
             </div>
           </div>
@@ -205,7 +213,7 @@ export default function Financement() {
               <FileText className="h-6 w-6 text-warning" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{stats.dossiersInProgress}</p>
+              <p className="text-lg font-bold">{stats.dossiersInProgress}</p>
               <p className="text-sm text-muted-foreground">Dossiers en cours</p>
             </div>
           </div>
@@ -218,7 +226,7 @@ export default function Financement() {
               <Star className="h-6 w-6 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{stats.offersReceived}</p>
+              <p className="text-lg font-bold">{stats.offersReceived}</p>
               <p className="text-sm text-muted-foreground">Offres reçues</p>
             </div>
           </div>
@@ -231,7 +239,7 @@ export default function Financement() {
               <Clock className="h-6 w-6 text-destructive" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{stats.reportingDue}</p>
+              <p className="text-lg font-bold">{stats.reportingDue}</p>
               <p className="text-sm text-muted-foreground">Reporting dû</p>
             </div>
           </div>
@@ -726,14 +734,23 @@ export default function Financement() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className={`grid w-full ${canReceiveDonations ? 'grid-cols-6' : 'grid-cols-5'}`}>
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="accueil">Accueil</TabsTrigger>
             <TabsTrigger value="dossiers">Mes dossiers</TabsTrigger>
             <TabsTrigger value="offres">Offres</TabsTrigger>
             <TabsTrigger value="partenaires">Partenaires</TabsTrigger>
             <TabsTrigger value="reporting">Reporting</TabsTrigger>
-            {canReceiveDonations && (
-              <TabsTrigger value="dons">Dons reçus</TabsTrigger>
+            {canReceiveDonations ? (
+              <TabsTrigger value="dons">Donner</TabsTrigger>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground/60 ring-offset-background transition-all"
+              >
+                Donner
+                <Lock className="w-3 h-3" />
+              </button>
             )}
           </TabsList>
 
@@ -819,20 +836,28 @@ export default function Financement() {
 
             {/* Pipeline visualization */}
             <Card className="border-border/50">
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle>Pipeline des dossiers</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-2 overflow-x-auto pb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {Object.entries(statusConfig).slice(0, 8).map(([key, config]) => {
                     const count = mockDossiers.filter((d) => d.status === key).length;
+                    const hasItems = count > 0;
                     return (
-                      <div key={key} className="flex-shrink-0 w-32">
-                        <div className={`p-3 rounded-lg ${config.color} text-center`}>
-                          <config.icon className="h-5 w-5 mx-auto mb-1" />
-                          <p className="text-xs font-medium">{config.label}</p>
+                      <div
+                        key={key}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                          hasItems ? "border-border bg-card hover:bg-muted/50 cursor-pointer" : "border-dashed border-border/50 bg-muted/20"
+                        }`}
+                      >
+                        <div className={`p-2 rounded-lg shrink-0 ${config.color}`}>
+                          <config.icon className="h-4 w-4" />
                         </div>
-                        <p className="text-center text-lg font-bold mt-2">{count}</p>
+                        <div className="min-w-0">
+                          <p className={`text-lg font-bold leading-none ${hasItems ? "text-foreground" : "text-muted-foreground/50"}`}>{count}</p>
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{config.label}</p>
+                        </div>
                       </div>
                     );
                   })}
@@ -878,6 +903,42 @@ export default function Financement() {
 
         {/* Pre-diagnostic Wizard */}
         {showWizard && renderPreDiagWizard()}
+
+        {/* Modal upgrade Donner */}
+        <Dialog open={showUpgradeModal} onOpenChange={setShowUpgradeModal}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader className="text-center">
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-3">
+                <Lock className="w-7 h-7 text-amber-500" />
+              </div>
+              <DialogTitle>Fonctionnalité Donner verrouillée</DialogTitle>
+              <DialogDescription className="pt-2">
+                Pour accéder à la fonctionnalité de dons, vous devez passer au plan <span className="font-semibold text-primary">Institutionnel</span>.
+                <br />
+                Vous êtes actuellement sur le plan <span className="font-semibold">{currentTierName}</span>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 pt-4">
+              <Button
+                className="w-full gap-2"
+                onClick={() => {
+                  setShowUpgradeModal(false);
+                  // navigate vers la page d'abonnement si besoin
+                }}
+              >
+                <ArrowUpCircle className="w-4 h-4" />
+                Voir les plans
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => setShowUpgradeModal(false)}
+              >
+                Plus tard
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Dossier Builder */}
         {showDossierBuilder && (

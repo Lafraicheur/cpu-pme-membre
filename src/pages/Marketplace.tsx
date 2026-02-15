@@ -211,7 +211,7 @@ export default function Marketplace() {
       { id: "mes-devis" as MenuSection, label: "Mes devis (RFQ)", icon: FileText },
       { id: "messagerie-rfq" as MenuSection, label: "Négociations RFQ", icon: MessageSquare },
       { id: "historique-achats" as MenuSection, label: "Historique achats", icon: FileText },
-      { id: "panier" as MenuSection, label: "Panier", icon: ShoppingCart },
+      // { id: "panier" as MenuSection, label: "Panier", icon: ShoppingCart },
     ],
     vendre: [
       { id: "onboarding-vendeur" as MenuSection, label: "Onboarding vendeur", icon: Users },
