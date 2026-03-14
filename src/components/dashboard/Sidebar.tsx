@@ -107,7 +107,7 @@ export function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose
           <img
             src={logo}
             alt="CPU-PME"
-            className="h-20 w-auto flex-shrink-0 rounded"
+            className="h-10 w-auto flex-shrink-0 rounded"
           />
         </div>
         {/* Bouton fermeture mobile */}
