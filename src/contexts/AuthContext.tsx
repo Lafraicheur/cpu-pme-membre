@@ -38,7 +38,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem("cpu-pme-user");
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed: User = JSON.parse(storedUser);
+        // Migration : invalider les sessions avec un ancien tier non reconnu
+        if (!TIER_CONFIGS[parsed.subscription?.tier]) {
+          localStorage.removeItem("cpu-pme-user");
+          localStorage.removeItem("demo_subscription_tier");
+        } else {
+          setUser(parsed);
+        }
       } catch {
         localStorage.removeItem("cpu-pme-user");
       }
@@ -49,8 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     // Demo login - Replace with real auth when Cloud is enabled
 
-    // Lire le tier sélectionné depuis localStorage (défaut: ARGENT)
-    const selectedTier = (localStorage.getItem("demo_subscription_tier") || 'ARGENT') as any;
+    // Lire le tier sélectionné depuis localStorage (défaut: ME_ARGENT)
+    const storedTier = localStorage.getItem("demo_subscription_tier");
+    const selectedTier: SubscriptionTier =
+      storedTier && TIER_CONFIGS[storedTier as SubscriptionTier]
+        ? (storedTier as SubscriptionTier)
+        : 'ME_ARGENT';
     const tierConfig = TIER_CONFIGS[selectedTier];
 
     const demoUser: User = {

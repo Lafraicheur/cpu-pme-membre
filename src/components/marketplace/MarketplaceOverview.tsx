@@ -128,10 +128,10 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button className="gap-2" onClick={() => onNavigate("nouveau-produit")}>
+                  {/* <Button className="gap-2" onClick={() => onNavigate("nouveau-produit")}>
                     <Package className="w-4 h-4" />
                     Publier produit
-                  </Button>
+                  </Button> */}
                   <Button variant="outline" className="gap-2" onClick={() => onNavigate("rfq-vendeur")}>
                     <FileText className="w-4 h-4" />
                     RFQ ({vendeurKPIs.rfqARepondre})
@@ -167,10 +167,10 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                         <p className="text-xs text-muted-foreground">FCFA</p>
                       </div>
                     </div>
-                    <Badge variant="secondary" className="flex items-center gap-1 bg-green-500/10 text-green-600 shrink-0">
+                    {/* <Badge variant="secondary" className="flex items-center gap-1 bg-green-500/10 text-green-600 shrink-0">
                       <TrendingUp className="w-3 h-3" />
                       +{vendeurKPIs.caEvolution}%
-                    </Badge>
+                    </Badge> */}
                   </div>
                 </CardContent>
               </Card>
@@ -188,10 +188,10 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                         <p className="text-xs text-muted-foreground">ce mois</p>
                       </div>
                     </div>
-                    <Badge variant="secondary" className="flex items-center gap-1 bg-green-500/10 text-green-600 shrink-0">
+                    {/* <Badge variant="secondary" className="flex items-center gap-1 bg-green-500/10 text-green-600 shrink-0">
                       <TrendingUp className="w-3 h-3" />
                       +{vendeurKPIs.commandesEvolution}
-                    </Badge>
+                    </Badge> */}
                   </div>
                 </CardContent>
               </Card>
@@ -357,8 +357,7 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
           </div>
 
           {/* RFQ & Commandes */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {/* RFQ Vendeur */}
+          {/* <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -372,7 +371,6 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Stats RFQ */}
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="p-2 rounded-lg bg-blue-500/10">
                     <p className="text-lg font-bold text-blue-500">{vendeurKPIs.rfqARepondre}</p>
@@ -388,7 +386,6 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                   </div>
                 </div>
 
-                {/* RFQ récentes */}
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">RFQ prioritaires</p>
                   {rfqRecentes.map((rfq) => (
@@ -419,7 +416,6 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
               </CardContent>
             </Card>
 
-            {/* Commandes récentes */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -431,7 +427,6 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Stats commandes */}
                 <div className="flex gap-4">
                   <div className="flex-1 p-3 rounded-lg bg-amber-500/10 text-center">
                     <p className="text-lg font-bold text-amber-500">{vendeurKPIs.expeditionsAConfirmer}</p>
@@ -443,7 +438,6 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                   </div>
                 </div>
 
-                {/* Commandes récentes */}
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Actions requises</p>
                   {commandesRecentes.map((cmd) => (
@@ -475,7 +469,7 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                 </Button>
               </CardContent>
             </Card>
-          </div>
+          </div> */}
 
           {/* Labels & Conformité */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -576,10 +570,10 @@ export function MarketplaceOverview({ isVendeur, onNavigate }: MarketplaceOvervi
                 <FileText className="w-4 h-4" />
                 Nouvelle RFQ
               </Button>
-              <Button variant="outline" className="gap-2" onClick={() => onNavigate("panier")}>
+              {/* <Button variant="outline" className="gap-2" onClick={() => onNavigate("panier")}>
                 <ShoppingCart className="w-4 h-4" />
                 Mon panier
-              </Button>
+              </Button> */}
             </div>
           </div>
         </CardContent>

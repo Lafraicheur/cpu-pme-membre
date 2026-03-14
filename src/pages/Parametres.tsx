@@ -76,22 +76,25 @@ export default function Parametres() {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="profile" className="gap-2">
-                <User className="h-4 w-4" />
-                Profil
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+              <TabsTrigger value="profile" className="gap-2 text-xs sm:text-sm">
+                <User className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden xs:inline">Profil</span>
+                <span className="xs:hidden">Profil</span>
               </TabsTrigger>
-              <TabsTrigger value="notifications" className="gap-2">
-                <Bell className="h-4 w-4" />
-                Notifications
+              <TabsTrigger value="notifications" className="gap-2 text-xs sm:text-sm">
+                <Bell className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Notifications</span>
+                <span className="sm:hidden">Notifs</span>
               </TabsTrigger>
-              <TabsTrigger value="security" className="gap-2">
-                <Shield className="h-4 w-4" />
+              <TabsTrigger value="security" className="gap-2 text-xs sm:text-sm">
+                <Shield className="h-4 w-4 flex-shrink-0" />
                 Sécurité
               </TabsTrigger>
-              <TabsTrigger value="preferences" className="gap-2">
-                <Palette className="h-4 w-4" />
-                Préférences
+              <TabsTrigger value="preferences" className="gap-2 text-xs sm:text-sm">
+                <Palette className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Préférences</span>
+                <span className="sm:hidden">Prefs</span>
               </TabsTrigger>
             </TabsList>
 

@@ -250,7 +250,7 @@ export default function Financement() {
 
   const renderPreDiagWizard = () => (
     <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <Card className="w-full max-w-2xl">
+      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -734,12 +734,13 @@ export default function Financement() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="accueil">Accueil</TabsTrigger>
-            <TabsTrigger value="dossiers">Mes dossiers</TabsTrigger>
-            <TabsTrigger value="offres">Offres</TabsTrigger>
-            <TabsTrigger value="partenaires">Partenaires</TabsTrigger>
-            <TabsTrigger value="reporting">Reporting</TabsTrigger>
+          <div className="overflow-x-auto pb-1">
+          <TabsList className="flex w-max sm:grid sm:w-full sm:grid-cols-6 h-auto">
+            <TabsTrigger value="accueil" className="text-xs sm:text-sm whitespace-nowrap">Accueil</TabsTrigger>
+            <TabsTrigger value="dossiers" className="text-xs sm:text-sm whitespace-nowrap">Mes dossiers</TabsTrigger>
+            <TabsTrigger value="offres" className="text-xs sm:text-sm whitespace-nowrap">Offres</TabsTrigger>
+            <TabsTrigger value="partenaires" className="text-xs sm:text-sm whitespace-nowrap">Partenaires</TabsTrigger>
+            <TabsTrigger value="reporting" className="text-xs sm:text-sm whitespace-nowrap">Reporting</TabsTrigger>
             {canReceiveDonations ? (
               <TabsTrigger value="dons">Donner</TabsTrigger>
             ) : (
@@ -753,6 +754,7 @@ export default function Financement() {
               </button>
             )}
           </TabsList>
+          </div>
 
           <TabsContent value="accueil" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">

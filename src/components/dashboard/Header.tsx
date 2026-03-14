@@ -1,4 +1,4 @@
-import { Bell, Search, Plus, ChevronDown, User, Crown, Star, Sparkles, Building2, Users as UsersIcon, Landmark, RefreshCw } from "lucide-react";
+import { Bell, Search, Plus, ChevronDown, User, Crown, Star, Sparkles, Building2, Users as UsersIcon, Landmark, RefreshCw, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,19 +16,32 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const tierIcons: Record<SubscriptionTier, { icon: any; color: string; label: string }> = {
-  BASIC: { icon: Sparkles, color: "text-muted-foreground", label: "Basic" },
-  ARGENT: { icon: Star, color: "text-secondary", label: "Argent" },
-  OR: { icon: Crown, color: "text-primary", label: "Or" },
-  ORGANISATION: { icon: Building2, color: "text-blue-500", label: "Organisation" },
-  FEDERATION: { icon: UsersIcon, color: "text-purple-500", label: "Fédération" },
-  INSTITUTIONNEL: { icon: Landmark, color: "text-amber-500", label: "Institutionnel" },
+  // Membre Individuel
+  MI_BASIC:   { icon: Sparkles,  color: "text-muted-foreground", label: "Basic Individuel" },
+  MI_ARGENT:  { icon: Star,      color: "text-secondary",        label: "Argent Pro" },
+  MI_OR:      { icon: Crown,     color: "text-yellow-500",       label: "Or Pro" },
+  // Membre Entreprise
+  ME_BASIC:   { icon: Building2, color: "text-sky-500",          label: "Basic Entreprise" },
+  ME_ARGENT:  { icon: Star,      color: "text-indigo-500",       label: "Argent Entreprise" },
+  ME_OR:      { icon: Crown,     color: "text-primary",          label: "Or Entreprise" },
+  // Collectif
+  ORGANISATION:    { icon: Building2, color: "text-blue-500",   label: "Organisation" },
+  FEDERATION:      { icon: UsersIcon, color: "text-purple-500", label: "Fédération" },
+  INSTITUTIONNEL:  { icon: Landmark,  color: "text-amber-500",  label: "Institutionnel" },
 };
 
-export function Header() {
+interface HeaderProps {
+  onMobileMenuToggle?: () => void;
+}
+
+export function Header({ onMobileMenuToggle }: HeaderProps) {
   const { user, updateSubscriptionTier } = useAuth();
   const navigate = useNavigate();
 
-  const currentTier = user?.subscription?.tier || 'ARGENT';
+  const currentTier: SubscriptionTier =
+    user?.subscription?.tier && tierIcons[user.subscription.tier]
+      ? user.subscription.tier
+      : 'ME_ARGENT';
   const CurrentIcon = tierIcons[currentTier].icon;
 
   const handleTierChange = (tier: SubscriptionTier) => {
@@ -45,6 +58,14 @@ export function Header() {
 
   return (
     <header className="h-16 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 md:px-6">
+      {/* Bouton hamburger mobile */}
+      <button
+        onClick={onMobileMenuToggle}
+        className="lg:hidden p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground mr-2"
+      >
+        <Menu size={22} />
+      </button>
+
       {/* Left section */}
       <div className="hidden lg:flex items-center gap-4">
         <div className="flex items-center gap-2">

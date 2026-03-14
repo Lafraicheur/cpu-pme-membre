@@ -169,14 +169,14 @@ export default function Historique() {
       <DashboardLayout>
         <div className="space-y-6 animate-fade-in">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Historique</h1>
               <p className="text-muted-foreground">
                 Retrouvez toutes vos activités sur la plateforme
               </p>
             </div>
-            <Button variant="outline">
+            <Button variant="outline" className="w-full sm:w-auto">
               <Download className="mr-2 h-4 w-4" />
               Exporter
             </Button>
@@ -239,8 +239,8 @@ export default function Historique() {
           </div>
 
           {/* Filters */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
+          <div className="flex flex-col sm:flex-wrap sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1 min-w-0 sm:min-w-[200px] max-w-full sm:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Rechercher une activité..."
@@ -250,7 +250,7 @@ export default function Historique() {
               />
             </div>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -265,7 +265,7 @@ export default function Historique() {
               </SelectContent>
             </Select>
             <Select value={periodFilter} onValueChange={setPeriodFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-40">
                 <Calendar className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="Période" />
               </SelectTrigger>

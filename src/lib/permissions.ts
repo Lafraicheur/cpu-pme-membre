@@ -1,117 +1,239 @@
 import { SubscriptionTier, Feature, TierConfig } from '@/types/subscription';
 
-// Configuration des tiers avec héritage
+// Configuration explicite des tiers (sans héritage)
 export const TIER_CONFIGS: Record<SubscriptionTier, TierConfig> = {
-  BASIC: {
-    tier: 'BASIC',
-    name: 'Basic',
+
+  // ── Membre Individuel ──────────────────────────────────────────
+  MI_BASIC: {
+    tier: 'MI_BASIC',
+    name: 'Basic Individuel',
     category: 'individual',
     price: 1000,
+    priceYearly: 10000,
     period: 'month',
     teamLimit: 1,
     features: [
       'auth.sso',
-      'profile.public',
-      'directory.read',
       'ao.consultation',
       'formation.learner',
-      'events.participation',
-      'support.standard',
       'marketplace.buyer',
-    ],
-  },
-  ARGENT: {
-    tier: 'ARGENT',
-    name: 'Argent',
-    category: 'individual',
-    price: 5000,
-    period: 'month',
-    teamLimit: 3,
-    inheritsFrom: 'BASIC',
-    features: [
-      'marketplace.buyer',
-      'marketplace.seller',
-      'ao.submission',
-      'ao.publishing',
       'incubator.access',
-      'incubator.mentoring',
-      'financing.requests',
-      'support.priority',
+      'events.participation',
     ],
   },
-  OR: {
-    tier: 'OR',
-    name: 'Or',
+
+  MI_ARGENT: {
+    tier: 'MI_ARGENT',
+    name: 'Argent Professionnel',
     category: 'individual',
-    price: 10000,
+    price: 4000,
+    priceYearly: 40000,
+    period: 'month',
+    teamLimit: 1,
+    features: [
+      'auth.sso',
+      'ao.consultation',
+      'formation.learner',
+      'marketplace.buyer',
+      'incubator.access',
+      'events.participation',
+      'events.b2b',
+    ],
+  },
+
+  MI_OR: {
+    tier: 'MI_OR',
+    name: 'Or Professionnel',
+    category: 'individual',
+    price: 7000,
+    priceYearly: 80000,
+    period: 'month',
+    teamLimit: 1,
+    features: [
+      'auth.sso',
+      'ao.consultation',
+      'ao.submission',
+      'formation.learner',
+      'formation.creator',
+      'marketplace.buyer',
+      'incubator.access',
+      'events.participation',
+      'events.b2b',
+    ],
+  },
+
+  // ── Membre Entreprise ──────────────────────────────────────────
+  ME_BASIC: {
+    tier: 'ME_BASIC',
+    name: 'Basic Entreprise',
+    category: 'entreprise',
+    price: 2500,
+    priceYearly: 30000,
     period: 'month',
     teamLimit: 5,
-    inheritsFrom: 'ARGENT',
     features: [
-      'formation.creator',
-      'events.organization',
-      'datahub.access',
-      'analytics.basic',
-      'export.pdf',
-      'export.xlsx',
+      'auth.sso',
+      'profile.public',
+      'directory.read',
+      'team.management',
+      'ao.consultation',
+      'formation.learner',
+      'incubator.access',
+      'events.participation',
+      'events.b2b',
     ],
   },
+
+  ME_ARGENT: {
+    tier: 'ME_ARGENT',
+    name: 'Argent Entreprise',
+    category: 'entreprise',
+    price: 5000,
+    priceYearly: 50000,
+    period: 'month',
+    teamLimit: 10,
+    features: [
+      'auth.sso',
+      'profile.public',
+      'directory.read',
+      'team.management',
+      'marketplace.buyer',
+      'marketplace.seller',
+      'ao.consultation',
+      'ao.submission',
+      'formation.learner',
+      'incubator.access',
+      'financing.requests',
+      'events.participation',
+      'events.b2b',
+    ],
+  },
+
+  ME_OR: {
+    tier: 'ME_OR',
+    name: 'Or Entreprise',
+    category: 'entreprise',
+    price: 10000,
+    priceYearly: 100000,
+    period: 'month',
+    teamLimit: 20,
+    features: [
+      'auth.sso',
+      'profile.public',
+      'directory.read',
+      'team.management',
+      'marketplace.buyer',
+      'marketplace.seller',
+      'ao.consultation',
+      'ao.submission',
+      'ao.publishing',
+      'formation.learner',
+      'formation.creator',
+      'incubator.access',
+      'financing.requests',
+      'financing.donations',
+      'events.participation',
+      'events.b2b',
+    ],
+  },
+
+  // ── Collectif ──────────────────────────────────────────────────
   ORGANISATION: {
     tier: 'ORGANISATION',
     name: 'Organisation',
     category: 'collective',
     price: 17500,
+    priceYearly: 200000,
     period: 'month',
-    teamLimit: 10,
-    inheritsFrom: 'OR',
+    teamLimit: 50,
     features: [
+      'auth.sso',
+      'profile.public',
+      'directory.read',
+      'team.management',
       'affiliation.access',
-      'analytics.advanced',
+      'marketplace.buyer',
+      'marketplace.seller',
+      'ao.consultation',
+      'ao.submission',
+      'ao.publishing',
+      'formation.learner',
+      'formation.creator',
+      'incubator.access',
+      'financing.requests',
+      'events.participation',
+      'events.b2b',
+      'events.organization',
+      'datahub.access',
+      'export.pdf',
+      'export.xlsx',
     ],
   },
+
   FEDERATION: {
     tier: 'FEDERATION',
     name: 'Fédération',
     category: 'collective',
     price: 30000,
+    priceYearly: 350000,
     period: 'month',
-    teamLimit: 20,
-    inheritsFrom: 'ORGANISATION',
+    teamLimit: 100,
     features: [
-      'analytics.sector',
+      'auth.sso',
+      'profile.public',
+      'directory.read',
+      'team.management',
+      'affiliation.access',
+      'marketplace.buyer',
+      'marketplace.seller',
+      'ao.consultation',
+      'ao.submission',
+      'ao.publishing',
+      'formation.learner',
+      'formation.creator',
+      'incubator.access',
+      'financing.requests',
+      'financing.donations',
+      'events.participation',
+      'events.b2b',
+      'events.organization',
+      'datahub.access',
+      'export.pdf',
+      'export.xlsx',
     ],
   },
+
   INSTITUTIONNEL: {
     tier: 'INSTITUTIONNEL',
     name: 'Institutionnel',
     category: 'collective',
     price: 0, // sur devis
+    priceYearly: 0,
     period: 'month',
-    teamLimit: -1, // unlimited
-    inheritsFrom: 'FEDERATION',
+    teamLimit: -1, // illimité
     features: [
+      'auth.sso',
+      'team.management',
+      'marketplace.buyer',
+      'ao.consultation',
+      'formation.learner',
+      'formation.creator',
       'financing.donations',
+      'events.participation',
+      'events.b2b',
+      'events.organization',
+      'datahub.access',
+      'export.pdf',
+      'export.xlsx',
       'api.access',
       'integrations.enabled',
-      'support.premium',
     ],
   },
 };
 
-// Obtenir toutes les fonctionnalités d'un tier (avec héritage)
+// Obtenir toutes les fonctionnalités d'un tier
 export function getFeaturesForTier(tier: SubscriptionTier): Feature[] {
-  const config = TIER_CONFIGS[tier];
-  const features = new Set<Feature>(config.features);
-
-  // Ajouter les fonctionnalités héritées
-  let currentTier = tier;
-  while (TIER_CONFIGS[currentTier].inheritsFrom) {
-    const parentTier = TIER_CONFIGS[currentTier].inheritsFrom!;
-    TIER_CONFIGS[parentTier].features.forEach(f => features.add(f));
-    currentTier = parentTier;
-  }
-
-  return Array.from(features);
+  return TIER_CONFIGS[tier].features;
 }
 
 // Vérifier si un utilisateur peut accéder à une fonctionnalité
@@ -119,8 +241,7 @@ export function canAccessFeature(
   userTier: SubscriptionTier,
   feature: Feature
 ): boolean {
-  const allowedFeatures = getFeaturesForTier(userTier);
-  return allowedFeatures.includes(feature);
+  return TIER_CONFIGS[userTier].features.includes(feature);
 }
 
 // Vérifier la limite d'équipe
@@ -128,24 +249,27 @@ export function canAddTeamMember(
   currentSize: number,
   tierLimit: number
 ): boolean {
-  if (tierLimit === -1) return true; // unlimited
+  if (tierLimit === -1) return true; // illimité
   return currentSize < tierLimit;
 }
 
-// Trouver le tier minimum requis pour une fonctionnalité
-export function getRequiredTier(feature: Feature): SubscriptionTier | null {
-  const tiers: SubscriptionTier[] = [
-    'BASIC',
-    'ARGENT',
-    'OR',
-    'ORGANISATION',
-    'FEDERATION',
-    'INSTITUTIONNEL',
-  ];
+// Ordre des tiers par prix croissant (pour getRequiredTier)
+const TIER_ORDER: SubscriptionTier[] = [
+  'MI_BASIC',    // 1 000
+  'ME_BASIC',    // 2 500
+  'MI_ARGENT',   // 4 000
+  'ME_ARGENT',   // 5 000
+  'MI_OR',       // 7 000
+  'ME_OR',       // 10 000
+  'ORGANISATION', // 17 500
+  'FEDERATION',   // 30 000
+  'INSTITUTIONNEL', // sur devis
+];
 
-  for (const tier of tiers) {
-    const features = getFeaturesForTier(tier);
-    if (features.includes(feature)) {
+// Trouver le tier le moins cher qui donne accès à une fonctionnalité
+export function getRequiredTier(feature: Feature): SubscriptionTier | null {
+  for (const tier of TIER_ORDER) {
+    if (TIER_CONFIGS[tier].features.includes(feature)) {
       return tier;
     }
   }

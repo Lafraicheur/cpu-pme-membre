@@ -123,7 +123,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
   return (
     <div className="space-y-6">
       {/* Alertes prioritaires */}
-      {alerts.length > 0 && (
+      {/* {alerts.length > 0 && (
         <div className="space-y-2">
           {alerts.map((alert, index) => (
             <div
@@ -147,7 +147,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
             </div>
           ))}
         </div>
-      )}
+      )} */}
 
       {/* KPIs principaux - design amélioré */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -232,7 +232,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
         </Card>
 
         {/* Recommandations IA */}
-        <Card className="lg:col-span-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+        {/* <Card className="lg:col-span-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" />
@@ -272,13 +272,13 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
 
       {/* Formations en cours + Graphique progression */}
-      <div className="grid lg:grid-cols-5 gap-6">
+      {/* <div className="grid lg:grid-cols-5 gap-6"> */}
         {/* Formations en cours */}
-        <Card className="lg:col-span-3">
+        {/* <Card className="lg:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-base">Mes formations en cours</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => onNavigate("inscriptions")}>
@@ -328,10 +328,10 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               </div>
             ))}
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* Graphique progression */}
-        <Card className="lg:col-span-2">
+        {/* <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" />
@@ -366,7 +366,6 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               </ResponsiveContainer>
             </div>
 
-            {/* Répartition par domaine */}
             <div className="mt-4 pt-4 border-t">
               <p className="text-xs font-semibold text-muted-foreground mb-3">RÉPARTITION PAR DOMAINE</p>
               <div className="space-y-2">
@@ -380,11 +379,11 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               </div>
             </div>
           </CardContent>
-        </Card>
-      </div>
+        </Card> */}
+      {/* </div> */}
 
       {/* Certificats + Budget */}
-      <div className="grid lg:grid-cols-2 gap-6">
+      {/* <div className="grid lg:grid-cols-2 gap-6"> */}
         {/* Certificats récents */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
@@ -424,7 +423,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
         </Card>
 
         {/* Budget formation */}
-        <Card>
+        {/* <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-secondary" />
@@ -486,8 +485,8 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               </div>
             </div>
           </CardContent>
-        </Card>
-      </div>
+        </Card> */}
+      {/* </div> */}
 
       {/* Calendrier interactif */}
       <CalendrierFormations />
@@ -532,7 +531,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
       </Card> */}
 
       {/* Actions rapides */}
-      <Card>
+      {/* <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Actions rapides</CardTitle>
         </CardHeader>
@@ -556,7 +555,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }

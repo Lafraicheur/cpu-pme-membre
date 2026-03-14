@@ -282,7 +282,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
       </div>
 
       {/* Quick Actions */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle className="text-lg">Actions rapides</CardTitle>
         </CardHeader>
@@ -306,7 +306,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }

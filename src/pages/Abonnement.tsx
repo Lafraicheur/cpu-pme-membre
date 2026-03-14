@@ -10,43 +10,47 @@ import { TIER_CONFIGS } from "@/lib/permissions";
 
 interface PlanFeature {
   name: string;
-  basic: boolean | string;
-  argent: boolean | string;
-  or: boolean | string;
+  mi_basic: boolean | string;
+  mi_argent: boolean | string;
+  mi_or: boolean | string;
+  me_basic: boolean | string;
+  me_argent: boolean | string;
+  me_or: boolean | string;
   organisation: boolean | string;
   federation: boolean | string;
   institutionnel: boolean | string;
 }
 
 const planFeatures: PlanFeature[] = [
-  { name: "SSO & Profil public", basic: true, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Annuaire CPU-PME", basic: true, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Gestion équipe", basic: "(1) Entreprise oui", argent: "(3) Entreprise oui", or: "(5) Entreprise oui", organisation: "10", federation: "20", institutionnel: "Illimité" },
-  { name: "Affiliation", basic: false, argent: false, or: false, organisation: true, federation: true, institutionnel: true },
-  { name: "Marketplace (acheteur)", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Marketplace (vendeur)", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Appels d'offres (consultation)", basic: true, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Appels d'offres (soumission)", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Publication appels d'offres", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Formation (apprenant)", basic: true, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Formation (créateur)", basic: false, argent: false, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Incubateur & accompagnement", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Financement (demandes)", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: false },
-  { name: "Financement (dons)", basic: false, argent: false, or: false, organisation: false, federation: false, institutionnel: true },
-  { name: "Événements (participant)", basic: true, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Événements (organisateur)", basic: false, argent: false, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Data Hub & Analytics", basic: false, argent: false, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Exports (PDF/XLSX)", basic: false, argent: false, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "Support prioritaire", basic: false, argent: true, or: true, organisation: true, federation: true, institutionnel: true },
-  { name: "API & Intégrations", basic: false, argent: false, or: false, organisation: false, federation: false, institutionnel: true },
+  { name: "SSO Hub CPU-PME",                  mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Profil public (fiche)",             mi_basic: false, mi_argent: false, mi_or: false, me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: false },
+  { name: "Annuaire CPU-PME",                  mi_basic: false, mi_argent: false, mi_or: false, me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Gestion équipe",                    mi_basic: false, mi_argent: false, mi_or: false, me_basic: "5",   me_argent: "10",  me_or: "20",  organisation: "50",  federation: "100", institutionnel: "∞"   },
+  { name: "Affiliation",                       mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: false, organisation: true,  federation: false, institutionnel: false },
+  { name: "Marketplace (acheteur)",            mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: false, me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Marketplace (vendeur)",             mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: false },
+  { name: "Appels d'offres (consultation)",    mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Appels d'offres (soumission)",      mi_basic: false, mi_argent: false, mi_or: true,  me_basic: false, me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: false },
+  { name: "Publication appels d'offres",       mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: true,  organisation: true,  federation: true,  institutionnel: false },
+  { name: "Formation (apprenant)",             mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Formation (créateur)",              mi_basic: false, mi_argent: false, mi_or: true,  me_basic: false, me_argent: false, me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Incubateur & accompagnement",       mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: false },
+  { name: "Financement (demandes)",            mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: true,  me_or: true,  organisation: false, federation: true,  institutionnel: false },
+  { name: "Financement (donner)",              mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: true,  organisation: false, federation: true,  institutionnel: true  },
+  { name: "Événements (participant)",          mi_basic: true,  mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Événements B2B",                    mi_basic: false, mi_argent: true,  mi_or: true,  me_basic: true,  me_argent: true,  me_or: true,  organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Organiser un événement",            mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: false, organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Data Hub & Analytics",              mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: false, organisation: true,  federation: true,  institutionnel: true  },
+  { name: "Exports (PDF/XLSX)",                mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: false, organisation: true,  federation: true,  institutionnel: true  },
+  { name: "API & Intégrations",                mi_basic: false, mi_argent: false, mi_or: false, me_basic: false, me_argent: false, me_or: false, organisation: false, federation: false, institutionnel: true  },
 ];
 
 const plans = [
-  // Individual Tiers
+  // ── Membre Individuel ──────────────────────────────────────────
   {
-    id: "basic",
-    name: "Basic",
-    category: "Individuel",
+    id: "mi_basic",
+    name: "Basic Individuel",
+    category: "Membre Individuel",
     price: "1 000",
     period: "FCFA/mois",
     priceYearly: "10 000",
@@ -58,23 +62,66 @@ const plans = [
     popular: false,
   },
   {
-    id: "argent",
-    name: "Argent",
-    category: "Individuel",
+    id: "mi_argent",
+    name: "Argent Professionnel",
+    category: "Membre Individuel",
+    price: "4 000",
+    period: "FCFA/mois",
+    priceYearly: "40 000",
+    description: "Pour les professionnels actifs",
+    icon: Star,
+    color: "bg-secondary/10",
+    textColor: "text-secondary",
+    borderColor: "border-secondary",
+    popular: false,
+  },
+  {
+    id: "mi_or",
+    name: "Or Professionnel",
+    category: "Membre Individuel",
+    price: "7 000",
+    period: "FCFA/mois",
+    priceYearly: "80 000",
+    description: "Pour les consultants et experts",
+    icon: Crown,
+    color: "bg-yellow-500/10",
+    textColor: "text-yellow-600",
+    borderColor: "border-yellow-500",
+    popular: false,
+  },
+  // ── Membre Entreprise ──────────────────────────────────────────
+  {
+    id: "me_basic",
+    name: "Basic Entreprise",
+    category: "Membre Entreprise",
+    price: "2 500",
+    period: "FCFA/mois",
+    priceYearly: "30 000",
+    description: "Pour les PME qui démarrent",
+    icon: Building2,
+    color: "bg-sky-500/10",
+    textColor: "text-sky-600",
+    borderColor: "border-sky-400",
+    popular: false,
+  },
+  {
+    id: "me_argent",
+    name: "Argent Entreprise",
+    category: "Membre Entreprise",
     price: "5 000",
     period: "FCFA/mois",
     priceYearly: "50 000",
     description: "Pour les PME en croissance",
     icon: Star,
-    color: "bg-secondary/10",
-    textColor: "text-secondary",
-    borderColor: "border-secondary",
+    color: "bg-indigo-500/10",
+    textColor: "text-indigo-600",
+    borderColor: "border-indigo-400",
     popular: true,
   },
   {
-    id: "or",
-    name: "Or",
-    category: "Individuel",
+    id: "me_or",
+    name: "Or Entreprise",
+    category: "Membre Entreprise",
     price: "10 000",
     period: "FCFA/mois",
     priceYearly: "100 000",
@@ -85,7 +132,7 @@ const plans = [
     borderColor: "border-primary",
     popular: false,
   },
-  // Collective Tiers
+  // ── Collectif ──────────────────────────────────────────────────
   {
     id: "organisation",
     name: "Organisation",
@@ -107,7 +154,7 @@ const plans = [
     price: "30 000",
     period: "FCFA/mois",
     priceYearly: "350 000",
-    description: "Analyse sectorielle avancée",
+    description: "Pilotage de filière",
     icon: Users,
     color: "bg-purple-500/10",
     textColor: "text-purple-500",
@@ -143,7 +190,7 @@ export default function Abonnement() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
   // Obtenir le tier actuel et le plan correspondant
-  const currentTier = user?.subscription?.tier || 'BASIC';
+  const currentTier = user?.subscription?.tier || 'ME_ARGENT';
   const tierConfig = TIER_CONFIGS[currentTier];
   const currentPlanId = currentTier.toLowerCase();
   const currentPlan = plans.find(p => p.id === currentPlanId);

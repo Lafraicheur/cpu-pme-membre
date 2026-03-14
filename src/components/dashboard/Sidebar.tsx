@@ -62,43 +62,73 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, canAccess, user } = useAuth();
   const [lockedModal, setLockedModal] = useState<{ label: string; tierName: string } | null>(null);
+
+  // Sur mobile (overlay), on affiche toujours les labels
+  const showLabels = mobileOpen || !collapsed;
 
   const handleLogout = () => {
     logout();
     navigate("/auth");
   };
 
-  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Basic";
+  // Ferme la sidebar mobile après navigation
+  const handleNavClick = () => {
+    if (mobileOpen && onMobileClose) onMobileClose();
+  };
+
+  const currentTierName = user?.subscription && TIER_CONFIGS[user.subscription.tier]
+    ? TIER_CONFIGS[user.subscription.tier].name
+    : "Basic";
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar transition-all duration-300 ease-in-out flex flex-col",
-        collapsed ? "w-20" : "w-64"
+        "fixed left-0 top-0 z-40 h-screen bg-sidebar flex flex-col",
+        "transition-all duration-300 ease-in-out",
+        // Desktop : visible, largeur selon collapsed
+        "hidden lg:flex",
+        collapsed ? "lg:w-20" : "lg:w-64",
+        // Mobile : visible en overlay quand ouvert
+        mobileOpen && "!flex w-72 shadow-2xl"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-        <div className="flex items-center gap-3 overflow-hidden">
+      <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4 flex-shrink-0">
+        <div className={cn("flex items-center gap-3 overflow-hidden", !showLabels && "justify-center w-full")}>
           <img
             src={logo}
             alt="CPU-PME"
             className="h-10 w-auto flex-shrink-0 rounded"
           />
+          {showLabels && (
+            <span className="text-sm font-semibold text-sidebar-foreground truncate">CPU-PME</span>
+          )}
         </div>
-        <button
-          onClick={onToggle}
-          className="p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
-        >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        </button>
+        {/* Bouton fermeture mobile */}
+        {mobileOpen && onMobileClose ? (
+          <button
+            onClick={onMobileClose}
+            className="p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground flex-shrink-0"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        ) : (
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground hidden lg:block flex-shrink-0"
+          >
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -114,6 +144,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               <div
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+                  !showLabels && "justify-center px-2",
                   isLocked
                     ? "cursor-not-allowed text-sidebar-foreground/60"
                     : isActive
@@ -128,23 +159,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     !isActive && !isLocked && "group-hover:scale-110"
                   )}
                 />
-                {!collapsed && (
-                  <span className="text-sm font-medium truncate animate-fade-in">
+                {showLabels && (
+                  <span className="text-sm font-medium truncate flex-1">
                     {item.label}
                   </span>
                 )}
-                {isLocked && !collapsed && (
-                  <Lock size={14} className="ml-auto flex-shrink-0 text-sidebar-foreground/50" />
+                {isLocked && showLabels && (
+                  <Lock size={14} className="flex-shrink-0 text-sidebar-foreground/50" />
                 )}
-                {isLocked && collapsed && (
+                {isLocked && !showLabels && (
                   <Lock size={10} className="absolute -bottom-0.5 -right-0.5 text-sidebar-foreground/50" />
                 )}
-                {!isLocked && item.badge && !collapsed && (
+                {!isLocked && item.badge && showLabels && (
                   <span className="ml-auto bg-primary text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full">
                     {item.badge}
                   </span>
                 )}
-                {!isLocked && item.badge && collapsed && (
+                {!isLocked && item.badge && !showLabels && (
                   <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full">
                     {item.badge}
                   </span>
@@ -167,7 +198,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
             return (
               <li key={item.label}>
-                <Link to={item.href}>
+                <Link to={item.href} onClick={handleNavClick}>
                   {linkContent}
                 </Link>
               </li>
@@ -176,37 +207,44 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </ul>
       </nav>
 
-      <div className="border-t border-sidebar-border p-3 space-y-1">
+      <div className="border-t border-sidebar-border p-3 space-y-1 flex-shrink-0">
         <Link
           to="/mon-entreprise"
+          onClick={handleNavClick}
           className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+            !showLabels && "justify-center px-2",
             location.pathname === "/mon-entreprise"
               ? "bg-primary text-primary-foreground"
               : "text-sidebar-foreground hover:bg-sidebar-accent"
           )}
         >
-          <Building2 size={20} />
-          {!collapsed && <span className="text-sm font-medium">Mon Entreprise</span>}
+          <Building2 size={20} className="flex-shrink-0" />
+          {showLabels && <span className="text-sm font-medium">Mon Entreprise</span>}
         </Link>
         <Link
           to="/parametres"
+          onClick={handleNavClick}
           className={cn(
             "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+            !showLabels && "justify-center px-2",
             location.pathname === "/parametres"
               ? "bg-primary text-primary-foreground"
               : "text-sidebar-foreground hover:bg-sidebar-accent"
           )}
         >
-          <Settings size={20} />
-          {!collapsed && <span className="text-sm font-medium">Paramètres</span>}
+          <Settings size={20} className="flex-shrink-0" />
+          {showLabels && <span className="text-sm font-medium">Paramètres</span>}
         </Link>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors",
+            !showLabels && "justify-center px-2"
+          )}
         >
-          <LogOut size={20} />
-          {!collapsed && <span className="text-sm font-medium">Déconnexion</span>}
+          <LogOut size={20} className="flex-shrink-0" />
+          {showLabels && <span className="text-sm font-medium">Déconnexion</span>}
         </button>
       </div>
       {/* Modal upgrade */}

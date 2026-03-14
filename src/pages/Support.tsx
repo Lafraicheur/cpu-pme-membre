@@ -167,21 +167,23 @@ export default function Support() {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="faq" className="gap-2">
-                <HelpCircle className="h-4 w-4" />
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+              <TabsTrigger value="faq" className="gap-2 text-xs sm:text-sm">
+                <HelpCircle className="h-4 w-4 flex-shrink-0" />
                 FAQ
               </TabsTrigger>
-              <TabsTrigger value="tickets" className="gap-2">
-                <FileText className="h-4 w-4" />
-                Mes tickets
+              <TabsTrigger value="tickets" className="gap-2 text-xs sm:text-sm">
+                <FileText className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Mes tickets</span>
+                <span className="sm:hidden">Tickets</span>
               </TabsTrigger>
-              <TabsTrigger value="new-ticket" className="gap-2">
-                <Send className="h-4 w-4" />
-                Nouveau ticket
+              <TabsTrigger value="new-ticket" className="gap-2 text-xs sm:text-sm">
+                <Send className="h-4 w-4 flex-shrink-0" />
+                <span className="hidden sm:inline">Nouveau ticket</span>
+                <span className="sm:hidden">Nouveau</span>
               </TabsTrigger>
-              <TabsTrigger value="resources" className="gap-2">
-                <Book className="h-4 w-4" />
+              <TabsTrigger value="resources" className="gap-2 text-xs sm:text-sm">
+                <Book className="h-4 w-4 flex-shrink-0" />
                 Ressources
               </TabsTrigger>
             </TabsList>

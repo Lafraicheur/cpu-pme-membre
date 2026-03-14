@@ -7,21 +7,39 @@ const TIER_STYLES: Record<SubscriptionTier, {
   icon: React.ElementType;
   label: string;
 }> = {
-  BASIC: {
+  // Membre Individuel
+  MI_BASIC: {
     color: 'bg-muted text-muted-foreground',
     icon: Sparkles,
-    label: 'Basic',
+    label: 'Basic Individuel',
   },
-  ARGENT: {
+  MI_ARGENT: {
     color: 'bg-secondary text-secondary-foreground',
     icon: Star,
-    label: 'Argent',
+    label: 'Argent Pro',
   },
-  OR: {
+  MI_OR: {
+    color: 'bg-yellow-500 text-white',
+    icon: Crown,
+    label: 'Or Pro',
+  },
+  // Membre Entreprise
+  ME_BASIC: {
+    color: 'bg-sky-500 text-white',
+    icon: Building2,
+    label: 'Basic Entreprise',
+  },
+  ME_ARGENT: {
+    color: 'bg-indigo-500 text-white',
+    icon: Star,
+    label: 'Argent Entreprise',
+  },
+  ME_OR: {
     color: 'bg-primary text-primary-foreground',
     icon: Crown,
-    label: 'Or',
+    label: 'Or Entreprise',
   },
+  // Collectif
   ORGANISATION: {
     color: 'bg-blue-500 text-white',
     icon: Building2,

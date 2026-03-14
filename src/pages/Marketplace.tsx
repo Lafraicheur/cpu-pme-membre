@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -209,7 +209,7 @@ export default function Marketplace() {
       { id: "mes-commandes" as MenuSection, label: "Mes commandes", icon: ShoppingCart },
       { id: "retours-acheteur" as MenuSection, label: "Retours & réclamations", icon: RotateCcw },
       { id: "mes-devis" as MenuSection, label: "Mes devis (RFQ)", icon: FileText },
-      { id: "messagerie-rfq" as MenuSection, label: "Négociations RFQ", icon: MessageSquare },
+      // { id: "messagerie-rfq" as MenuSection, label: "Négociations RFQ", icon: MessageSquare },
       { id: "historique-achats" as MenuSection, label: "Historique achats", icon: FileText },
       // { id: "panier" as MenuSection, label: "Panier", icon: ShoppingCart },
     ],
@@ -229,7 +229,7 @@ export default function Marketplace() {
       { id: "historique-ventes" as MenuSection, label: "Historique ventes", icon: FileText },
       { id: "facturation-vedette" as MenuSection, label: "Facturation vedette", icon: FileText },
       { id: "dashboard-commissions" as MenuSection, label: "Dashboard commissions", icon: BarChart3 },
-      { id: "analytics" as MenuSection, label: "Analytics", icon: BarChart3 },
+      // { id: "analytics" as MenuSection, label: "Analytics", icon: BarChart3 },
     ],
     admin: [
       { id: "admin" as MenuSection, label: "Administration", icon: Settings },
@@ -416,20 +416,58 @@ export default function Marketplace() {
 
         {/* Main Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-6">
+          {/* Navigation mobile */}
+          <div className="lg:hidden mb-4">
+            <Select value={activeSection} onValueChange={(v) => setActiveSection(v as MenuSection)}>
+              <SelectTrigger className="w-full">
+                <Store className="w-4 h-4 mr-2 flex-shrink-0" />
+                <SelectValue placeholder="Choisir une section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="apercu">Aperçu général</SelectItem>
+                <SelectItem value="catalogue">Catalogue produits</SelectItem>
+                <SelectGroup>
+                  <SelectLabel>— ACHETER —</SelectLabel>
+                  {menuItems.acheter.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  ))}
+                </SelectGroup>
+                {canSell ? (
+                  <SelectGroup>
+                    <SelectLabel>— VENDRE —</SelectLabel>
+                    {menuItems.vendre.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ) : (
+                  <SelectGroup>
+                    <SelectLabel>— VENDRE (plan supérieur requis) —</SelectLabel>
+                    {menuItems.vendre.slice(0, 4).map((item) => (
+                      <SelectItem key={item.id} value={item.id} disabled>{item.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {menuItems.admin.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-foreground flex items-center gap-3">
-                <Store className="w-7 h-7 text-primary" />
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-3">
+                <Store className="w-6 h-6 sm:w-7 sm:h-7 text-primary flex-shrink-0" />
                 Marketplace CPU-PME
               </h1>
               <p className="text-muted-foreground text-sm">Achetez et vendez entre membres</p>
             </div>
-            <div className="flex items-center gap-3">
-              <NotificationsRetoursLitiges onNavigate={(section) => setActiveSection(section as MenuSection)} />
+            <div className="flex items-center gap-2">
+              {/* <NotificationsRetoursLitiges onNavigate={(section) => setActiveSection(section as MenuSection)} /> */}
               <NotificationsRFQ onNavigate={(section) => setActiveSection(section as MenuSection)} />
-              <Button variant="outline" className="gap-2 relative" onClick={() => setActiveSection("panier")}>
+              <Button variant="outline" size="sm" className="gap-2 relative" onClick={() => setActiveSection("panier")}>
                 <ShoppingCart className="w-4 h-4" />
-                Panier
+                <span className="hidden sm:inline">Panier</span>
                 {cart.length > 0 && (
                   <Badge className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-primary">
                     {cart.length}

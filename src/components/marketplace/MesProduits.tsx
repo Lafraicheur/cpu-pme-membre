@@ -658,7 +658,7 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                 </div>
 
                 {/* Stats Grid */}
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="text-center p-3 rounded-lg bg-muted">
                     <p className="text-2xl font-bold">{selectedProduct.vues.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Vues</p>

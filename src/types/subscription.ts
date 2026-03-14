@@ -2,23 +2,30 @@
 
 // Niveaux d'abonnement
 export type SubscriptionTier =
-  | 'BASIC'
-  | 'ARGENT'
-  | 'OR'
+  // Membre Individuel
+  | 'MI_BASIC'
+  | 'MI_ARGENT'
+  | 'MI_OR'
+  // Membre Entreprise
+  | 'ME_BASIC'
+  | 'ME_ARGENT'
+  | 'ME_OR'
+  // Collectif
   | 'ORGANISATION'
   | 'FEDERATION'
   | 'INSTITUTIONNEL';
 
-export type SubscriptionCategory = 'individual' | 'collective';
+export type SubscriptionCategory = 'individual' | 'entreprise' | 'collective';
 
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'trial';
 
 // Identifiants de fonctionnalités
 export type Feature =
-  // Auth & Profile
+  // Auth & Profil
   | 'auth.sso'
   | 'profile.public'
   | 'directory.read'
+  | 'team.management'
 
   // Marketplace
   | 'marketplace.buyer'
@@ -33,39 +40,31 @@ export type Feature =
   | 'formation.learner'
   | 'formation.creator'
 
-  // Events
-  | 'events.participation'
-  | 'events.organization'
-
-  // Incubator
+  // Incubateur
   | 'incubator.access'
-  | 'incubator.mentoring'
 
   // Affiliation
   | 'affiliation.access'
 
-  // Financing
+  // Financement
   | 'financing.requests'
   | 'financing.donations'
 
-  // Analytics & Data
-  | 'analytics.basic'
-  | 'analytics.advanced'
-  | 'analytics.sector'
+  // Événements
+  | 'events.participation'
+  | 'events.b2b'
+  | 'events.organization'
+
+  // Data & Analytics
   | 'datahub.access'
 
   // Exports
   | 'export.pdf'
   | 'export.xlsx'
 
-  // API & Integrations
+  // API & Intégrations
   | 'api.access'
-  | 'integrations.enabled'
-
-  // Support
-  | 'support.standard'
-  | 'support.priority'
-  | 'support.premium';
+  | 'integrations.enabled';
 
 // Interface d'abonnement
 export interface Subscription {
@@ -85,8 +84,8 @@ export interface TierConfig {
   name: string;
   category: SubscriptionCategory;
   price: number;
+  priceYearly: number;
   period: 'month' | 'year';
   teamLimit: number;
   features: Feature[];
-  inheritsFrom?: SubscriptionTier;
 }
