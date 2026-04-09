@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ import {
   Percent,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getSectorN1List } from "@/data/sectors";
+import { filieresApi, boutiquesApi, productsApi, type Filiere } from "@/lib/api";
 import { regions } from "@/data/regions";
 
 type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges";
@@ -52,12 +52,71 @@ type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "Need
 interface ProductWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit?: (data: any) => void;
+  onProductCreated?: () => void;
 }
 
-export function ProductWizard({ open, onOpenChange, onSubmit }: ProductWizardProps) {
+export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductWizardProps) {
   const [step, setStep] = useState(1);
   const [productType, setProductType] = useState<"product" | "service" | null>(null);
+  const [filieres, setFilieres] = useState<Filiere[]>([]);
+  const [boutiqueId, setBoutiqueId] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    filieresApi.getAll().then(setFilieres).catch(() => {});
+    boutiquesApi.getMyShop().then((b) => { if (b) setBoutiqueId(b.id); }).catch(() => {});
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!boutiqueId) { setSubmitError("Boutique introuvable. Veuillez créer votre boutique d'abord."); return; }
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const payload = {
+        boutiqueId,
+        name: formData.nom,
+        type: formData.type === "product" ? "Produit" : "Service",
+        description: formData.description || "",
+        category: formData.categorie,
+        subCategory: formData.sousCategorie || "",
+        characteristics: formData.caracteristiques || "",
+        isRegulated: formData.produitReglemente,
+        madeInCiRequested: formData.madeInCI,
+        ...(formData.madeInCI && formData.badgeMadeInCI ? { madeInCiBadgeType: formData.badgeMadeInCI } : {}),
+        unit: formData.unite || "kg",
+        status: "Draft",
+        price: Number(formData.prix) || 0,
+        stock: formData.stock ? Number(formData.stock) : 0,
+        moq: Number(formData.moq) || 1,
+        weight: 0,
+        capacity: 0,
+        availabilityDelay: formData.delaiDisponibilite || "",
+        deliveryZones: formData.zonesLivraison.map((name, i) => ({ id: i + 1, name, description: name })),
+        shippingCost: parseFloat(formData.fraisLivraison) || 0,
+        pickupAvailable: formData.optionRetrait,
+        technicalSpecifications: formData.ficheTechnique.specifications.map(s => ({ name: s.label, value: s.value, unit: s.unit })),
+        certifications: formData.ficheTechnique.certifications,
+        technicalDocuments: [],
+        variantsEnabled: formData.variantes.enabled,
+        quantityPricingEnabled: formData.prixQuantite.enabled,
+        quantityPricingTiers: formData.prixQuantite.paliers.map(p => ({ minQuantity: parseFloat(p.quantiteMin) || 0, unitPrice: parseFloat(p.prix) || 0 })),
+        ...(formData.miseEnVedette.enabled && formData.miseEnVedette.type ? {
+          premiumOption: formData.miseEnVedette.type,
+          premiumDurationWeeks: Math.ceil(parseFloat(formData.miseEnVedette.duree) / 7) || 1,
+        } : {}),
+      };
+      console.log("[ProductWizard] Payload envoyé :", payload);
+      console.log("[ProductWizard] Payload JSON :", JSON.stringify(payload, null, 2));
+      await productsApi.create(payload);
+      onProductCreated?.();
+      onOpenChange(false);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Erreur lors de la création du produit.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
   const [formData, setFormData] = useState({
     type: "",
     nom: "",
@@ -113,8 +172,6 @@ export function ProductWizard({ open, onOpenChange, onSubmit }: ProductWizardPro
   const updateForm = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
-
-  const sectorsN1 = getSectorN1List();
 
   const categoriesReglementees = [
     "Alimentation",
@@ -198,8 +255,8 @@ export function ProductWizard({ open, onOpenChange, onSubmit }: ProductWizardPro
                       <SelectValue placeholder="Choisir" />
                     </SelectTrigger>
                     <SelectContent>
-                      {sectorsN1.map((sector, idx) => (
-                        <SelectItem key={idx} value={sector.name}>{sector.name}</SelectItem>
+                      {filieres.map((f) => (
+                        <SelectItem key={f.id} value={f.name}>{f.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1229,6 +1286,13 @@ export function ProductWizard({ open, onOpenChange, onSubmit }: ProductWizardPro
 
         <Progress value={progress} className="h-2" />
 
+        {submitError && (
+          <div className="px-1 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-red-600 text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            {submitError}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto py-4">
           {renderStep()}
         </div>
@@ -1257,10 +1321,7 @@ export function ProductWizard({ open, onOpenChange, onSubmit }: ProductWizardPro
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           ) : (
-            <Button onClick={() => {
-              onSubmit?.(formData);
-              onOpenChange(false);
-            }}>
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
               <CheckCircle2 className="w-4 h-4 mr-1" />
               Soumettre pour modération
             </Button>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,6 @@ import {
 } from "@/components/ui/select";
 import {
   Store,
-  Settings,
   Upload,
   MapPin,
   Clock,
@@ -37,9 +36,11 @@ import {
   Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { regions } from "@/data/regions";
+import { boutiquesApi } from "@/lib/api";
 
 interface BoutiqueData {
+  id: string;
+  vendorId: string;
   nom: string;
   slug: string;
   logo: string;
@@ -62,18 +63,20 @@ interface PaymentSettings {
   frequencePaiement: string;
 }
 
-const mockBoutiqueData: BoutiqueData = {
-  nom: "Coopérative Aboisso Cacao",
-  slug: "aboisso-cacao",
-  logo: "🍫",
-  description: "Coopérative spécialisée dans la production et transformation de cacao premium. Certifié bio et commerce équitable depuis 2018.",
-  slogan: "Le meilleur du cacao ivoirien",
-  telephone: "+225 07 XX XX XX XX",
-  email: "contact@aboisso-cacao.ci",
-  siteWeb: "www.aboisso-cacao.ci",
-  regionsServies: ["Abidjan", "Yamoussoukro", "Bouaké"],
-  delaiPreparation: "48",
-  politiqueRetour: "Retours acceptés sous 7 jours pour produits non conformes. Frais de retour à la charge de l'acheteur sauf en cas de défaut.",
+const emptyBoutiqueData: BoutiqueData = {
+  id: "",
+  vendorId: "",
+  nom: "",
+  slug: "",
+  logo: "",
+  description: "",
+  slogan: "",
+  telephone: "",
+  email: "",
+  siteWeb: "",
+  regionsServies: [],
+  delaiPreparation: "24",
+  politiqueRetour: "",
   isActive: true,
 };
 
@@ -96,18 +99,108 @@ const mockStats = {
 };
 
 export function BoutiqueVendeur() {
-  const [boutiqueData, setBoutiqueData] = useState<BoutiqueData>(mockBoutiqueData);
+  const [boutiqueData, setBoutiqueData] = useState<BoutiqueData>(emptyBoutiqueData);
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(mockPaymentSettings);
   const [isEditing, setIsEditing] = useState(false);
   const [completionScore] = useState(85);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = () => {
-    setIsEditing(false);
-    // Save logic here
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setBoutiqueData((prev) => ({ ...prev, logo: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
   };
+
+  useEffect(() => {
+    setIsLoading(true);
+    boutiquesApi.getMyShop()
+      .then((boutique) => {
+        if (boutique) {
+          setBoutiqueData({
+            id: boutique.id,
+            vendorId: boutique.vendorId,
+            nom: boutique.name,
+            slug: "",
+            logo: boutique.logo ?? "",
+            description: boutique.description,
+            slogan: boutique.slogan,
+            telephone: boutique.phone,
+            email: boutique.email,
+            siteWeb: boutique.website ?? "",
+            regionsServies: [],
+            delaiPreparation: String(boutique.preparationDelayHours),
+            politiqueRetour: boutique.returnPolicy,
+            isActive: boutique.status === "active",
+          });
+        }
+      })
+      .catch(() => setError("Impossible de charger les informations de la boutique."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    if (!boutiqueData.id || !boutiqueData.vendorId) return;
+    setIsSaving(true);
+    try {
+      const updated = await boutiquesApi.update(boutiqueData.id, {
+        vendorId: boutiqueData.vendorId,
+        name: boutiqueData.nom,
+        description: boutiqueData.description,
+        slogan: boutiqueData.slogan,
+        logo: boutiqueData.logo || undefined,
+        phone: boutiqueData.telephone,
+        email: boutiqueData.email,
+        website: boutiqueData.siteWeb || undefined,
+        status: boutiqueData.isActive ? "active" : "inactive",
+        preparationDelayHours: Number(boutiqueData.delaiPreparation),
+        returnPolicy: boutiqueData.politiqueRetour,
+      });
+      setBoutiqueData((prev) => ({
+        ...prev,
+        id: updated.id,
+        vendorId: updated.vendorId,
+        nom: updated.name,
+        logo: updated.logo ?? "",
+        description: updated.description,
+        slogan: updated.slogan,
+        telephone: updated.phone,
+        email: updated.email,
+        siteWeb: updated.website ?? "",
+        delaiPreparation: String(updated.preparationDelayHours),
+        politiqueRetour: updated.returnPolicy,
+        isActive: updated.status === "active",
+      }));
+      setIsEditing(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur lors de la sauvegarde.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-muted-foreground">
+        Chargement de la boutique...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/5 text-red-600 text-sm flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
       {/* Header avec stats */}
       <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
         <CardContent className="p-6">
@@ -174,13 +267,12 @@ export function BoutiqueVendeur() {
 
       <Tabs defaultValue="profil" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="profil">Profil boutique</TabsTrigger>
-          <TabsTrigger value="livraison">Livraison & retours</TabsTrigger>
+          <TabsTrigger value="profil">Ma boutique</TabsTrigger>
           <TabsTrigger value="paiements">Paiements</TabsTrigger>
           <TabsTrigger value="apercu">Aperçu public</TabsTrigger>
         </TabsList>
 
-        {/* Profil boutique */}
+        {/* Profil boutique + Livraison & retours fusionnés */}
         <TabsContent value="profil" className="space-y-4">
           <Card>
             <CardHeader>
@@ -197,150 +289,191 @@ export function BoutiqueVendeur() {
                 <Button
                   variant={isEditing ? "default" : "outline"}
                   onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                  disabled={isSaving}
                 >
                   {isEditing ? (
-                    <><Save className="w-4 h-4 mr-1" />Enregistrer</>
+                    <><Save className="w-4 h-4 mr-1" />{isSaving ? "Enregistrement..." : "Enregistrer"}</>
                   ) : (
                     <><Edit className="w-4 h-4 mr-1" />Modifier</>
                   )}
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Logo */}
-              <div className="flex items-center gap-4">
-                <div className="w-24 h-24 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center text-5xl border-2 border-dashed">
-                  {boutiqueData.logo}
-                </div>
-                {isEditing && (
-                  <div>
-                    <Button variant="outline" size="sm">
-                      <Upload className="w-4 h-4 mr-1" />
-                      Changer le logo
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PNG, JPG. Max 2MB. 200x200px recommandé.
-                    </p>
-                  </div>
-                )}
-              </div>
+            <CardContent className="space-y-8">
 
-              {/* Nom et slug */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* ── Section : Identité ── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Store className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Identité</h3>
+                </div>
+
+                {/* Logo */}
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center border-2 border-dashed shrink-0 overflow-hidden">
+                    {boutiqueData.logo
+                      ? <img src={boutiqueData.logo} alt="Logo" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      : <Store className="w-8 h-8 text-muted-foreground/40" />
+                    }
+                  </div>
+                  {isEditing && (
+                    <div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleLogoChange}
+                      />
+                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="w-4 h-4 mr-1" />
+                        Changer le logo
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PNG, JPG, WebP. Max 2MB. 200x200px recommandé.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Nom de la boutique *</Label>
+                    <Input
+                      value={boutiqueData.nom}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, nom: e.target.value })}
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Slogan</Label>
+                    <Input
+                      value={boutiqueData.slogan}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, slogan: e.target.value })}
+                      disabled={!isEditing}
+                      placeholder="Une phrase accrocheuse..."
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <Label>Nom de la boutique *</Label>
-                  <Input
-                    value={boutiqueData.nom}
-                    onChange={(e) => setBoutiqueData({ ...boutiqueData, nom: e.target.value })}
+                  <Label>Description</Label>
+                  <Textarea
+                    value={boutiqueData.description}
+                    onChange={(e) => setBoutiqueData({ ...boutiqueData, description: e.target.value })}
                     disabled={!isEditing}
+                    rows={3}
+                    placeholder="Présentez votre entreprise, vos valeurs, vos certifications..."
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>URL de la boutique</Label>
-                  <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 bg-muted text-sm text-muted-foreground">
-                      marketplace.cpu-pme.ci/
-                    </span>
+              </div>
+
+              {/* ── Section : Contact ── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Phone className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Contact</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Phone className="w-3 h-3" /> Téléphone
+                    </Label>
                     <Input
-                      value={boutiqueData.slug}
-                      onChange={(e) => setBoutiqueData({ ...boutiqueData, slug: e.target.value })}
+                      value={boutiqueData.telephone}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, telephone: e.target.value })}
                       disabled={!isEditing}
-                      className="rounded-l-none"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Mail className="w-3 h-3" /> Email
+                    </Label>
+                    <Input
+                      value={boutiqueData.email}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, email: e.target.value })}
+                      disabled={!isEditing}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Globe className="w-3 h-3" /> Site web
+                    </Label>
+                    <Input
+                      value={boutiqueData.siteWeb}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, siteWeb: e.target.value })}
+                      disabled={!isEditing}
+                      placeholder="www.example.com"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Slogan */}
-              <div className="space-y-2">
-                <Label>Slogan</Label>
-                <Input
-                  value={boutiqueData.slogan}
-                  onChange={(e) => setBoutiqueData({ ...boutiqueData, slogan: e.target.value })}
-                  disabled={!isEditing}
-                  placeholder="Une phrase accrocheuse qui décrit votre activité"
-                />
-              </div>
-
-              {/* Description */}
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={boutiqueData.description}
-                  onChange={(e) => setBoutiqueData({ ...boutiqueData, description: e.target.value })}
-                  disabled={!isEditing}
-                  rows={4}
-                  placeholder="Présentez votre entreprise, vos valeurs, vos certifications..."
-                />
-              </div>
-
-              {/* Coordonnées */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Phone className="w-3 h-3" /> Téléphone
-                  </Label>
-                  <Input
-                    value={boutiqueData.telephone}
-                    onChange={(e) => setBoutiqueData({ ...boutiqueData, telephone: e.target.value })}
-                    disabled={!isEditing}
-                  />
+              {/* ── Section : Livraison & retours ── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <Truck className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Livraison & retours</h3>
                 </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Mail className="w-3 h-3" /> Email
-                  </Label>
-                  <Input
-                    value={boutiqueData.email}
-                    onChange={(e) => setBoutiqueData({ ...boutiqueData, email: e.target.value })}
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-1">
-                    <Globe className="w-3 h-3" /> Site web
-                  </Label>
-                  <Input
-                    value={boutiqueData.siteWeb}
-                    onChange={(e) => setBoutiqueData({ ...boutiqueData, siteWeb: e.target.value })}
-                    disabled={!isEditing}
-                    placeholder="www.example.com"
-                  />
-                </div>
-              </div>
-
-              {/* Régions servies */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <MapPin className="w-3 h-3" /> Régions servies
-                </Label>
-                {isEditing ? (
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner les régions" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regions.map(region => (
-                        <SelectItem key={region} value={region}>{region}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {boutiqueData.regionsServies.map(region => (
-                      <Badge key={region} variant="secondary">{region}</Badge>
-                    ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Délai de préparation
+                    </Label>
+                    <Select
+                      value={boutiqueData.delaiPreparation}
+                      onValueChange={(v) => setBoutiqueData({ ...boutiqueData, delaiPreparation: v })}
+                      disabled={!isEditing}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="24">24 heures</SelectItem>
+                        <SelectItem value="48">48 heures</SelectItem>
+                        <SelectItem value="72">72 heures</SelectItem>
+                        <SelectItem value="120">5 jours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Temps nécessaire pour préparer une commande après paiement
+                    </p>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label>Politique de retours</Label>
+                    <Textarea
+                      value={boutiqueData.politiqueRetour}
+                      onChange={(e) => setBoutiqueData({ ...boutiqueData, politiqueRetour: e.target.value })}
+                      disabled={!isEditing}
+                      rows={3}
+                      placeholder="Décrivez vos conditions de retour et d'échange..."
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Statut */}
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div>
-                  <p className="font-medium">Boutique active</p>
-                  <p className="text-sm text-muted-foreground">
-                    Vos produits sont visibles sur le marketplace
-                  </p>
+              {/* ── Statut boutique ── */}
+              <div className={cn(
+                "flex items-center justify-between p-4 rounded-lg border",
+                boutiqueData.isActive ? "border-green-500/30 bg-green-500/5" : "border-border"
+              )}>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center",
+                    boutiqueData.isActive ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
+                  )}>
+                    {boutiqueData.isActive ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <p className="font-medium">
+                      {boutiqueData.isActive ? "Boutique active" : "Boutique inactive"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {boutiqueData.isActive
+                        ? "Vos produits sont visibles sur le marketplace"
+                        : "Votre boutique n'est pas visible par les acheteurs"}
+                    </p>
+                  </div>
                 </div>
                 <Switch
                   checked={boutiqueData.isActive}
@@ -348,52 +481,7 @@ export function BoutiqueVendeur() {
                   disabled={!isEditing}
                 />
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* Livraison & retours */}
-        <TabsContent value="livraison" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Truck className="w-5 h-5" />
-                Paramètres de livraison
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> Délai de préparation (heures)
-                </Label>
-                <Select
-                  value={boutiqueData.delaiPreparation}
-                  onValueChange={(v) => setBoutiqueData({ ...boutiqueData, delaiPreparation: v })}
-                >
-                  <SelectTrigger className="w-full md:w-64">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="24">24 heures</SelectItem>
-                    <SelectItem value="48">48 heures</SelectItem>
-                    <SelectItem value="72">72 heures</SelectItem>
-                    <SelectItem value="120">5 jours</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Temps moyen nécessaire pour préparer une commande après paiement
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Politique de retours</Label>
-                <Textarea
-                  value={boutiqueData.politiqueRetour}
-                  onChange={(e) => setBoutiqueData({ ...boutiqueData, politiqueRetour: e.target.value })}
-                  rows={4}
-                  placeholder="Décrivez vos conditions de retour et d'échange..."
-                />
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

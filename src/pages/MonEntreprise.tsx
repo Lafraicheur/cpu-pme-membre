@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -36,11 +37,14 @@ import {
   UserCog,
   Briefcase,
   MoreVertical,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { TeamLimitIndicator } from "@/components/subscription/TeamLimitIndicator";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { authApi } from "@/lib/api";
 
 interface Branch {
   id: string;
@@ -148,6 +152,48 @@ export default function MonEntreprise() {
   const [branches] = useState<Branch[]>(mockBranches);
   const [team] = useState<TeamMember[]>(mockTeam);
 
+  // Données réelles depuis l'API profil
+  const { data: profile, isLoading: isLoadingProfile, isError: isErrorProfile } = useQuery({
+    queryKey: ["adhesion-profile"],
+    queryFn: authApi.getProfile,
+    staleTime: 5 * 60 * 1000,
+    initialData: () => {
+      try {
+        const stored = localStorage.getItem("cpu-adhesion");
+        return stored ? JSON.parse(stored) : undefined;
+      } catch { return undefined; }
+    },
+  });
+
+  const abonnement  = profile?.abonnement  as Record<string, unknown> | undefined;
+  const typeMembre  = profile?.typeMembre  as Record<string, unknown> | undefined;
+  const profil      = profile?.profil      as Record<string, unknown> | undefined;
+  const secteur     = profile?.secteurPrincipal as Record<string, unknown> | undefined;
+  const filiere     = profile?.filiere     as Record<string, unknown> | undefined;
+  const sousFiliere = profile?.sousFiliere as Record<string, unknown> | undefined;
+  const siegeRegion = profile?.siegeRegion as Record<string, unknown> | undefined;
+  const siegeCommune= profile?.siegeCommune as Record<string, unknown> | undefined;
+
+  function F({ label, value, icon: Icon, colSpan }: {
+    label: string;
+    value?: string | null;
+    icon?: React.ElementType;
+    colSpan?: boolean;
+  }) {
+    return (
+      <div className={cn("space-y-2", colSpan && "md:col-span-2")}>
+        <Label className="flex items-center gap-2">
+          {Icon && <Icon className="w-4 h-4" />}
+          {label}
+        </Label>
+        {isLoadingProfile
+          ? <Skeleton className="h-10 w-full rounded-md" />
+          : <Input readOnly value={value ?? "—"} className="bg-muted/40" />
+        }
+      </div>
+    );
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8">
@@ -184,6 +230,13 @@ export default function MonEntreprise() {
 
           {/* Profile Tab */}
           <TabsContent value="profile" className="space-y-6">
+            {isErrorProfile && (
+              <div className="flex items-center gap-2 text-sm text-destructive p-4 border border-destructive/20 rounded-lg">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Impossible de charger le profil.
+              </div>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>Informations générales</CardTitle>
@@ -192,117 +245,68 @@ export default function MonEntreprise() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-8">
-                {/* Logo & Identity Section */}
-                <div className="space-y-8">
-                  {/* PHOTO DE PROFIL */}
-                  <div className="flex justify-center">
-                    <div className="relative">
-                      <Avatar className="w-24 h-24">
-                        <AvatarImage src="/placeholder.svg" />
-                        <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                          EN
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* TITRE */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-muted-foreground mb-4 text-center">
-                      IDENTITÉ DE L'ENTREPRISE
-                    </h3>
-
-                    {/* CHAMPS */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Raison sociale</Label>
-                        <Input defaultValue="Entreprise Exemple SARL" />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Nom commercial</Label>
-                        <Input defaultValue="Exemple Corp" />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Secteur d'activité</Label>
-                        <Input defaultValue="Commerce & Distribution" />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Date de création</Label>
-                        <Input defaultValue="2020-01-15" type="date" />
-                      </div>
-                    </div>
+                {/* Avatar */}
+                <div className="flex justify-center">
+                  <div className="relative">
+                    <Avatar className="w-24 h-24">
+                      <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
+                        {String(profile?.name ?? "?").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                   </div>
                 </div>
 
-                {/* Separator */}
+                {/* Identité */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-4">IDENTITÉ</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <F label="Nom complet" value={String(profile?.name ?? "")} />
+                    <F label="Poste / Fonction" value={String(profile?.position ?? "")} />
+                    <F label="Nom de l'organisation" value={String(profile?.organisationName ?? profile?.customOrganisationName ?? "")} />
+                    <F label="Type d'organisation" value={String(profile?.organisationType ?? "")} />
+                    <F label="Nombre d'employés" value={String(profile?.nombre_employee ?? "")} />
+                    <F label="Type de membre" value={String(typeMembre?.name ?? "")} />
+                    <F label="Profil" value={String(profil?.name ?? "")} />
+                    <F label="Abonnement" value={abonnement ? `${abonnement.libelle} (${abonnement.plan})` : ""} />
+                  </div>
+                </div>
+
                 <div className="border-t" />
 
-                {/* Contact Section */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground">
-                    COORDONNÉES
-                  </h3>
+                {/* Coordonnées */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-4">COORDONNÉES</h3>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        Téléphone
-                      </Label>
-                      <Input defaultValue="+221 33 123 4567" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="flex items-center gap-2">
-                        <Mail className="w-4 h-4" />
-                        Email
-                      </Label>
-                      <Input defaultValue="contact@exemple.sn" type="email" />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label className="flex items-center gap-2">
-                        <Globe className="w-4 h-4" />
-                        Site web
-                      </Label>
-                      <Input defaultValue="https://exemple.sn" type="url" />
-                    </div>
+                    <F label="Téléphone" value={String(profile?.phone ?? "")} icon={Phone} />
+                    <F label="Email" value={String(profile?.email ?? "")} icon={Mail} />
+                    <F label="Site web" value={String(profile?.website_url ?? "")} icon={Globe} colSpan />
                   </div>
                 </div>
 
-                {/* Separator */}
                 <div className="border-t" />
 
-                {/* Legal Info Section */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground">
-                    INFORMATIONS LÉGALES
-                  </h3>
+                {/* Localisation */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-4">LOCALISATION DU SIÈGE</h3>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>NINEA</Label>
-                      <Input defaultValue="123456789A123" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>RCCM</Label>
-                      <Input defaultValue="SN-DKR-2020-B-12345" />
-                    </div>
+                    <F label="Région" value={String(siegeRegion?.name ?? "")} icon={MapPin} />
+                    <F label="Commune" value={String(siegeCommune?.name ?? "")} icon={MapPin} />
+                    <F label="Ville" value={String(profile?.siegeVille ?? "")} />
+                    <F label="Village / Quartier" value={String(profile?.siegeVillage ?? "")} />
                   </div>
                 </div>
 
-                {/* Separator */}
-                <div className="border-t pt-4" />
+                <div className="border-t" />
 
-                <div className="flex justify-end">
-                  <Button>Enregistrer les modifications</Button>
+                {/* Secteur */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-4">SECTEUR D'ACTIVITÉ</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <F label="Secteur principal" value={String(secteur?.name ?? "")} />
+                    <F label="Filière" value={String(filiere?.name ?? "")} />
+                    <F label="Sous-filière" value={String(sousFiliere?.name ?? "")} />
+                    <F label="Portée d'intervention" value={String(profile?.interventionScope ?? "")} />
+                  </div>
                 </div>
               </CardContent>
             </Card>

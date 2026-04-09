@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Subscription, Feature, SubscriptionTier } from "@/types/subscription";
 import { canAccessFeature, getFeaturesForTier, TIER_CONFIGS } from "@/lib/permissions";
+import { authApi } from "@/lib/api";
+import { setCookie, getCookie, removeCookie } from "@/lib/cookies";
 
 export type UserRole = "owner" | "admin" | "commercial" | "comptable" | "viewer";
 
@@ -18,8 +20,9 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  sendOtp: (email: string) => Promise<void>;
+  login: (email: string, code: string) => Promise<void>;
+  logout: () => Promise<void>;
   hasPermission: (requiredRoles: UserRole[]) => boolean;
   canAccess: (feature: Feature) => boolean;
   canAddTeamMember: () => boolean;
@@ -29,66 +32,138 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function mapPlanToTier(profile: Record<string, unknown>): SubscriptionTier {
+  const defaultTier: SubscriptionTier = "ME_ARGENT";
+
+  // Si déjà un tier explicite (stocké localement)
+  if (profile.subscription_tier) return profile.subscription_tier as SubscriptionTier;
+
+  const abonnement = profile.abonnement as Record<string, unknown> | undefined;
+  const plan = (abonnement?.plan as string | undefined)?.toLowerCase();
+  const orgType = (profile.organisationType as string | undefined)?.toLowerCase();
+
+  // Types d'organisation collectifs
+  if (orgType === "federation") return "FEDERATION";
+  if (orgType === "institutionnel") return "INSTITUTIONNEL";
+  if (orgType === "organisation") return "ORGANISATION";
+
+  // Plans individuels / entreprises
+  switch (plan) {
+    case "basic":   return "ME_BASIC";
+    case "silver":
+    case "argent":  return "ME_ARGENT";
+    case "gold":
+    case "or":      return "ME_OR";
+    default:        return defaultTier;
+  }
+}
+
+function mapProfileToUser(profile: Record<string, unknown>): User {
+  const tier = mapPlanToTier(profile);
+  const tierConfig = TIER_CONFIGS[tier] || TIER_CONFIGS["ME_ARGENT"];
+
+  // L'API retourne "name" directement (ex: "Boni Christ")
+  const fullName = (profile.name || profile.nom || profile.prenom || "Membre") as string;
+
+  return {
+    id: String(profile.id || ""),
+    name: fullName,
+    email: String(profile.email || ""),
+    role: "owner",
+    companyId: undefined,
+    companyName: (profile.position as string) || undefined,
+    subscription: {
+      tier,
+      category: tierConfig.category || "individual",
+      status: "active",
+      startDate: (profile.created_at as string) || new Date().toISOString(),
+      teamLimit: tierConfig.teamLimit,
+      currentTeamSize: 1,
+      features: getFeaturesForTier(tier),
+    },
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session on mount
-    const storedUser = localStorage.getItem("cpu-pme-user");
-    if (storedUser) {
-      try {
-        const parsed: User = JSON.parse(storedUser);
-        // Migration : invalider les sessions avec un ancien tier non reconnu
-        if (!TIER_CONFIGS[parsed.subscription?.tier]) {
-          localStorage.removeItem("cpu-pme-user");
-          localStorage.removeItem("demo_subscription_tier");
-        } else {
-          setUser(parsed);
-        }
-      } catch {
-        localStorage.removeItem("cpu-pme-user");
-      }
+    // Récupère le token depuis localStorage ou depuis le cookie partagé
+    const token = localStorage.getItem("cpu-access-token") ?? getCookie("cpu-access-token");
+    if (!token) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    // Synchronise localStorage si le token vient du cookie (autre sous-domaine)
+    if (!localStorage.getItem("cpu-access-token")) {
+      localStorage.setItem("cpu-access-token", token);
+    }
+
+    authApi
+      .getProfile()
+      .then((profile) => {
+        const mappedUser = mapProfileToUser(profile);
+        localStorage.setItem("cpu-pme-user", JSON.stringify(mappedUser));
+        setCookie("cpu-pme-user", JSON.stringify(mappedUser));
+        setUser(mappedUser);
+      })
+      .catch(() => {
+        localStorage.removeItem("cpu-access-token");
+        localStorage.removeItem("cpu-pme-user");
+        removeCookie("cpu-access-token");
+        removeCookie("cpu-pme-user");
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    // Demo login - Replace with real auth when Cloud is enabled
-
-    // Lire le tier sélectionné depuis localStorage (défaut: ME_ARGENT)
-    const storedTier = localStorage.getItem("demo_subscription_tier");
-    const selectedTier: SubscriptionTier =
-      storedTier && TIER_CONFIGS[storedTier as SubscriptionTier]
-        ? (storedTier as SubscriptionTier)
-        : 'ME_ARGENT';
-    const tierConfig = TIER_CONFIGS[selectedTier];
-
-    const demoUser: User = {
-      id: "demo-user-1",
-      name: "Utilisateur Demo",
-      email,
-      role: "owner",
-      companyId: "company-1",
-      companyName: "Entreprise Demo SARL",
-      subscription: {
-        tier: selectedTier,
-        category: tierConfig.category || 'individual',
-        status: 'active',
-        startDate: new Date().toISOString(),
-        teamLimit: tierConfig.teamLimit,
-        currentTeamSize: 1,
-        features: getFeaturesForTier(selectedTier),
-      },
-    };
-
-    localStorage.setItem("cpu-pme-user", JSON.stringify(demoUser));
-    setUser(demoUser);
+  const sendOtp = async (email: string) => {
+    await authApi.sendOtp(email);
   };
 
-  const logout = () => {
-    localStorage.removeItem("cpu-pme-user");
-    setUser(null);
+  const login = async (email: string, code: string) => {
+    const { access_token, refresh_token, expires_in, adhesion } = await authApi.verifyOtp(email, code);
+
+    localStorage.setItem("cpu-access-token", access_token);
+    setCookie("cpu-access-token", access_token);
+
+    if (refresh_token) {
+      localStorage.setItem("cpu-refresh-token", refresh_token);
+      setCookie("cpu-refresh-token", refresh_token);
+    }
+
+    if (expires_in !== undefined) {
+      localStorage.setItem("cpu-expires-in", String(expires_in));
+    }
+
+    if (adhesion) {
+      localStorage.setItem("cpu-adhesion", JSON.stringify(adhesion));
+    }
+
+    const profile = adhesion ?? { email };
+    const mappedUser = mapProfileToUser(profile);
+    localStorage.setItem("cpu-pme-user", JSON.stringify(mappedUser));
+    setCookie("cpu-pme-user", JSON.stringify(mappedUser));
+    setUser(mappedUser);
+  };
+
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // On déconnecte localement même si l'API échoue
+    } finally {
+      localStorage.removeItem("cpu-access-token");
+      localStorage.removeItem("cpu-refresh-token");
+      localStorage.removeItem("cpu-expires-in");
+      localStorage.removeItem("cpu-adhesion");
+      localStorage.removeItem("cpu-pme-user");
+      removeCookie("cpu-access-token");
+      removeCookie("cpu-refresh-token");
+      removeCookie("cpu-pme-user");
+      setUser(null);
+    }
   };
 
   const hasPermission = (requiredRoles: UserRole[]) => {
@@ -98,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const canAccess = (feature: Feature): boolean => {
     if (!user?.subscription) return false;
-    if (user.subscription.status !== 'active') return false;
+    if (user.subscription.status !== "active") return false;
     return canAccessFeature(user.subscription.tier, feature);
   };
 
@@ -106,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user?.subscription) return false;
     const limit = user.subscription.teamLimit;
     const current = user.subscription.currentTeamSize;
-    if (limit === -1) return true; // unlimited
+    if (limit === -1) return true;
     return current < limit;
   };
 
@@ -117,21 +192,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateSubscriptionTier = (tier: SubscriptionTier) => {
     if (!user) return;
-
     const tierConfig = TIER_CONFIGS[tier];
     const updatedUser: User = {
       ...user,
       subscription: {
         ...user.subscription,
-        tier: tier,
-        category: tierConfig.category || 'individual',
+        tier,
+        category: tierConfig.category || "individual",
         teamLimit: tierConfig.teamLimit,
         features: getFeaturesForTier(tier),
       },
     };
-
-    // Mettre à jour localStorage
-    localStorage.setItem("demo_subscription_tier", tier);
     localStorage.setItem("cpu-pme-user", JSON.stringify(updatedUser));
     setUser(updatedUser);
   };
@@ -142,6 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        sendOtp,
         login,
         logout,
         hasPermission,

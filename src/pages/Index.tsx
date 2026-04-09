@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ActionCenter } from "@/components/dashboard/ActionCenter";
@@ -20,15 +21,15 @@ import {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    // Vérifier si un abonnement est sélectionné
-    const selectedTier = localStorage.getItem("demo_subscription_tier");
-    if (!selectedTier) {
-      // Rediriger vers la page de sélection d'abonnement
-      navigate("/subscription-selector");
+    if (!isLoading && !isAuthenticated) {
+      navigate("/auth");
     }
-  }, [navigate]);
+  }, [isAuthenticated, isLoading, navigate]);
+
+  if (isLoading || !isAuthenticated) return null;
 
   return (
     <DashboardLayout>

@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Crown, Star, Sparkles, Building2, Users, Landmark, ArrowRight } from "lucide-react";
 import { SubscriptionTier } from "@/types/subscription";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 
 const plans = [
   // ── Membre Individuel ──────────────────────────────────────────
@@ -191,13 +190,9 @@ const plans = [
 
 export default function SubscriptionSelector() {
   const navigate = useNavigate();
-  const { login } = useAuth();
-
-  const handleSelectPlan = async (tier: SubscriptionTier) => {
-    localStorage.removeItem("cpu-pme-user");
+  const handleSelectPlan = (tier: SubscriptionTier) => {
     localStorage.setItem("demo_subscription_tier", tier);
-    await login("demo@cpu-pme.com", "demo123");
-    window.location.href = "/";
+    navigate("/auth");
   };
 
   // Regrouper par catégorie

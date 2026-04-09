@@ -4,7 +4,7 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Calendar, Ticket, Handshake, Store, Award, Lock, ArrowUpCircle } from "lucide-react";
+import { Calendar, Ticket, Store, Award, Lock, ArrowUpCircle, PlusCircle } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { TIER_CONFIGS } from "@/lib/permissions";
@@ -12,6 +12,7 @@ import { EvenementsOverview } from "@/components/evenements/EvenementsOverview";
 import { DecouvrirEvenements } from "@/components/evenements/DecouvrirEvenements";
 import { EventDetail } from "@/components/evenements/EventDetail";
 import { MesInscriptions } from "@/components/evenements/MesInscriptions";
+import { AjouterEvenement } from "@/components/evenements/AjouterEvenement";
 import { B2BMatchmaking } from "@/components/evenements/B2BMatchmaking";
 import { ExposantModule } from "@/components/evenements/ExposantModule";
 import { SponsorModule } from "@/components/evenements/SponsorModule";
@@ -27,6 +28,7 @@ export default function Evenements() {
 
   const [activeTab, setActiveTab] = useState("apercu");
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
@@ -70,8 +72,8 @@ export default function Evenements() {
             <TabsTrigger value="apercu" className="gap-2"><Calendar className="w-4 h-4" />Aperçu</TabsTrigger>
             <TabsTrigger value="decouvrir" className="gap-2"><Calendar className="w-4 h-4" />Découvrir</TabsTrigger>
             <TabsTrigger value="inscriptions" className="gap-2"><Ticket className="w-4 h-4" />Mes inscriptions</TabsTrigger>
-            <TabsTrigger value="billets" className="gap-2"><Ticket className="w-4 h-4" />Billets</TabsTrigger>
-            <TabsTrigger value="b2b" className="gap-2"><Handshake className="w-4 h-4" />B2B Matchmaking</TabsTrigger>
+            <TabsTrigger value="ajouter" className="gap-2"><PlusCircle className="w-4 h-4" />Ajouter un événement</TabsTrigger>
+            {/* <TabsTrigger value="b2b" className="gap-2"><Handshake className="w-4 h-4" />B2B Matchmaking</TabsTrigger> */}
             {canOrganize ? (
               <>
                 <TabsTrigger value="exposant" className="gap-2"><Store className="w-4 h-4" />Exposant</TabsTrigger>
@@ -113,8 +115,36 @@ export default function Evenements() {
             <MesInscriptions />
           </TabsContent>
 
-          <TabsContent value="billets">
-            <MesInscriptions />
+          <TabsContent value="ajouter">
+            {/* Page d'accueil de l'onglet */}
+            <div className="flex flex-col items-center justify-center py-20 gap-8 text-center">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-3xl bg-primary/10 flex items-center justify-center shadow-inner">
+                  <PlusCircle className="w-12 h-12 text-primary" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-yellow-400 flex items-center justify-center shadow">
+                  <Calendar className="w-4 h-4 text-yellow-900" />
+                </div>
+              </div>
+              <div className="space-y-2 max-w-sm">
+                <h2 className="text-2xl font-bold">Créer un événement</h2>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Organisez des forums, conférences, webinaires ou rencontres B2B. Gérez les inscriptions, les billets et les intervenants en quelques étapes.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
+                {["3 étapes guidées", "Billets & tarification", "Intervenants", "QR check-in"].map((f) => (
+                  <span key={f} className="flex items-center gap-1.5 bg-muted px-3 py-1.5 rounded-full text-xs font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />{f}
+                  </span>
+                ))}
+              </div>
+              <Button size="lg" onClick={() => setShowCreateModal(true)} className="gap-2 px-10 rounded-xl shadow-md">
+                <PlusCircle className="w-5 h-5" /> Créer un événement
+              </Button>
+            </div>
+
+            <AjouterEvenement open={showCreateModal} onOpenChange={setShowCreateModal} />
           </TabsContent>
 
           <TabsContent value="b2b">

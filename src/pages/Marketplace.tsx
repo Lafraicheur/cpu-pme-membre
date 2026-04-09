@@ -484,7 +484,6 @@ export default function Marketplace() {
       <ProductWizard
         open={showProductWizard}
         onOpenChange={setShowProductWizard}
-        onSubmit={(data) => console.log("Product submitted:", data)}
       />
 
       {/* Modal upgrade vendeur */}

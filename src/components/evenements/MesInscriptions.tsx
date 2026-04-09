@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -18,122 +19,221 @@ import {
   FileText,
   CreditCard,
   User,
-  Building2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useQuery, useQueries } from "@tanstack/react-query";
+import { registrationsApi, evenementsApi, type Registration, type Evenement } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
-type RegistrationStatus = 
-  | "pending_payment" 
-  | "confirmed" 
-  | "checked_in" 
-  | "attended" 
-  | "cancelled";
-
-interface Registration {
-  id: string;
-  eventId: string;
-  eventTitle: string;
-  eventDate: string;
-  eventLocation: string;
-  ticketType: string;
-  ticketPrice: number;
-  quantity: number;
-  status: RegistrationStatus;
-  registeredAt: string;
-  qrCode: string;
-  invoiceNumber?: string;
+// Inscription enrichie avec les données de l'événement
+interface EnrichedRegistration extends Registration {
+  event?: Evenement;
 }
 
-const mockRegistrations: Registration[] = [
-  {
-    id: "reg-001",
-    eventId: "evt-001",
-    eventTitle: "Forum PME Côte d'Ivoire 2024",
-    eventDate: "2024-03-15",
-    eventLocation: "Palais de la Culture, Abidjan",
-    ticketType: "VIP",
-    ticketPrice: 75000,
-    quantity: 2,
-    status: "confirmed",
-    registeredAt: "2024-01-20",
-    qrCode: "QR-FORUM-VIP-001",
-    invoiceNumber: "INV-2024-001",
-  },
-  {
-    id: "reg-002",
-    eventId: "evt-003",
-    eventTitle: "Atelier Transformation Numérique PME",
-    eventDate: "2024-02-28",
-    eventLocation: "CPU-PME Hub, Plateau",
-    ticketType: "Standard",
-    ticketPrice: 0,
-    quantity: 1,
-    status: "confirmed",
-    registeredAt: "2024-02-10",
-    qrCode: "QR-ATELIER-001",
-  },
-  {
-    id: "reg-003",
-    eventId: "evt-002",
-    eventTitle: "Salon de l'Agro-industrie",
-    eventDate: "2024-04-20",
-    eventLocation: "Parc des Expositions",
-    ticketType: "Standard",
-    ticketPrice: 15000,
-    quantity: 1,
-    status: "pending_payment",
-    registeredAt: "2024-02-15",
-    qrCode: "",
-  },
-];
+function mapStatut(statut: string): {
+  label: string;
+  color: string;
+  Icon: typeof Clock;
+} {
+  switch (statut) {
+    case "payé":
+    case "paye":
+    case "confirmed":
+      return { label: "Confirmé", color: "bg-green-500/10 text-green-600", Icon: CheckCircle2 };
+    case "en_attente":
+      return { label: "En attente de paiement", color: "bg-amber-500/10 text-amber-600", Icon: Clock };
+    case "annulé":
+    case "annule":
+    case "cancelled":
+      return { label: "Annulé", color: "bg-destructive/10 text-destructive", Icon: XCircle };
+    case "checked_in":
+      return { label: "Enregistré", color: "bg-blue-500/10 text-blue-600", Icon: CheckCircle2 };
+    case "attended":
+      return { label: "Participé", color: "bg-primary/10 text-primary", Icon: CheckCircle2 };
+    default:
+      return { label: statut, color: "bg-muted text-muted-foreground", Icon: Clock };
+  }
+}
 
-const statusConfig: Record<RegistrationStatus, { 
-  label: string; 
-  color: string; 
-  icon: typeof Clock;
-}> = {
-  pending_payment: { 
-    label: "En attente de paiement", 
-    color: "bg-amber-500/10 text-amber-600", 
-    icon: Clock 
-  },
-  confirmed: { 
-    label: "Confirmé", 
-    color: "bg-secondary/10 text-secondary", 
-    icon: CheckCircle2 
-  },
-  checked_in: { 
-    label: "Enregistré", 
-    color: "bg-blue-500/10 text-blue-600", 
-    icon: CheckCircle2 
-  },
-  attended: { 
-    label: "Participé", 
-    color: "bg-primary/10 text-primary", 
-    icon: CheckCircle2 
-  },
-  cancelled: { 
-    label: "Annulé", 
-    color: "bg-destructive/10 text-destructive", 
-    icon: XCircle 
-  },
-};
+function RegistrationCardSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-6 space-y-3">
+        <div className="flex gap-2">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+        <Skeleton className="h-5 w-2/3" />
+        <div className="flex gap-4">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-36" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <Card>
+      <CardContent className="py-12 text-center">
+        <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+        <p className="text-muted-foreground">{message}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function MesInscriptions() {
-  const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
+  const { user } = useAuth();
+  const [selectedReg, setSelectedReg] = useState<EnrichedRegistration | null>(null);
   const [showQRDialog, setShowQRDialog] = useState(false);
 
-  const upcomingRegistrations = mockRegistrations.filter(r => 
-    new Date(r.eventDate) >= new Date() && r.status !== "cancelled"
-  );
-  const pastRegistrations = mockRegistrations.filter(r => 
-    new Date(r.eventDate) < new Date() || r.status === "cancelled"
-  );
+  // 1. Récupérer les inscriptions de l'utilisateur
+  const {
+    data: registrations,
+    isLoading: isLoadingReg,
+    isError: isErrorReg,
+  } = useQuery({
+    queryKey: ["registrations", user?.id],
+    queryFn: () => registrationsApi.getByUser(user!.id),
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+  });
 
-  const handleShowQR = (registration: Registration) => {
-    setSelectedRegistration(registration);
+  // 2. Récupérer les événements pour chaque inscription (unique event_ids)
+  const uniqueEventIds = [...new Set((registrations ?? []).map((r) => r.event_id))];
+
+  const eventQueries = useQueries({
+    queries: uniqueEventIds.map((eventId) => ({
+      queryKey: ["evenement", eventId],
+      queryFn: () => evenementsApi.getById(eventId),
+      staleTime: 10 * 60 * 1000,
+      enabled: uniqueEventIds.length > 0,
+    })),
+  });
+
+  const isLoadingEvents = eventQueries.some((q) => q.isLoading);
+  const isLoading = isLoadingReg || isLoadingEvents;
+
+  // Map eventId → Evenement
+  const eventMap = new Map<string, Evenement>();
+  uniqueEventIds.forEach((id, i) => {
+    const ev = eventQueries[i]?.data;
+    if (ev) eventMap.set(id, ev);
+  });
+
+  // 3. Enrichir les inscriptions
+  const enriched: EnrichedRegistration[] = (registrations ?? []).map((reg) => ({
+    ...reg,
+    event: eventMap.get(reg.event_id),
+  }));
+
+  const now = new Date();
+
+  // 4. Séparer à venir / passés selon date_debut de l'événement
+  const upcoming = enriched.filter((r) => {
+    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return false;
+    const dateDebut = r.event?.date_debut;
+    if (!dateDebut) return true; // si event pas encore chargé, on garde dans "à venir" par défaut
+    return new Date(dateDebut) >= now;
+  });
+
+  const past = enriched.filter((r) => {
+    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return true;
+    const dateDebut = r.event?.date_debut;
+    if (!dateDebut) return false;
+    return new Date(dateDebut) < now;
+  });
+
+  const pendingCount = enriched.filter((r) => r.statut_paiement === "en_attente").length;
+
+  const handleShowQR = (reg: EnrichedRegistration) => {
+    setSelectedReg(reg);
     setShowQRDialog(true);
   };
+
+  function RegistrationCard({
+    reg,
+    isPast,
+  }: {
+    reg: EnrichedRegistration;
+    isPast?: boolean;
+  }) {
+    const { label, color, Icon } = mapStatut(reg.statut_paiement);
+    const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
+    const totalQty = reg.details.reduce((s, d) => s + d.quantite, 0);
+
+    return (
+      <Card className={`flex flex-col h-full ${isPast ? "opacity-75" : "hover:shadow-lg transition-all"}`}>
+        <CardContent className="p-5 flex flex-col flex-1 gap-3">
+          {/* Badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className={color}>
+              <Icon className="w-3 h-3 mr-1" />
+              {label}
+            </Badge>
+            <Badge variant="outline">{ticketNom}</Badge>
+          </div>
+
+          {/* Titre */}
+          <h3 className="font-semibold leading-snug line-clamp-2">
+            {reg.event?.titre ?? `Événement #${reg.event_id.slice(0, 8)}`}
+          </h3>
+
+          {/* Infos */}
+          <div className="flex flex-col gap-1.5 text-sm text-muted-foreground flex-1">
+            {reg.event?.date_debut && (
+              <span className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                {new Date(reg.event.date_debut).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
+            )}
+            {reg.event?.lieu && (
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{reg.event.lieu.split(",")[0]}</span>
+              </span>
+            )}
+            {/* {totalQty > 0 && (
+              <span className="flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 shrink-0" />
+                {totalQty} participant{totalQty > 1 ? "s" : ""}
+              </span>
+            )} */}
+            {Number(reg.total_price) > 0 && (
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <CreditCard className="w-3.5 h-3.5 shrink-0" />
+                {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
+              </span>
+            )}
+          </div>
+
+          {/* Action */}
+          <div className="pt-1">
+            {isPast ? (
+              <Button variant="outline" size="sm" className="w-full">
+                Laisser un avis
+              </Button>
+            ) : reg.statut_paiement === "en_attente" ? (
+              <Button className="w-full gap-2" size="sm">
+                <CreditCard className="w-4 h-4" />
+                Payer
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => handleShowQR(reg)}>
+                <QrCode className="w-4 h-4" />
+                Voir mon pass
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -145,7 +245,7 @@ export function MesInscriptions() {
               <Ticket className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockRegistrations.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : enriched.length}</p>
               <p className="text-sm text-muted-foreground">Total inscriptions</p>
             </div>
           </CardContent>
@@ -156,7 +256,7 @@ export function MesInscriptions() {
               <Calendar className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{upcomingRegistrations.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : upcoming.length}</p>
               <p className="text-sm text-muted-foreground">À venir</p>
             </div>
           </CardContent>
@@ -167,9 +267,7 @@ export function MesInscriptions() {
               <Clock className="w-6 h-6 text-amber-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">
-                {mockRegistrations.filter(r => r.status === "pending_payment").length}
-              </p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : pendingCount}</p>
               <p className="text-sm text-muted-foreground">Paiement en attente</p>
             </div>
           </CardContent>
@@ -180,136 +278,64 @@ export function MesInscriptions() {
               <CheckCircle2 className="w-6 h-6 text-blue-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">
-                {mockRegistrations.filter(r => r.status === "attended").length}
-              </p>
-              <p className="text-sm text-muted-foreground">Participés</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : past.length}</p>
+              <p className="text-sm text-muted-foreground">Passés</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
+      {isErrorReg && (
+        <div className="flex items-center gap-2 text-sm text-destructive p-4 border border-destructive/20 rounded-lg">
+          <AlertCircle className="w-4 h-4" />
+          Impossible de charger vos inscriptions.
+        </div>
+      )}
+
       <Tabs defaultValue="upcoming" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="upcoming">À venir ({upcomingRegistrations.length})</TabsTrigger>
-          <TabsTrigger value="past">Passés ({pastRegistrations.length})</TabsTrigger>
+          <TabsTrigger value="upcoming">
+            À venir {!isLoading && `(${upcoming.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="past">
+            Passés {!isLoading && `(${past.length})`}
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="upcoming" className="space-y-4">
-          {upcomingRegistrations.map((registration) => {
-            const status = statusConfig[registration.status];
-            const StatusIcon = status.icon;
-            
-            return (
-              <Card key={registration.id} className="hover:shadow-lg transition-all">
-                <CardContent className="p-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className={status.color}>
-                          <StatusIcon className="w-3 h-3 mr-1" />
-                          {status.label}
-                        </Badge>
-                        <Badge variant="outline">{registration.ticketType}</Badge>
-                      </div>
-                      <h3 className="text-lg font-semibold">{registration.eventTitle}</h3>
-                      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          {new Date(registration.eventDate).toLocaleDateString("fr-FR")}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-4 h-4" />
-                          {registration.eventLocation.split(",")[0]}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <User className="w-4 h-4" />
-                          {registration.quantity} participant{registration.quantity > 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {registration.status === "pending_payment" ? (
-                        <Button className="gap-2">
-                          <CreditCard className="w-4 h-4" />
-                          Payer {(registration.ticketPrice * registration.quantity).toLocaleString()} FCFA
-                        </Button>
-                      ) : (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            className="gap-2"
-                            onClick={() => handleShowQR(registration)}
-                          >
-                            <QrCode className="w-4 h-4" />
-                            Pass
-                          </Button>
-                          {registration.invoiceNumber && (
-                            <Button variant="outline" className="gap-2">
-                              <Download className="w-4 h-4" />
-                              Facture
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          {upcomingRegistrations.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Calendar className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-                <p className="text-muted-foreground">Aucune inscription à venir</p>
-                <p className="text-sm text-muted-foreground">
-                  Découvrez les événements disponibles
-                </p>
-              </CardContent>
-            </Card>
+        <TabsContent value="upcoming">
+          {isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <RegistrationCardSkeleton />
+              <RegistrationCardSkeleton />
+              <RegistrationCardSkeleton />
+            </div>
+          )}
+          {!isLoading && upcoming.length === 0 && (
+            <EmptyState message="Aucune inscription à venir" />
+          )}
+          {!isLoading && upcoming.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {upcoming.map((reg) => <RegistrationCard key={reg.id} reg={reg} />)}
+            </div>
           )}
         </TabsContent>
 
-        <TabsContent value="past" className="space-y-4">
-          {pastRegistrations.map((registration) => {
-            const status = statusConfig[registration.status];
-            const StatusIcon = status.icon;
-            
-            return (
-              <Card key={registration.id} className="opacity-75">
-                <CardContent className="p-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Badge className={status.color}>
-                          <StatusIcon className="w-3 h-3 mr-1" />
-                          {status.label}
-                        </Badge>
-                      </div>
-                      <h3 className="font-semibold">{registration.eventTitle}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(registration.eventDate).toLocaleDateString("fr-FR")}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {registration.invoiceNumber && (
-                        <Button variant="outline" size="sm" className="gap-1">
-                          <FileText className="w-4 h-4" />
-                          Facture
-                        </Button>
-                      )}
-                      <Button variant="outline" size="sm">
-                        Laisser un avis
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <TabsContent value="past">
+          {isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <RegistrationCardSkeleton />
+              <RegistrationCardSkeleton />
+              <RegistrationCardSkeleton />
+            </div>
+          )}
+          {!isLoading && past.length === 0 && (
+            <EmptyState message="Aucun événement passé" />
+          )}
+          {!isLoading && past.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {past.map((reg) => <RegistrationCard key={reg.id} reg={reg} isPast />)}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -319,7 +345,7 @@ export function MesInscriptions() {
           <DialogHeader>
             <DialogTitle>Pass Événement</DialogTitle>
             <DialogDescription>
-              {selectedRegistration?.eventTitle}
+              {selectedReg?.event?.titre ?? `Événement #${selectedReg?.event_id.slice(0, 8)}`}
             </DialogDescription>
           </DialogHeader>
           <div className="py-8">
@@ -327,13 +353,20 @@ export function MesInscriptions() {
               <QrCode className="w-32 h-32 text-primary" />
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
-              Code: {selectedRegistration?.qrCode}
+              Réf : {selectedReg?.id.slice(0, 8).toUpperCase()}
             </p>
           </div>
-          <div className="space-y-2">
-            <p className="font-medium">{selectedRegistration?.ticketType}</p>
+          <div className="space-y-1">
+            <p className="font-medium">
+              {selectedReg?.details[0]?.ticket_type?.nom ?? "Billet"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              {selectedRegistration && new Date(selectedRegistration.eventDate).toLocaleDateString("fr-FR")}
+              {selectedReg?.event?.date_debut &&
+                new Date(selectedReg.event.date_debut).toLocaleDateString("fr-FR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
             </p>
           </div>
           <div className="flex gap-3 mt-4">

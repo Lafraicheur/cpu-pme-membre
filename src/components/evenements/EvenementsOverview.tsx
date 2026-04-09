@@ -1,6 +1,7 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Calendar,
   Ticket,
@@ -15,43 +16,16 @@ import {
   CalendarDays,
   Handshake,
   TrendingUp,
-  Download,
+  ImageOff,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { evenementsApi, registrationsApi, type Evenement, type Registration } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface OverviewProps {
   onNavigate: (tab: string) => void;
 }
 
-const upcomingEvents = [
-  {
-    id: "evt-001",
-    title: "Forum PME Côte d'Ivoire 2024",
-    date: "2024-03-15",
-    location: "Palais de la Culture, Abidjan",
-    type: "Forum",
-    registered: true,
-    ticketStatus: "confirmed",
-  },
-  {
-    id: "evt-002",
-    title: "Salon de l'Agro-industrie",
-    date: "2024-04-20",
-    location: "Parc des Expositions",
-    type: "Salon",
-    registered: false,
-  },
-];
-
-const myTickets = [
-  {
-    id: "TKT-001",
-    eventTitle: "Forum PME Côte d'Ivoire 2024",
-    ticketType: "VIP",
-    date: "2024-03-15",
-    status: "confirmed",
-    qrCode: "QR123456",
-  },
-];
 
 const upcomingRDV = [
   {
@@ -74,41 +48,118 @@ const upcomingRDV = [
   },
 ];
 
-const alerts = [
-  { type: "payment", message: "Paiement en attente - Stand Bronze Salon Agro", action: "Payer maintenant" },
-  { type: "rdv", message: "2 demandes de RDV B2B à confirmer", action: "Voir" },
-];
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function EventCard({ event }: { event: Evenement }) {
+  const couleur = event.type_evenement?.couleur ?? "#6366f1";
+
+  return (
+    <div className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Image ou icône */}
+        {event.image_flayer ? (
+          <img
+            src={event.image_flayer}
+            alt={event.titre}
+            className="w-12 h-12 rounded-lg object-cover shrink-0"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+            <ImageOff className="w-5 h-5 text-muted-foreground" />
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="font-medium truncate">{event.titre}</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-0.5">
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {formatDate(event.date_debut)}
+            </span>
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {event.lieu.split(",")[0]}
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="shrink-0">
+        {event.type_evenement && (
+          <Badge
+            style={{ backgroundColor: couleur + "20", color: couleur, borderColor: couleur + "40" }}
+            variant="outline"
+            className="text-xs whitespace-nowrap"
+          >
+            {event.type_evenement.nom}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EventCardSkeleton() {
+  return (
+    <div className="flex items-center gap-3 p-4 rounded-lg border">
+      <Skeleton className="w-12 h-12 rounded-lg shrink-0" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+    </div>
+  );
+}
+
+function statusLabel(statut: string) {
+  switch (statut) {
+    case "payé":
+    case "paye":
+    case "confirmed": return { label: "Payé", className: "bg-green-500/10 text-green-600" };
+    case "en_attente": return { label: "En attente", className: "bg-amber-500/10 text-amber-600" };
+    case "annulé":
+    case "annule": return { label: "Annulé", className: "bg-destructive/10 text-destructive" };
+    default: return { label: statut, className: "bg-muted text-muted-foreground" };
+  }
+}
 
 export function EvenementsOverview({ onNavigate }: OverviewProps) {
+  const { user } = useAuth();
+
+  const { data: recentEvents, isLoading, isError } = useQuery({
+    queryKey: ["evenements", "recent-upcoming"],
+    queryFn: evenementsApi.getRecentUpcoming,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const {
+    data: registrations,
+    isLoading: isLoadingTickets,
+    isError: isErrorTickets,
+  } = useQuery({
+    queryKey: ["registrations", user?.id],
+    queryFn: () => registrationsApi.getByUser(user!.id),
+    enabled: !!user?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+
   return (
     <div className="space-y-6">
-      {/* Alerts */}
-      {alerts.length > 0 && (
-        <div className="space-y-2">
-          {alerts.map((alert, index) => (
-            <Card key={index} className="border-primary/30 bg-primary/5">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 text-primary" />
-                  <span className="font-medium">{alert.message}</span>
-                </div>
-                <Button size="sm">{alert.action}</Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-full bg-primary/10">
               <Calendar className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">3</p>
-              <p className="text-sm text-muted-foreground">Événements à venir</p>
+              <p className="text-2xl font-bold">{recentEvents?.length ?? "—"}</p>
+              <p className="text-sm text-muted-foreground">Événements récents</p>
             </div>
           </CardContent>
         </Card>
@@ -118,12 +169,12 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               <Ticket className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">2</p>
+              <p className="text-2xl font-bold">{isLoadingTickets ? "—" : (registrations?.length ?? 0)}</p>
               <p className="text-sm text-muted-foreground">Billets actifs</p>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        {/* <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-full bg-blue-500/10">
               <Handshake className="w-6 h-6 text-blue-500" />
@@ -144,92 +195,118 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               <p className="text-sm text-muted-foreground">Leads collectés</p>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Upcoming Events */}
+        {/* Événements récents — données réelles */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Événements à venir</CardTitle>
+            <CardTitle className="text-lg">Événements récents</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => onNavigate("decouvrir")}>
               Voir tout <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {upcomingEvents.map((event) => (
-              <div
-                key={event.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-2 rounded-lg bg-primary/10">
-                    <CalendarDays className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{event.title}</p>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(event.date).toLocaleDateString("fr-FR")}
-                      <MapPin className="w-3 h-3 ml-2" />
-                      {event.location.split(",")[0]}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {event.registered ? (
-                    <Badge className="bg-secondary/10 text-secondary">
-                      <CheckCircle2 className="w-3 h-3 mr-1" />
-                      Inscrit
-                    </Badge>
-                  ) : (
-                    <Button size="sm">S'inscrire</Button>
-                  )}
-                </div>
+          <CardContent className="space-y-3">
+            {isLoading && (
+              <>
+                <EventCardSkeleton />
+                <EventCardSkeleton />
+                <EventCardSkeleton />
+              </>
+            )}
+            {isError && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground p-4">
+                <AlertCircle className="w-4 h-4 text-destructive" />
+                Impossible de charger les événements.
               </div>
+            )}
+            {!isLoading && !isError && recentEvents?.length === 0 && (
+              <p className="text-sm text-muted-foreground p-4 text-center">
+                Aucun événement récent.
+              </p>
+            )}
+            {recentEvents?.slice(0, 3).map((event) => (
+              <EventCard key={event.id} event={event} />
             ))}
           </CardContent>
         </Card>
 
-        {/* My Tickets */}
+        {/* Mes billets */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg">Mes billets</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("billets")}>
+            <CardTitle className="text-lg">
+              Mes billets
+              {registrations && registrations.length > 0 && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  ({registrations.length})
+                </span>
+              )}
+            </CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => onNavigate("inscriptions")}>
               Voir tout <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {myTickets.map((ticket) => (
-              <div
-                key={ticket.id}
-                className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-lg bg-background border">
-                    <QrCode className="w-8 h-8 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{ticket.eventTitle}</p>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline">{ticket.ticketType}</Badge>
-                      <span className="text-muted-foreground">
-                        {new Date(ticket.date).toLocaleDateString("fr-FR")}
-                      </span>
+          <CardContent className="space-y-3">
+            {isLoadingTickets && (
+              <>
+                <EventCardSkeleton />
+                <EventCardSkeleton />
+              </>
+            )}
+            {isErrorTickets && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground p-4">
+                <AlertCircle className="w-4 h-4 text-destructive" />
+                Impossible de charger les billets.
+              </div>
+            )}
+            {!isLoadingTickets && !isErrorTickets && registrations?.length === 0 && (
+              <p className="text-sm text-muted-foreground p-4 text-center">
+                Aucune inscription trouvée.
+              </p>
+            )}
+            {registrations?.slice(0, 3).map((reg) => {
+              const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
+              const { label, className } = statusLabel(reg.statut_paiement);
+              return (
+                <div
+                  key={reg.id}
+                  className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5 gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-3 rounded-lg bg-background border shrink-0">
+                      <QrCode className="w-6 h-6 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        {reg.prenom} {reg.nom}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-sm mt-0.5">
+                        <Badge variant="outline">{ticketNom}</Badge>
+                        <Badge className={className}>{label}</Badge>
+                        <span className="text-muted-foreground">
+                          {new Date(reg.date_commande).toLocaleDateString("fr-FR")}
+                        </span>
+                      </div>
+                      {Number(reg.total_price) > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
+                        </p>
+                      )}
                     </div>
                   </div>
+                  <Button variant="outline" size="sm" className="shrink-0">
+                    <QrCode className="w-4 h-4 mr-1" />
+                    Pass
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm">
-                  <QrCode className="w-4 h-4 mr-1" />
-                  Pass
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 
-        {/* B2B Meetings */}
-        <Card className="lg:col-span-2">
+        {/* RDV B2B */}
+        {/* <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg">RDV B2B cette semaine</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => onNavigate("b2b")}>
@@ -278,35 +355,8 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
-
-      {/* Quick Actions */}
-      {/* <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Actions rapides</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={() => onNavigate("decouvrir")} className="gap-2">
-              <Calendar className="w-4 h-4" />
-              Découvrir les événements
-            </Button>
-            <Button onClick={() => onNavigate("b2b")} variant="outline" className="gap-2">
-              <Handshake className="w-4 h-4" />
-              Demander un RDV B2B
-            </Button>
-            <Button onClick={() => onNavigate("exposant")} variant="outline" className="gap-2">
-              <Building2 className="w-4 h-4" />
-              Devenir exposant
-            </Button>
-            <Button onClick={() => onNavigate("billets")} variant="outline" className="gap-2">
-              <Download className="w-4 h-4" />
-              Télécharger mes factures
-            </Button>
-          </div>
-        </CardContent>
-      </Card> */}
     </div>
   );
 }

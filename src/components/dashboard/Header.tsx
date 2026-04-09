@@ -81,7 +81,7 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
       </div>
 
       {/* Center - Search */}
-      <div className="flex-1 max-w-xl mx-2 sm:mx-4 md:mx-8">
+      {/* <div className="flex-1 max-w-xl mx-2 sm:mx-4 md:mx-8">
         <div className="relative">
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -92,14 +92,14 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
             className="pl-10 bg-muted border-0 focus-visible:ring-primary"
           />
         </div>
-      </div>
+      </div> */}
 
       {/* Right section */}
       <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
-        <Button variant="default" size="sm" className="gap-2 gradient-primary border-0">
+        {/* <Button variant="default" size="sm" className="gap-2 gradient-primary border-0">
           <Plus size={16} />
           <span className="hidden sm:inline">Actions rapides</span>
-        </Button>
+        </Button> */}
 
         {/* Subscription Tier Selector */}
         <DropdownMenu>

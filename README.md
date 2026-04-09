@@ -70,4 +70,14 @@ export default defineConfig([
     },
   },
 ])
+
+ Option A — Backend pose le cookie (idéal)
+  Le backend ajoute dans sa réponse de login :
+  Set-Cookie: cpu-access-token=xxx; Domain=.cpupme.ci; HttpOnly; Secure; SameSite=Lax; Max-Age=86400                                                                                                    
+  Côté frontend, dans api.ts vous changez juste les requêtes pour inclure les cookies :                                                                                                                 
+  const res = await fetch(`${API_BASE}${path}`, {                                                                                                                                                       
+    ...options,                                                                                                                                                                                         
+    headers,      
+    credentials: "include", // ← envoie les cookies automatiquement
+  });
 ```
