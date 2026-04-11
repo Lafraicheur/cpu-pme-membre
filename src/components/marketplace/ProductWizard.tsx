@@ -44,7 +44,7 @@ import {
   Percent,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { filieresApi, boutiquesApi, productsApi, type Filiere } from "@/lib/api";
+import { filieresApi, boutiquesApi, productsApi, madeInCIBadgeLevelsApi, type Filiere, type Product as ApiProduct, type MadeInCIBadgeLevel } from "@/lib/api";
 import { regions } from "@/data/regions";
 
 type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges";
@@ -53,20 +53,87 @@ interface ProductWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onProductCreated?: () => void;
+  editProductId?: string;
+  editInitialData?: ApiProduct;
 }
 
-export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductWizardProps) {
+export function ProductWizard({ open, onOpenChange, onProductCreated, editProductId, editInitialData }: ProductWizardProps) {
+  const isEditMode = !!editProductId;
   const [step, setStep] = useState(1);
   const [productType, setProductType] = useState<"product" | "service" | null>(null);
   const [filieres, setFilieres] = useState<Filiere[]>([]);
+  const [badgeLevels, setBadgeLevels] = useState<MadeInCIBadgeLevel[]>([]);
   const [boutiqueId, setBoutiqueId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     filieresApi.getAll().then(setFilieres).catch(() => {});
+    madeInCIBadgeLevelsApi.getAll().then(setBadgeLevels).catch(() => {});
     boutiquesApi.getMyShop().then((b) => { if (b) setBoutiqueId(b.id); }).catch(() => {});
   }, []);
+
+  // Pré-remplissage en mode édition
+  useEffect(() => {
+    if (!open || !editInitialData) return;
+    const p = editInitialData;
+    const type = p.type === "Service" ? "service" : "product";
+    setProductType(type);
+    setStep(2); // Sauter l'étape de choix du type
+    setFormData(prev => ({
+      ...prev,
+      type,
+      nom: p.name || "",
+      categorie: p.category || "",
+      sousCategorie: p.subCategory || "",
+      description: p.description || "",
+      caracteristiques: p.characteristics || "",
+      prix: p.price ? String(parseFloat(String(p.price))) : "",
+      unite: p.unit || "kg",
+      moq: p.moq ? String(p.moq) : "1",
+      stock: p.stock != null ? String(p.stock) : "",
+      delaiDisponibilite: p.availabilityDelay || "",
+      zonesLivraison: p.deliveryZones
+        ? (p.deliveryZones as { name: string }[]).map(z => z.name)
+        : [],
+      fraisLivraison: p.shippingCost ? String(parseFloat(String(p.shippingCost))) : "",
+      optionRetrait: p.pickupAvailable || false,
+      produitReglemente: p.isRegulated || false,
+      madeInCI: p.madeInCiRequested || false,
+      badgeMadeInCI: p.madeInCiBadgeType || "",
+      ficheTechnique: {
+        enabled: !!(p.technicalSpecifications?.length || p.certifications?.length),
+        specifications: p.technicalSpecifications
+          ? p.technicalSpecifications.map(s => ({ label: s.name, value: s.value, unit: s.unit || "" }))
+          : [],
+        certifications: p.certifications || [],
+        documents: [],
+      },
+      variantsEnabled: p.variantsEnabled || false,
+      variantes: { enabled: p.variantsEnabled || false, attributs: [], options: [] },
+      quantityPricingEnabled: p.quantityPricingEnabled || false,
+      prixQuantite: {
+        enabled: p.quantityPricingEnabled || false,
+        paliers: p.quantityPricingTiers
+          ? p.quantityPricingTiers.map(t => ({
+              quantiteMin: String(t.minQuantity),
+              quantiteMax: "",
+              prix: String(t.unitPrice),
+              reduction: "",
+            }))
+          : [],
+      },
+      miseEnVedette: p.premiumOption
+        ? {
+            enabled: true,
+            type: p.premiumOption as "" | "vedette" | "special" | "premium",
+            duree: p.premiumDurationWeeks ? String(p.premiumDurationWeeks * 7) : "7",
+            acceptCommission: false,
+          }
+        : prev.miseEnVedette,
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editInitialData]);
 
   const handleSubmit = async () => {
     if (!boutiqueId) { setSubmitError("Boutique introuvable. Veuillez créer votre boutique d'abord."); return; }
@@ -83,7 +150,10 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
         characteristics: formData.caracteristiques || "",
         isRegulated: formData.produitReglemente,
         madeInCiRequested: formData.madeInCI,
-        ...(formData.madeInCI && formData.badgeMadeInCI ? { madeInCiBadgeType: formData.badgeMadeInCI } : {}),
+        ...(formData.madeInCI ? {
+          madeInCiTransformationProcess: formData.madeInCiTransformationProcess || "Non renseigné",
+          ...(formData.badgeMadeInCI ? { madeInCiBadgeType: formData.badgeMadeInCI } : {}),
+        } : {}),
         unit: formData.unite || "kg",
         status: "Draft",
         price: Number(formData.prix) || 0,
@@ -106,13 +176,15 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
           premiumDurationWeeks: Math.ceil(parseFloat(formData.miseEnVedette.duree) / 7) || 1,
         } : {}),
       };
-      console.log("[ProductWizard] Payload envoyé :", payload);
-      console.log("[ProductWizard] Payload JSON :", JSON.stringify(payload, null, 2));
-      await productsApi.create(payload);
+      if (isEditMode && editProductId) {
+        await productsApi.update(editProductId, payload);
+      } else {
+        await productsApi.create(payload);
+      }
       onProductCreated?.();
       onOpenChange(false);
     } catch (e: unknown) {
-      setSubmitError(e instanceof Error ? e.message : "Erreur lors de la création du produit.");
+      setSubmitError(e instanceof Error ? e.message : `Erreur lors de la ${isEditMode ? "modification" : "création"} du produit.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -138,6 +210,7 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
     documentsReglementaires: [] as string[],
     madeInCI: false,
     badgeMadeInCI: "",
+    madeInCiTransformationProcess: "",
     images: [] as string[],
     // Fiche technique
     ficheTechnique: {
@@ -539,27 +612,42 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
                     <div className="space-y-2">
                       <Label>Niveau de badge souhaité</Label>
                       <div className="grid grid-cols-2 gap-3">
-                        {[
-                          { value: "or", label: "Or", desc: ">70% VA locale", color: "bg-primary" },
-                          { value: "argent", label: "Argent", desc: ">50% VA locale", color: "bg-secondary" },
-                          { value: "bronze", label: "Bronze", desc: ">30% VA locale", color: "bg-amber-600" },
-                          { value: "innovation", label: "Innovation Ivoire", desc: "Innovation locale", color: "bg-cyan-500" },
-                        ].map(badge => (
+                        {badgeLevels.map(badge => {
+                          const colorMap: Record<string, string> = {
+                            or: "bg-primary",
+                            argent: "bg-secondary",
+                            bronze: "bg-amber-600",
+                            innovation_ivoire: "bg-cyan-500",
+                          };
+                          const color = colorMap[badge.id] ?? "bg-muted";
+                          return (
                           <div
-                            key={badge.value}
+                            key={badge.id}
                             className={cn(
                               "p-3 rounded-lg border cursor-pointer transition-all",
-                              formData.badgeMadeInCI === badge.value && "ring-2 ring-primary"
+                              formData.badgeMadeInCI === badge.id && "ring-2 ring-primary"
                             )}
-                            onClick={() => updateForm("badgeMadeInCI", badge.value)}
+                            onClick={() => updateForm("badgeMadeInCI", badge.id)}
                           >
-                            <Badge className={cn(badge.color, "text-white mb-1")}>
+                            <Badge className={cn(color, "text-white mb-1")}>
                               {badge.label}
                             </Badge>
-                            <p className="text-xs text-muted-foreground">{badge.desc}</p>
+                            <p className="text-xs text-muted-foreground">{badge.description}</p>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="transformProcess">Processus de transformation local *</Label>
+                      <Textarea
+                        id="transformProcess"
+                        placeholder="Décrivez comment ce produit est fabriqué ou transformé en Côte d'Ivoire (matières premières locales, étapes de production, valeur ajoutée locale...)"
+                        rows={4}
+                        value={formData.madeInCiTransformationProcess}
+                        onChange={(e) => updateForm("madeInCiTransformationProcess", e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Requis pour la demande du badge Made in CI</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Preuves (factures intrants, photos, etc.)</Label>
@@ -1277,7 +1365,7 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="w-5 h-5 text-primary" />
-            Nouveau produit / service
+            {isEditMode ? "Modifier le produit" : "Nouveau produit / service"}
           </DialogTitle>
           <DialogDescription>
             Étape {step} sur {totalSteps}
@@ -1323,7 +1411,9 @@ export function ProductWizard({ open, onOpenChange, onProductCreated }: ProductW
           ) : (
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               <CheckCircle2 className="w-4 h-4 mr-1" />
-              Soumettre pour modération
+              {isSubmitting
+                ? (isEditMode ? "Enregistrement..." : "Soumission...")
+                : (isEditMode ? "Enregistrer les modifications" : "Soumettre pour modération")}
             </Button>
           )}
         </div>

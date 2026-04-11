@@ -52,7 +52,6 @@ import { TIER_CONFIGS } from "@/lib/permissions";
 // Import des composants
 import { MarketplaceOverview } from "@/components/marketplace/MarketplaceOverview";
 import { VendeurOnboarding } from "@/components/marketplace/VendeurOnboarding";
-import { ProductWizard } from "@/components/marketplace/ProductWizard";
 import { MesProduits } from "@/components/marketplace/MesProduits";
 import { VendeurCommandes } from "@/components/marketplace/VendeurCommandes";
 import { RFQVendeur } from "@/components/marketplace/RFQVendeur";
@@ -181,7 +180,6 @@ export default function Marketplace() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [cart, setCart] = useState<number[]>([]);
-  const [showProductWizard, setShowProductWizard] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const navigate = useNavigate();
@@ -264,7 +262,7 @@ export default function Marketplace() {
         return <BoutiqueVendeur />;
       
       case "mes-produits":
-        return <MesProduits onOpenWizard={() => setShowProductWizard(true)} />;
+        return <MesProduits />;
       
       case "gestion-stock":
         return <GestionStock />;
@@ -465,7 +463,7 @@ export default function Marketplace() {
             <div className="flex items-center gap-2">
               {/* <NotificationsRetoursLitiges onNavigate={(section) => setActiveSection(section as MenuSection)} /> */}
               <NotificationsRFQ onNavigate={(section) => setActiveSection(section as MenuSection)} />
-              <Button variant="outline" size="sm" className="gap-2 relative" onClick={() => setActiveSection("panier")}>
+              {/* <Button variant="outline" size="sm" className="gap-2 relative" onClick={() => setActiveSection("panier")}>
                 <ShoppingCart className="w-4 h-4" />
                 <span className="hidden sm:inline">Panier</span>
                 {cart.length > 0 && (
@@ -473,18 +471,13 @@ export default function Marketplace() {
                     {cart.length}
                   </Badge>
                 )}
-              </Button>
+              </Button> */}
             </div>
           </div>
 
           {renderContent()}
         </div>
       </div>
-
-      <ProductWizard
-        open={showProductWizard}
-        onOpenChange={setShowProductWizard}
-      />
 
       {/* Modal upgrade vendeur */}
       <Dialog open={showUpgradeModal} onOpenChange={setShowUpgradeModal}>

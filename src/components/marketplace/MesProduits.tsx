@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -55,8 +57,12 @@ import {
   Filter,
   Download,
   Upload,
+  Link,
+  FileText,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { boutiquesApi, productsApi, madeInCIBadgeLevelsApi, madeInCIRequestsApi, type Product as ApiProduct, type MadeInCIBadgeLevel } from "@/lib/api";
 import { ProductWizard } from "./ProductWizard";
 
 type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges" | "Paused" | "OutOfStock" | "Archived";
@@ -101,144 +107,265 @@ const madeInCIBadges = {
   innovation: { color: "bg-cyan-500 text-white", label: "Innovation Ivoire" },
 };
 
-// Mock products data
-const mockProducts: Product[] = [
-  {
-    id: "1",
-    type: "product",
-    nom: "Cacao Premium Grade A",
-    categorie: "Agro-industrie",
-    sousCategorie: "Cacao transformé",
-    prix: 850000,
-    unite: "tonne",
-    stock: 50,
-    status: "Published",
-    madeInCI: "or",
-    produitReglemente: false,
+function mapApiProduct(p: ApiProduct): Product {
+  return {
+    id: p.id,
+    type: p.type === "Service" ? "service" : "product",
+    nom: p.name,
+    categorie: p.category,
+    sousCategorie: p.subCategory || "",
+    prix: parseFloat(String(p.price)) || 0,
+    unite: p.unit || "unité",
+    stock: p.type === "Service" ? null : (p.stock ?? null),
+    status: (p.status as ProductStatus) || "Draft",
+    madeInCI: (p.madeInCiRequested && p.madeInCiBadgeType)
+      ? (p.madeInCiBadgeType as "or" | "argent" | "bronze" | "innovation")
+      : null,
+    produitReglemente: p.isRegulated || false,
     statutReglementaire: null,
-    image: "🍫",
-    vues: 1245,
-    commandes: 32,
-    chiffreAffaires: 27200000,
-    createdAt: "2024-01-15",
-    updatedAt: "2024-03-10",
-  },
-  {
-    id: "2",
-    type: "product",
-    nom: "Attiéké séché - 25kg",
-    categorie: "Agro-industrie",
-    sousCategorie: "Produits vivriers",
-    prix: 15000,
-    unite: "sac",
-    stock: 5,
-    status: "OutOfStock",
-    madeInCI: "argent",
-    produitReglemente: true,
-    statutReglementaire: "approved",
-    image: "🌾",
-    vues: 890,
-    commandes: 156,
-    chiffreAffaires: 2340000,
-    createdAt: "2024-02-20",
-    updatedAt: "2024-03-12",
-  },
-  {
-    id: "3",
-    type: "service",
-    nom: "Transport frigorifique national",
-    categorie: "Logistique",
-    sousCategorie: "Transport froid",
-    prix: 75000,
-    unite: "trajet",
-    stock: null,
-    status: "Published",
-    madeInCI: null,
-    produitReglemente: false,
-    statutReglementaire: null,
-    image: "🚛",
-    vues: 567,
-    commandes: 24,
-    chiffreAffaires: 1800000,
-    createdAt: "2024-01-28",
-    updatedAt: "2024-03-05",
-  },
-  {
-    id: "4",
-    type: "product",
-    nom: "Huile de palme raffinée - 20L",
-    categorie: "Agro-industrie",
-    sousCategorie: "Huiles végétales",
-    prix: 25000,
-    unite: "bidon",
-    stock: 0,
-    status: "InModeration",
-    madeInCI: "bronze",
-    produitReglemente: true,
-    statutReglementaire: "pending",
-    image: "🫒",
+    image: "",
     vues: 0,
     commandes: 0,
     chiffreAffaires: 0,
-    createdAt: "2024-03-14",
-    updatedAt: "2024-03-14",
-  },
-  {
-    id: "5",
-    type: "product",
-    nom: "Café torréfié premium",
-    categorie: "Agro-industrie",
-    sousCategorie: "Café",
-    prix: 12500,
-    unite: "kg",
-    stock: 200,
-    status: "Rejected",
-    madeInCI: "or",
-    produitReglemente: false,
-    statutReglementaire: null,
-    image: "☕",
-    vues: 0,
-    commandes: 0,
-    chiffreAffaires: 0,
-    createdAt: "2024-03-12",
-    updatedAt: "2024-03-13",
-    motifRejet: "Photos non conformes - qualité insuffisante et présence de filigrane",
-  },
-  {
-    id: "6",
-    type: "service",
-    nom: "Conseil en certification bio",
-    categorie: "Conseils",
-    sousCategorie: "Certification",
-    prix: 150000,
-    unite: "mission",
-    stock: null,
-    status: "Draft",
-    madeInCI: null,
-    produitReglemente: false,
-    statutReglementaire: null,
-    image: "📋",
-    vues: 0,
-    commandes: 0,
-    chiffreAffaires: 0,
-    createdAt: "2024-03-15",
-    updatedAt: "2024-03-15",
-  },
-];
+    createdAt: p.created_at ? p.created_at.split("T")[0] : "",
+    updatedAt: p.updated_at ? p.updated_at.split("T")[0] : "",
+  };
+}
+
 
 interface MesProduitsProps {
-  onOpenWizard: () => void;
+  onOpenWizard?: () => void;
+}
+
+// Composant réutilisable : chaque entrée peut être une URL ou un fichier uploadé
+function UrlOrFileList({
+  label,
+  accept,
+  values,
+  onChange,
+}: {
+  label: string;
+  accept: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [modes, setModes] = useState<("url" | "file")[]>(values.map(() => "url"));
+
+  const setMode = (i: number, mode: "url" | "file") => {
+    const updated = [...modes];
+    updated[i] = mode;
+    setModes(updated);
+    // Réinitialiser la valeur quand on change de mode
+    const updatedVals = [...values];
+    updatedVals[i] = "";
+    onChange(updatedVals);
+  };
+
+  const handleFileChange = (i: number, file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const updatedVals = [...values];
+      updatedVals[i] = reader.result as string;
+      onChange(updatedVals);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addEntry = () => {
+    onChange([...values, ""]);
+    setModes([...modes, "url"]);
+  };
+
+  const removeEntry = (i: number) => {
+    onChange(values.filter((_, idx) => idx !== i));
+    setModes(modes.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="space-y-3">
+        {values.map((val, i) => (
+          <div key={i} className="space-y-1.5">
+            {/* Toggle URL / Fichier */}
+            <div className="flex gap-1 w-fit rounded-lg border p-0.5 bg-muted">
+              <button
+                type="button"
+                onClick={() => setMode(i, "url")}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1 rounded text-xs transition-all",
+                  modes[i] === "url" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
+                )}
+              >
+                <Link className="w-3 h-3" /> URL
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode(i, "file")}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-1 rounded text-xs transition-all",
+                  modes[i] === "file" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
+                )}
+              >
+                <Upload className="w-3 h-3" /> Fichier
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              {modes[i] === "url" ? (
+                <Input
+                  placeholder="https://..."
+                  value={val}
+                  onChange={e => {
+                    const updated = [...values];
+                    updated[i] = e.target.value;
+                    onChange(updated);
+                  }}
+                />
+              ) : (
+                <>
+                  <input
+                    ref={el => { fileRefs.current[i] = el; }}
+                    type="file"
+                    accept={accept}
+                    className="hidden"
+                    onChange={e => handleFileChange(i, e.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileRefs.current[i]?.click()}
+                    className="flex-1 flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-muted transition-colors text-left"
+                  >
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    {val
+                      ? <span className="truncate text-foreground">Fichier sélectionné ✓</span>
+                      : <span className="text-muted-foreground">Choisir un fichier…</span>}
+                  </button>
+                </>
+              )}
+
+              {values.length > 1 && (
+                <Button variant="ghost" size="icon" type="button" onClick={() => removeEntry(i)}>
+                  <X className="w-4 h-4 text-destructive" />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+        <Button variant="outline" size="sm" type="button" onClick={addEntry}>
+          <Plus className="w-4 h-4 mr-1" />
+          Ajouter
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function MesProduits({ onOpenWizard }: MesProduitsProps) {
-  const [products, setProducts] = useState<Product[]>(mockProducts);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [boutiqueId, setBoutiqueId] = useState<string>("");
+  const [showWizard, setShowWizard] = useState(false);
+  const [editProductId, setEditProductId] = useState<string | undefined>(undefined);
+  const [editApiProduct, setEditApiProduct] = useState<ApiProduct | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedApiProduct, setSelectedApiProduct] = useState<ApiProduct | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+
+  const fetchProducts = useCallback(async (bid: string) => {
+    if (!bid) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const page = await productsApi.getAll({ boutiqueId: bid, limit: 50 });
+      setProducts((page.data ?? []).map(mapApiProduct));
+    } catch {
+      setError("Impossible de charger les produits.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    madeInCIBadgeLevelsApi.getAll().then(setBadgeLevels).catch(() => {});
+    boutiquesApi.getMyShop()
+      .then((b) => {
+        if (b) {
+          setBoutiqueId(b.id);
+          fetchProducts(b.id);
+        } else {
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        setError("Impossible de charger la boutique.");
+        setIsLoading(false);
+      });
+  }, [fetchProducts]);
+
+  const openMadeInCIDialog = (product: Product) => {
+    setMadeInCIProduct(product);
+    setMadeInCIForm({ badgeType: "", transformationProcess: "", localValueAdded: "", inputInvoicesUrls: [""], productionPhotosUrls: [""] });
+    setBadgeSubmitError(null);
+    setBadgeSubmitSuccess(false);
+    setShowMadeInCIDialog(true);
+  };
+
+  const handleSubmitMadeInCI = async () => {
+    if (!madeInCIProduct || !madeInCIForm.badgeType || !madeInCIForm.transformationProcess) return;
+    setIsSubmittingBadge(true);
+    setBadgeSubmitError(null);
+    try {
+      await madeInCIRequestsApi.submit({
+        productId: madeInCIProduct.id,
+        badgeType: madeInCIForm.badgeType,
+        transformationProcess: madeInCIForm.transformationProcess,
+        localValueAdded: parseFloat(madeInCIForm.localValueAdded) || 0,
+        inputInvoicesUrls: madeInCIForm.inputInvoicesUrls.filter(u => u.trim() !== ""),
+        productionPhotosUrls: madeInCIForm.productionPhotosUrls.filter(u => u.trim() !== ""),
+      });
+      setBadgeSubmitSuccess(true);
+    } catch (e: unknown) {
+      setBadgeSubmitError(e instanceof Error ? e.message : "Erreur lors de la soumission.");
+    } finally {
+      setIsSubmittingBadge(false);
+    }
+  };
+
+  const openWizard = () => {
+    setEditProductId(undefined);
+    setEditApiProduct(undefined);
+    if (onOpenWizard) { onOpenWizard(); } else { setShowWizard(true); }
+  };
+
+  const openEditWizard = (product: Product) => {
+    setEditProductId(product.id);
+    setEditApiProduct(undefined);
+    setShowWizard(true);
+    productsApi.getById(product.id)
+      .then(setEditApiProduct)
+      .catch(() => {});
+  };
+
+  const openDetail = (product: Product) => {
+    setSelectedProduct(product);
+    setSelectedApiProduct(null);
+    setShowDetailDialog(true);
+    setIsLoadingDetail(true);
+    productsApi.getById(product.id)
+      .then(setSelectedApiProduct)
+      .catch(() => {})
+      .finally(() => setIsLoadingDetail(false));
+  };
 
   // Stats
   const stats = {
@@ -266,26 +393,111 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     ));
   };
 
-  const handleDuplicate = (product: Product) => {
-    const newProduct: Product = {
-      ...product,
-      id: `${Date.now()}`,
-      nom: `${product.nom} (copie)`,
-      status: "Draft",
-      vues: 0,
-      commandes: 0,
-      chiffreAffaires: 0,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0],
-    };
-    setProducts([newProduct, ...products]);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+
+  const handleDuplicate = async (product: Product) => {
+    setDuplicatingId(product.id);
+    try {
+      const full = await productsApi.getById(product.id);
+      const payload: Record<string, unknown> = {
+        boutiqueId: full.boutiqueId,
+        name: full.name,
+        type: full.type,
+        description: full.description || "",
+        category: full.category,
+        subCategory: full.subCategory || "",
+        characteristics: full.characteristics || "",
+        isRegulated: full.isRegulated,
+        madeInCiRequested: full.madeInCiRequested,
+        ...(full.madeInCiRequested ? {
+          madeInCiBadgeType: full.madeInCiBadgeType,
+          madeInCiTransformationProcess: (full as unknown as Record<string, unknown>).madeInCiTransformationProcess || "Non renseigné",
+        } : {}),
+        unit: full.unit || "kg",
+        status: "Draft",
+        price: parseFloat(String(full.price)) || 0,
+        stock: full.stock ?? 0,
+        moq: full.moq || 1,
+        weight: parseFloat(String(full.weight)) || 0,
+        availabilityDelay: full.availabilityDelay || "",
+        deliveryZones: full.deliveryZones ?? [],
+        shippingCost: parseFloat(String(full.shippingCost)) || 0,
+        pickupAvailable: full.pickupAvailable || false,
+        technicalSpecifications: full.technicalSpecifications ?? [],
+        certifications: full.certifications ?? [],
+        technicalDocuments: [],
+        variantsEnabled: full.variantsEnabled || false,
+        quantityPricingEnabled: full.quantityPricingEnabled || false,
+        quantityPricingTiers: full.quantityPricingTiers ?? [],
+        ...(full.premiumOption ? {
+          premiumOption: full.premiumOption,
+          premiumDurationWeeks: full.premiumDurationWeeks || 1,
+        } : {}),
+      };
+      await productsApi.create(payload);
+      await fetchProducts(boutiqueId);
+    } catch {
+      // silencieux
+    } finally {
+      setDuplicatingId(null);
+    }
   };
 
-  const handleDelete = (productId: string) => {
-    setProducts(products.filter(p => p.id !== productId));
-    setShowDeleteDialog(false);
-    setSelectedProduct(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Made in CI request dialog
+  const [showMadeInCIDialog, setShowMadeInCIDialog] = useState(false);
+  const [madeInCIProduct, setMadeInCIProduct] = useState<Product | null>(null);
+  const [badgeLevels, setBadgeLevels] = useState<MadeInCIBadgeLevel[]>([]);
+  const [madeInCIForm, setMadeInCIForm] = useState({
+    badgeType: "",
+    transformationProcess: "",
+    localValueAdded: "",
+    inputInvoicesUrls: [""] as string[],
+    productionPhotosUrls: [""] as string[],
+  });
+  const [isSubmittingBadge, setIsSubmittingBadge] = useState(false);
+  const [badgeSubmitError, setBadgeSubmitError] = useState<string | null>(null);
+  const [badgeSubmitSuccess, setBadgeSubmitSuccess] = useState(false);
+
+  const handleDelete = async (productId: string) => {
+    setIsDeleting(true);
+    try {
+      await productsApi.delete(productId);
+      setProducts(products.filter(p => p.id !== productId));
+      setShowDeleteDialog(false);
+      setSelectedProduct(null);
+    } catch {
+      // Garder le dialog ouvert en cas d'erreur
+    } finally {
+      setIsDeleting(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+        <span className="ml-3 text-muted-foreground">Chargement des produits...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-destructive opacity-70" />
+          <h3 className="font-semibold mb-2">Erreur de chargement</h3>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button variant="outline" onClick={() => fetchProducts(boutiqueId)}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Réessayer
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -418,7 +630,7 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
               <Button variant="outline" size="icon">
                 <Download className="w-4 h-4" />
               </Button>
-              <Button onClick={onOpenWizard}>
+              <Button onClick={openWizard}>
                 <Plus className="w-4 h-4 mr-1" />
                 Nouveau
               </Button>
@@ -438,7 +650,7 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                 ? "Modifiez vos filtres pour voir plus de résultats"
                 : "Publiez votre premier produit ou service"}
             </p>
-            <Button onClick={onOpenWizard}>
+            <Button onClick={openWizard}>
               <Plus className="w-4 h-4 mr-1" />
               Ajouter un produit
             </Button>
@@ -547,16 +759,13 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                         variant="outline" 
                         size="sm" 
                         className="flex-1"
-                        onClick={() => {
-                          setSelectedProduct(product);
-                          setShowDetailDialog(true);
-                        }}
+                        onClick={() => openDetail(product)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         Voir
                       </Button>
                       
-                      <Button variant="outline" size="sm" className="flex-1">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => openEditWizard(product)}>
                         <Pencil className="w-4 h-4 mr-1" />
                         Modifier
                       </Button>
@@ -568,9 +777,14 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleDuplicate(product)}>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Dupliquer
+                          <DropdownMenuItem
+                            disabled={duplicatingId === product.id}
+                            onClick={() => handleDuplicate(product)}
+                          >
+                            {duplicatingId === product.id
+                              ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              : <Copy className="w-4 h-4 mr-2" />}
+                            {duplicatingId === product.id ? "Duplication..." : "Dupliquer"}
                           </DropdownMenuItem>
                           
                           {product.status === "Published" && (
@@ -588,16 +802,16 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                           )}
                           
                           {product.status === "Draft" && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(product.id, "InModeration")}>
+                            <DropdownMenuItem onClick={() => openMadeInCIDialog(product)}>
                               <Upload className="w-4 h-4 mr-2" />
-                              Soumettre
+                              Soumettre badge Made in CI
                             </DropdownMenuItem>
                           )}
-                          
+
                           {["Rejected", "NeedsChanges"].includes(product.status) && (
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openMadeInCIDialog(product)}>
                               <RefreshCw className="w-4 h-4 mr-2" />
-                              Resoumettre
+                              Resoumettre badge Made in CI
                             </DropdownMenuItem>
                           )}
                           
@@ -631,72 +845,142 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
 
       {/* Detail Dialog */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {selectedProduct && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <span className="text-2xl">{selectedProduct.image}</span>
+                  {selectedProduct.type === "product"
+                    ? <Package className="w-5 h-5 text-primary" />
+                    : <Briefcase className="w-5 h-5 text-primary" />}
                   {selectedProduct.nom}
                 </DialogTitle>
                 <DialogDescription>
-                  {selectedProduct.categorie} • {selectedProduct.sousCategorie}
+                  {selectedProduct.categorie}
+                  {selectedProduct.sousCategorie ? ` • ${selectedProduct.sousCategorie}` : ""}
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-6">
-                {/* Status */}
-                <div className="flex items-center gap-3">
-                  <Badge className={cn(statusConfig[selectedProduct.status].bgColor, statusConfig[selectedProduct.status].color)}>
-                    {statusConfig[selectedProduct.status].label}
-                  </Badge>
-                  {selectedProduct.madeInCI && (
-                    <Badge className={madeInCIBadges[selectedProduct.madeInCI].color}>
-                      {madeInCIBadges[selectedProduct.madeInCI].label}
+              {isLoadingDetail ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
+                  <span className="text-sm text-muted-foreground">Chargement des détails...</span>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Status + badges */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={cn(statusConfig[selectedProduct.status].bgColor, statusConfig[selectedProduct.status].color)}>
+                      {statusConfig[selectedProduct.status].label}
                     </Badge>
+                    {selectedProduct.madeInCI && (
+                      <Badge className={madeInCIBadges[selectedProduct.madeInCI].color}>
+                        <Award className="w-3 h-3 mr-1" />
+                        {madeInCIBadges[selectedProduct.madeInCI].label}
+                      </Badge>
+                    )}
+                    {selectedProduct.produitReglemente && (
+                      <Badge variant="outline" className="border-amber-500 text-amber-600">
+                        <AlertTriangle className="w-3 h-3 mr-1" />
+                        Produit réglementé
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Prix + stock */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                      <p className="text-xs text-muted-foreground mb-1">Prix</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {selectedProduct.prix.toLocaleString()}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">FCFA/{selectedProduct.unite}</span>
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted">
+                      <p className="text-xs text-muted-foreground mb-1">Stock</p>
+                      <p className="text-2xl font-bold">{selectedProduct.stock ?? "—"}</p>
+                      {selectedApiProduct?.moq && (
+                        <p className="text-xs text-muted-foreground">MOQ : {selectedApiProduct.moq}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  {selectedApiProduct?.description && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Description</p>
+                      <p className="text-sm">{selectedApiProduct.description}</p>
+                    </div>
                   )}
-                </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <p className="text-2xl font-bold">{selectedProduct.vues.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Vues</p>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <p className="text-2xl font-bold">{selectedProduct.commandes}</p>
-                    <p className="text-xs text-muted-foreground">Commandes</p>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <p className="text-2xl font-bold">{(selectedProduct.chiffreAffaires / 1000000).toFixed(2)}M</p>
-                    <p className="text-xs text-muted-foreground">CA (FCFA)</p>
-                  </div>
-                  <div className="text-center p-3 rounded-lg bg-muted">
-                    <p className="text-2xl font-bold">{selectedProduct.stock ?? "∞"}</p>
-                    <p className="text-xs text-muted-foreground">Stock</p>
-                  </div>
-                </div>
+                  {/* Caractéristiques */}
+                  {selectedApiProduct?.characteristics && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Caractéristiques</p>
+                      <p className="text-sm">{selectedApiProduct.characteristics}</p>
+                    </div>
+                  )}
 
-                {/* Price */}
-                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                  <p className="text-3xl font-bold text-primary">
-                    {selectedProduct.prix.toLocaleString()} FCFA
-                    <span className="text-lg font-normal text-muted-foreground">/{selectedProduct.unite}</span>
-                  </p>
-                </div>
+                  {/* Spécifications techniques */}
+                  {selectedApiProduct?.technicalSpecifications && selectedApiProduct.technicalSpecifications.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Spécifications techniques</p>
+                      <div className="rounded-lg border divide-y text-sm">
+                        {selectedApiProduct.technicalSpecifications.map((spec, i) => (
+                          <div key={i} className="flex justify-between px-3 py-2">
+                            <span className="text-muted-foreground">{spec.name}</span>
+                            <span className="font-medium">{spec.value}{spec.unit ? ` ${spec.unit}` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-                {/* Dates */}
-                <div className="flex gap-4 text-sm text-muted-foreground">
-                  <p>Créé le: {selectedProduct.createdAt}</p>
-                  <p>Modifié le: {selectedProduct.updatedAt}</p>
+                  {/* Livraison */}
+                  {selectedApiProduct && (
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {selectedApiProduct.deliveryZones && selectedApiProduct.deliveryZones.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Zones de livraison</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(selectedApiProduct.deliveryZones as { name: string }[]).map((z, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">{z.name}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Livraison</p>
+                        <p>Frais : {parseFloat(String(selectedApiProduct.shippingCost)).toLocaleString()} FCFA</p>
+                        {selectedApiProduct.pickupAvailable && <p className="text-green-600">Retrait possible</p>}
+                        {selectedApiProduct.availabilityDelay && <p className="text-muted-foreground">{selectedApiProduct.availabilityDelay}</p>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Certifications */}
+                  {selectedApiProduct?.certifications && selectedApiProduct.certifications.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Certifications</p>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedApiProduct.certifications.map((c, i) => (
+                          <Badge key={i} variant="secondary">{c}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dates */}
+                  <div className="flex gap-6 text-xs text-muted-foreground border-t pt-3">
+                    <span>Créé le : {selectedProduct.createdAt}</span>
+                    <span>Mis à jour : {selectedProduct.updatedAt}</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
-                  Fermer
-                </Button>
-                <Button>
+                <Button variant="outline" onClick={() => setShowDetailDialog(false)}>Fermer</Button>
+                <Button onClick={() => { setShowDetailDialog(false); openEditWizard(selectedProduct!); }}>
                   <Pencil className="w-4 h-4 mr-1" />
                   Modifier
                 </Button>
@@ -719,18 +1003,144 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+            <Button variant="outline" disabled={isDeleting} onClick={() => setShowDeleteDialog(false)}>
               Annuler
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
+              disabled={isDeleting}
               onClick={() => selectedProduct && handleDelete(selectedProduct.id)}
             >
-              Supprimer
+              {isDeleting ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              {isDeleting ? "Suppression..." : "Supprimer"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog soumission badge Made in CI */}
+      <Dialog open={showMadeInCIDialog} onOpenChange={setShowMadeInCIDialog}>
+        <DialogContent className="max-w-lg flex flex-col max-h-[90vh]">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" />
+              Demande de badge Made in CI
+            </DialogTitle>
+            <DialogDescription>
+              Produit : <span className="font-medium">{madeInCIProduct?.nom}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {badgeSubmitSuccess ? (
+            <div className="py-6 text-center space-y-3">
+              <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+              <p className="font-semibold">Demande soumise avec succès !</p>
+              <p className="text-sm text-muted-foreground">Votre demande est en cours d'examen.</p>
+              <Button className="mt-2" onClick={() => setShowMadeInCIDialog(false)}>Fermer</Button>
+            </div>
+          ) : (
+            <div className="overflow-y-auto flex-1 pr-1 space-y-4">
+              {/* Niveau de badge */}
+              <div className="space-y-2">
+                <Label>Niveau de badge *</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {badgeLevels.map(b => {
+                    const colorMap: Record<string, string> = {
+                      or: "bg-primary", argent: "bg-secondary",
+                      bronze: "bg-amber-600", innovation_ivoire: "bg-cyan-500",
+                    };
+                    return (
+                      <div
+                        key={b.id}
+                        className={cn(
+                          "p-3 rounded-lg border cursor-pointer transition-all",
+                          madeInCIForm.badgeType === b.id && "ring-2 ring-primary bg-primary/5"
+                        )}
+                        onClick={() => setMadeInCIForm(f => ({ ...f, badgeType: b.id }))}
+                      >
+                        <Badge className={cn(colorMap[b.id] ?? "bg-muted", "text-white text-xs mb-1")}>
+                          {b.label}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground">{b.description}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Processus de transformation */}
+              <div className="space-y-2">
+                <Label htmlFor="transformProcess">Processus de transformation *</Label>
+                <Textarea
+                  id="transformProcess"
+                  rows={4}
+                  placeholder="Décrivez les étapes réalisées en Côte d'Ivoire (récolte, fermentation, séchage, torréfaction...)"
+                  value={madeInCIForm.transformationProcess}
+                  onChange={e => setMadeInCIForm(f => ({ ...f, transformationProcess: e.target.value }))}
+                />
+              </div>
+
+              {/* Valeur ajoutée locale */}
+              <div className="space-y-2">
+                <Label htmlFor="localValue">Valeur ajoutée locale (%) *</Label>
+                <Input
+                  id="localValue"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="Ex: 75"
+                  value={madeInCIForm.localValueAdded}
+                  onChange={e => setMadeInCIForm(f => ({ ...f, localValueAdded: e.target.value }))}
+                />
+              </div>
+
+              <UrlOrFileList
+                label="Factures d'intrants"
+                accept=".pdf,.jpg,.jpeg,.png"
+                values={madeInCIForm.inputInvoicesUrls}
+                onChange={v => setMadeInCIForm(f => ({ ...f, inputInvoicesUrls: v }))}
+              />
+
+              <UrlOrFileList
+                label="Photos de production"
+                accept=".jpg,.jpeg,.png,.webp"
+                values={madeInCIForm.productionPhotosUrls}
+                onChange={v => setMadeInCIForm(f => ({ ...f, productionPhotosUrls: v }))}
+              />
+
+              {badgeSubmitError && (
+                <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {badgeSubmitError}
+                </div>
+              )}
+
+              <DialogFooter className="shrink-0 border-t pt-4 mt-2">
+                <Button variant="outline" onClick={() => setShowMadeInCIDialog(false)}>
+                  Annuler
+                </Button>
+                <Button
+                  disabled={isSubmittingBadge || !madeInCIForm.badgeType || !madeInCIForm.transformationProcess}
+                  onClick={handleSubmitMadeInCI}
+                >
+                  {isSubmittingBadge
+                    ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Soumission...</>
+                    : <><Award className="w-4 h-4 mr-2" />Soumettre la demande</>}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Wizard intégré — création ET édition */}
+      <ProductWizard
+        open={showWizard}
+        onOpenChange={(v) => { setShowWizard(v); if (!v) { setEditProductId(undefined); setEditApiProduct(undefined); } }}
+        onProductCreated={() => fetchProducts(boutiqueId)}
+        editProductId={editProductId}
+        editInitialData={editApiProduct}
+      />
     </div>
   );
 }

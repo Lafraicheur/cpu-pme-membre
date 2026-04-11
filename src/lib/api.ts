@@ -236,6 +236,83 @@ export interface PublicCible {
   ouvertATous: boolean;
 }
 
+export interface MadeInCIBadgeLevel {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export interface MadeInCIProduct {
+  id: string;
+  name: string;
+  boutiqueId: string;
+}
+
+export interface MadeInCIRequest {
+  id: string;
+  boutiqueId: string;
+  productId: string;
+  badgeType: string;
+  status: string;
+  localValueAdded: string;
+  transformationProcess: string;
+  adminComment: string | null;
+  progress: number;
+  inputInvoicesUrls: string[] | null;
+  productionPhotosUrls: string[] | null;
+  submittedAt: string;
+  created_at: string;
+  updated_at: string;
+  product: {
+    id: string;
+    name: string;
+    category: string;
+    boutiqueId: string;
+  };
+}
+
+export const madeInCIBadgeLevelsApi = {
+  getAll: async (): Promise<MadeInCIBadgeLevel[]> => {
+    const res = await request<{ success: boolean; data: MadeInCIBadgeLevel[] }>(
+      "/api/marketplace/made-in-ci/badge-levels"
+    );
+    return res.data;
+  },
+};
+
+export const madeInCIProductsApi = {
+  getMyProducts: async (): Promise<MadeInCIProduct[]> => {
+    const res = await request<{ success: boolean; data: MadeInCIProduct[] }>(
+      "/api/marketplace/made-in-ci/products/me"
+    );
+    return res.data;
+  },
+};
+
+export const madeInCIRequestsApi = {
+  getMyRequests: async (): Promise<MadeInCIRequest[]> => {
+    const res = await request<{ success: boolean; data: MadeInCIRequest[] }>(
+      "/api/marketplace/made-in-ci/requests/me"
+    );
+    return res.data;
+  },
+
+  submit: async (body: {
+    productId: string;
+    badgeType: string;
+    transformationProcess: string;
+    localValueAdded: number;
+    inputInvoicesUrls?: string[];
+    productionPhotosUrls?: string[];
+  }): Promise<unknown> => {
+    const res = await request<{ success: boolean; data: unknown }>(
+      "/api/marketplace/made-in-ci/requests",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return res.data;
+  },
+};
+
 export const publicCiblesApi = {
   getAll: async (): Promise<PublicCible[]> => {
     const res = await request<{ success: boolean; data: PublicCible[] } | PublicCible[]>(
@@ -392,6 +469,157 @@ export interface Boutique {
   updated_at: string;
 }
 
+export interface BoutiqueCertificationStatus {
+  boutiqueId: string;
+  current: unknown;
+  certified: boolean;
+  badgeType: string | null;
+  scoreLocal: number | null;
+  validUntil: string | null;
+}
+
+export interface CertificationDocument {
+  type: string;
+  label: string;
+  description: string;
+  isRequired: boolean;
+  status: "pending" | "validated" | "rejected";
+  fileUrls: string[];
+  submittedAt: string | null;
+  adminComment: string | null;
+}
+
+export interface CertificationDocumentsData {
+  boutiqueId: string;
+  required: { completed: number; total: number };
+  documents: CertificationDocument[];
+}
+
+export interface CertificationProductBadge {
+  id: string;
+  name: string;
+  boutiqueId: string;
+  boutiqueBadgeType: string | null;
+  productBadgeType: string | null;
+  effectiveBadgeType: string | null;
+  inheritFromBoutique: boolean;
+}
+
+export const boutiqueCertificationApi = {
+  getCertification: async (boutiqueId: string): Promise<BoutiqueCertificationStatus> => {
+    const res = await request<{ success: boolean; data: BoutiqueCertificationStatus }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification`
+    );
+    return res.data;
+  },
+
+  submitRequest: async (
+    boutiqueId: string,
+    body: {
+      badgeType: string;
+      processDescription: string;
+      scoreLocal: number;
+      documentsUrls?: string[];
+    }
+  ): Promise<unknown> => {
+    const res = await request<{ success: boolean; data: unknown }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/request`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return res;
+  },
+
+  getDocuments: async (boutiqueId: string): Promise<CertificationDocumentsData> => {
+    const res = await request<{ success: boolean; data: CertificationDocumentsData }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/documents`
+    );
+    return res.data;
+  },
+
+  updateDocument: async (
+    boutiqueId: string,
+    body: { type: string; fileUrls: string[]; status?: string }
+  ): Promise<unknown> => {
+    const res = await request<{ success: boolean; data: unknown }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/documents`,
+      { method: "PUT", body: JSON.stringify(body) }
+    );
+    return res;
+  },
+
+  /**
+   * Upload un ou plusieurs fichiers en multipart puis soumet les URLs au PUT JSON.
+   * Endpoint d'upload : POST /api/media/upload (champ "file" par fichier).
+   */
+  uploadDocumentFiles: async (
+    boutiqueId: string,
+    type: string,
+    files: File[],
+    existingUrls: string[] = []
+  ): Promise<unknown> => {
+    const token = getToken();
+    const authHeaders: Record<string, string> = {};
+    if (token) authHeaders["Authorization"] = `Bearer ${token}`;
+
+    // 1. Upload chaque fichier et récupère son URL
+    const uploadedUrls: string[] = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const upRes = await fetch(`${API_BASE}/api/media/upload`, {
+        method: "POST",
+        headers: authHeaders,
+        body: fd,
+      });
+      if (!upRes.ok) {
+        let msg = `Erreur upload ${upRes.status}`;
+        try { const b = await upRes.json(); msg = b?.message || b?.error || msg; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      const upJson = await upRes.json();
+      const url: string = upJson?.url ?? upJson?.data?.url ?? upJson?.data?.fileUrl ?? upJson?.fileUrl;
+      if (!url) throw new Error("L'API n'a pas retourné d'URL pour le fichier uploadé.");
+      uploadedUrls.push(url);
+    }
+
+    // 2. PUT JSON avec toutes les URLs (existantes + nouvelles)
+    const res = await request<{ success: boolean; data: unknown }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/documents`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          type,
+          status: "pending",
+          fileUrls: [...existingUrls, ...uploadedUrls],
+        }),
+      }
+    );
+    return res;
+  },
+
+  getProductsBadges: async (boutiqueId: string): Promise<CertificationProductBadge[]> => {
+    const res = await request<{ success: boolean; data: CertificationProductBadge[] }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/products-badges`
+    );
+    return res.data;
+  },
+
+  updateBadgePropagation: async (
+    boutiqueId: string,
+    body: {
+      applyToAll?: boolean;
+      inheritFromBoutiqueForAll?: boolean;
+      overrides?: { productId: string; inheritFromBoutique: boolean }[];
+    }
+  ): Promise<unknown> => {
+    const res = await request<{ success: boolean; data: unknown }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/badge-propagation`,
+      { method: "PUT", body: JSON.stringify(body) }
+    );
+    return res;
+  },
+};
+
 export const boutiquesApi = {
   getMyShop: async (): Promise<Boutique | null> => {
     const res = await request<{ success: boolean; data: { boutique: Boutique } }>(
@@ -458,13 +686,56 @@ export interface Product {
   updated_at?: string;
 }
 
+export interface ProductsPage {
+  data: Product[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export const productsApi = {
+  getById: async (id: string): Promise<Product> => {
+    const res = await request<{ success: boolean; data: Product }>(`/api/products/${id}`);
+    return res.data;
+  },
+
+  getAll: async (params?: {
+    boutiqueId?: string;
+    status?: string;
+    type?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ProductsPage> => {
+    const query = new URLSearchParams();
+    if (params?.boutiqueId) query.set("boutiqueId", params.boutiqueId);
+    if (params?.status && params.status !== "all") query.set("status", params.status);
+    if (params?.type && params.type !== "all") query.set("type", params.type);
+    if (params?.page) query.set("page", String(params.page));
+    query.set("limit", String(params?.limit ?? 50));
+    const res = await request<{ success: boolean; data: ProductsPage }>(
+      `/api/products?${query.toString()}`
+    );
+    return res.data;
+  },
+
   create: async (body: Record<string, unknown>): Promise<Product> => {
     const res = await request<{ success: boolean; data: Product } | Product>(
       "/api/products",
       { method: "POST", body: JSON.stringify(body) }
     );
     return (res as { data: Product }).data ?? (res as Product);
+  },
+
+  update: async (id: string, body: Record<string, unknown>): Promise<Product> => {
+    const res = await request<{ success: boolean; data: Product } | Product>(
+      `/api/products/${id}`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    );
+    return (res as { data: Product }).data ?? (res as Product);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/products/${id}`, { method: "DELETE" });
   },
 };
 
