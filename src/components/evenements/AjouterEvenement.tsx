@@ -359,7 +359,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
       const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim());
       if (validFiliereConcerner.length > 0) fd.append("filiere_concerner", JSON.stringify(validFiliereConcerner.map((o) => o.texte)));
       const selectedPc = publicCibles.filter((p) => publicCibleIds.includes(p.id));
-      if (selectedPc.length > 0) fd.append("type_audience", JSON.stringify(selectedPc.map((p) => p.libelle)));
+      if (selectedPc.length > 0) fd.append("type_audience", selectedPc.map((p) => p.libelle).join(", "));
       if (dateDebut) {
         fd.append("date_debut", new Date(dateDebut).toISOString());
         fd.append("heure_debut", dateDebut.slice(11, 16)); // extrait "HH:MM"
@@ -403,21 +403,11 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
           if (iv.imageFile) fd.append("intervenant_images", iv.imageFile);
         });
       }
-      // Récupère l'ID depuis user, sinon depuis l'adhesion stockée, sinon depuis le JWT sub
-      const createdBy = user?.id || (() => {
-        try {
-          const adhesion = JSON.parse(localStorage.getItem("cpu-adhesion") || "{}");
-          if (adhesion?.id) return adhesion.id as string;
-          const token = localStorage.getItem("cpu-access-token");
-          if (token) {
-            const payload = JSON.parse(atob(token.split(".")[1]));
-            return (payload.sub as string) || null;
-          }
-        } catch { /* ignore */ }
-        return null;
-      })();
-      if (createdBy) fd.append("created_by", createdBy);
       if (imageFile) fd.append("image_flayer", imageFile);
+      if (user?.id) {
+        const rawId = user.id;
+        fd.append("created_by", `${rawId}`);
+      }
 
       // 1. Créer l'événement
       const ev = await createEvenementApi(fd);
