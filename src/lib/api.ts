@@ -739,6 +739,99 @@ export const productsApi = {
   },
 };
 
+export interface FormationLecon {
+  id: string;
+  titre: string;
+  type_contenu: "video" | "pdf" | "texte" | string;
+  contenu: string;
+  chapitre_id: string;
+}
+
+export interface FormationChapitre {
+  id: string;
+  titre: string;
+  formation_id: string;
+  lecons: FormationLecon[];
+}
+
+export interface FormationFormateur {
+  id: string;
+  firstname: string;
+  lastname: string;
+  email: string;
+  phone: string | null;
+  titre: string | null;
+  bio: string | null;
+  photo: string | null;
+  linkedin: string | null;
+  website: string | null;
+}
+
+export interface FormationParticipant {
+  id: string;
+  formation_id: string;
+  user_id: string;
+  status: string;
+  progression: string;
+  certificat_delivre: boolean;
+}
+
+export interface FormationAPI {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  price: string | null;
+  price_member: string | null;
+  duration: number;
+  isActive: boolean;
+  isPaid: boolean;
+  mode: "a_son_rythme" | "presentiel" | "webinaire" | "live" | string;
+  location: string | null;
+  lien: string | null;
+  fichier: string | null;
+  date: string | null;
+  image: string | null;
+  niveau: "beginner" | "intermediate" | "advanced" | null;
+  formateur: FormationFormateur;
+  centreFormation: { id: string; nom: string; adresse: string; ville: string } | null;
+  chapitres: FormationChapitre[];
+  participants: FormationParticipant[];
+  competences: string[];
+  certification_delivrer_badge: boolean;
+  certification_nom_badge: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const formationsApi = {
+  getAll: async (): Promise<FormationAPI[]> => {
+    const res = await request<{ success: boolean; data: FormationAPI[] } | FormationAPI[]>(
+      "/api/formation/formations"
+    );
+    const list = Array.isArray(res) ? res : (res as { data: FormationAPI[] }).data;
+    return list.map((f) => ({
+      ...f,
+      lien: f.lien ? decodeHtml(f.lien) : null,
+      fichier: f.fichier ? decodeHtml(f.fichier) : null,
+      image: f.image ? decodeHtml(f.image) : null,
+    }));
+  },
+
+  getById: async (id: string): Promise<FormationAPI> => {
+    const res = await request<{ success: boolean; data: FormationAPI } | FormationAPI>(
+      `/api/formation/formations/${id}`
+    );
+    const f = (res as { data: FormationAPI }).data ?? (res as FormationAPI);
+    return {
+      ...f,
+      lien: f.lien ? decodeHtml(f.lien) : null,
+      fichier: f.fichier ? decodeHtml(f.fichier) : null,
+      image: f.image ? decodeHtml(f.image) : null,
+    };
+  },
+};
+
 export const authApi = {
   sendOtp: (email: string) =>
     request<void>("/api/auth/adhesion/send-otp", {

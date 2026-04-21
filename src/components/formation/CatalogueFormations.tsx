@@ -1,19 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Checkbox } from "@/components/ui/checkbox";
-import { 
-  BookOpen, Search, Clock, Users, Award, Star, Play, Video, Calendar, 
-  User, Filter, MapPin, Target, FileText, ShoppingCart, Wallet, 
-  Lightbulb, BarChart3, ArrowRight, X, RefreshCw, Briefcase, GraduationCap
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  BookOpen, Search, Clock, Users, Award, Play, Video, Calendar,
+  Filter, MapPin, Target, X, RefreshCw, GraduationCap, AlertCircle,
+  ChevronLeft, ChevronRight, Layers,
 } from "lucide-react";
-import { sectors } from "@/data/sectors";
-import { regions, getVillesByRegion } from "@/data/regions";
 import { cn } from "@/lib/utils";
+import { formationsApi, type FormationAPI } from "@/lib/api";
+
+// ── Mapping API → UI ──────────────────────────────────────────────────────────
+
+function mapNiveau(niveau: FormationAPI["niveau"]): "debutant" | "intermediaire" | "avance" {
+  if (niveau === "intermediate") return "intermediaire";
+  if (niveau === "advanced") return "avance";
+  return "debutant";
+}
+
+function mapMode(mode: string): "video" | "live" | "presentiel" | "hybrid" {
+  if (mode === "a_son_rythme") return "video";
+  if (mode === "webinaire") return "live";
+  if (mode === "presentiel") return "presentiel";
+  return "live";
+}
+
+function mapType(mode: string): "classique" | "rac" | "alternance" | "parcours" | "certifiante" | "webinaire" {
+  if (mode === "webinaire") return "webinaire";
+  return "classique";
+}
+
+function formatDuration(hours: number): string {
+  if (!hours) return "";
+  return `${hours}h`;
+}
+
+function formatPrice(price: string | null): number {
+  if (!price) return 0;
+  return parseFloat(price) || 0;
+}
 
 interface Formation {
   id: string;
@@ -25,225 +53,196 @@ interface Formation {
   format: "video" | "live" | "presentiel" | "hybrid";
   type: "classique" | "rac" | "alternance" | "parcours" | "certifiante" | "webinaire";
   instructor: string;
+  instructorPhoto: string | null;
   price: number;
   isFree: boolean;
-  isMemberOnly: boolean;
   hasCertificate: boolean;
   enrolled: number;
-  rating: number;
   competences: string[];
-  moduleLink: string;
-  region?: string;
-  ville?: string;
-  outcomes: string[];
-  alternanceDetails?: { entreprise: string; centre: string; rythme: string };
-  racDetails?: { prerequis: string; duree: string };
+  location: string | null;
+  image: string | null;
+  date: string | null;
+  lien: string | null;
+  chapitresCount: number;
+  leconsCount: number;
 }
 
-const mockFormations: Formation[] = [
-  {
-    id: "1", title: "Préparation aux Appels d'Offres", description: "Maîtrisez le processus complet de réponse aux appels d'offres publics et privés.",
-    category: "Marchés Publics", level: "intermediaire", duration: "12h", format: "hybrid", type: "classique",
-    instructor: "Expert DGMP", price: 0, isFree: true, isMemberOnly: true, hasCertificate: true,
-    enrolled: 456, rating: 4.9, competences: ["Rédaction AO", "Conformité", "Soumission"], moduleLink: "AO",
-    outcomes: ["Préparer un dossier complet", "Éviter les erreurs éliminatoires"]
-  },
-  {
-    id: "2", title: "Comptabilité SYSCOHADA Révisé", description: "Formation complète sur les normes comptables OHADA en vigueur.",
-    category: "Finance", level: "intermediaire", duration: "20h", format: "hybrid", type: "certifiante",
-    instructor: "Expert OECCA-CI", price: 150000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 156, rating: 4.9, competences: ["Comptabilité", "Fiscalité", "Reporting"], moduleLink: "Financement",
-    outcomes: ["Tenir une comptabilité conforme", "Produire des états financiers"]
-  },
-  {
-    id: "3", title: "Vendre sur Marketplace", description: "Développez vos ventes en ligne avec une fiche produit optimisée.",
-    category: "E-commerce", level: "debutant", duration: "8h", format: "video", type: "classique",
-    instructor: "Marie Bamba", price: 0, isFree: true, isMemberOnly: true, hasCertificate: true,
-    enrolled: 789, rating: 4.8, competences: ["Vente en ligne", "Fiche produit", "SEO"], moduleLink: "Marketplace",
-    outcomes: ["Créer une boutique attractive", "Gérer les commandes"]
-  },
-  {
-    id: "4", title: "Business Plan & Bancabilité", description: "Structurez votre dossier de financement pour convaincre les banques.",
-    category: "Finance", level: "intermediaire", duration: "15h", format: "live", type: "classique",
-    instructor: "Consultant BDF", price: 100000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 234, rating: 4.7, competences: ["Business plan", "Prévisionnel", "Négociation"], moduleLink: "Financement",
-    outcomes: ["Présenter un dossier bancable", "Négocier avec les banques"]
-  },
-  {
-    id: "5", title: "Transformation Digitale PME", description: "Maîtrisez les outils et stratégies pour digitaliser votre entreprise.",
-    category: "Numérique", level: "debutant", duration: "8h", format: "video", type: "webinaire",
-    instructor: "Dr. Kouamé Jean", price: 0, isFree: true, isMemberOnly: true, hasCertificate: true,
-    enrolled: 234, rating: 4.8, competences: ["Outils digitaux", "Stratégie", "ROI"], moduleLink: "Incubateur",
-    outcomes: ["Identifier les outils adaptés", "Mesurer le ROI digital"]
-  },
-  {
-    id: "6", title: "Export & Commerce International", description: "Maîtrisez les procédures d'export et les incoterms.",
-    category: "Commerce", level: "avance", duration: "25h", format: "presentiel", type: "certifiante",
-    instructor: "Expert APEX-CI", price: 200000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 67, rating: 4.9, competences: ["Export", "Incoterms", "Logistique"], moduleLink: "Marketplace",
-    region: "Abidjan", ville: "Plateau", outcomes: ["Exporter en conformité", "Optimiser la logistique"]
-  },
-  {
-    id: "7", title: "Tableau de bord & KPI", description: "Construisez un tableau de bord efficace pour piloter votre activité.",
-    category: "Management", level: "intermediaire", duration: "10h", format: "video", type: "classique",
-    instructor: "Coach Data CI", price: 75000, isFree: false, isMemberOnly: false, hasCertificate: false,
-    enrolled: 123, rating: 4.6, competences: ["KPI", "Dashboard", "Analyse"], moduleLink: "DataHub",
-    outcomes: ["Définir les bons KPI", "Automatiser le reporting"]
-  },
-  {
-    id: "8", title: "Normes Qualité ISO 9001", description: "Préparez votre entreprise à la certification ISO 9001.",
-    category: "Qualité", level: "avance", duration: "30h", format: "hybrid", type: "certifiante",
-    instructor: "Ing. Koffi Yao", price: 250000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 45, rating: 4.8, competences: ["ISO 9001", "Qualité", "Audit"], moduleLink: "Incubateur",
-    region: "Bouaké", ville: "Bouaké", outcomes: ["Mettre en place un SMQ", "Réussir l'audit de certification"]
-  },
-  // RAC - Reconnaissance des Acquis
-  {
-    id: "9", title: "RAC — Gestion d'entreprise", description: "Faites reconnaître vos acquis professionnels en gestion d'entreprise. Évaluation de vos compétences existantes et certification officielle.",
-    category: "Management", level: "intermediaire", duration: "Évaluation 4h + complément si besoin", format: "hybrid", type: "rac",
-    instructor: "Jury FDFP-CI", price: 75000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 89, rating: 4.7, competences: ["Gestion", "Comptabilité", "RH", "Stratégie"], moduleLink: "Financement",
-    outcomes: ["Obtenir une certification sans reprendre la formation complète", "Valider vos années d'expérience"],
-    racDetails: { prerequis: "3 ans d'expérience minimum en gestion", duree: "Évaluation 4h, complément 10-20h si nécessaire" }
-  },
-  {
-    id: "10", title: "RAC — Commerce international", description: "Validation des acquis pour les professionnels du commerce international et de l'export.",
-    category: "Commerce", level: "avance", duration: "Évaluation 6h", format: "presentiel", type: "rac",
-    instructor: "Commission APEX-CI", price: 120000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 34, rating: 4.9, competences: ["Export", "Douanes", "Logistique", "Incoterms"], moduleLink: "Marketplace",
-    region: "Abidjan", ville: "Plateau",
-    outcomes: ["Certificat de compétences Commerce International", "Accès direct aux modules avancés"],
-    racDetails: { prerequis: "5 ans d'expérience en import/export", duree: "Évaluation 6h, jury de validation" }
-  },
-  // Alternance
-  {
-    id: "11", title: "Alternance — Assistant comptable PME", description: "Formation en alternance : 3 jours en entreprise, 2 jours en centre de formation. Maîtrisez la comptabilité PME en situation réelle.",
-    category: "Finance", level: "debutant", duration: "6 mois", format: "presentiel", type: "alternance",
-    instructor: "FDFP & Cabinet Koffi", price: 350000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 28, rating: 4.8, competences: ["Comptabilité", "Fiscalité", "Paie", "SYSCOHADA"], moduleLink: "Financement",
-    region: "Abidjan", ville: "Marcory",
-    outcomes: ["Diplôme Assistant Comptable", "Expérience professionnelle intégrée", "Insertion directe en entreprise"],
-    alternanceDetails: { entreprise: "3 jours/semaine", centre: "2 jours/semaine", rythme: "6 mois — Rentrée mars & septembre" }
-  },
-  {
-    id: "12", title: "Alternance — Technicien qualité agroalimentaire", description: "Formez-vous au contrôle qualité en alternant entre une unité de production et un centre de formation agréé.",
-    category: "Qualité", level: "intermediaire", duration: "9 mois", format: "presentiel", type: "alternance",
-    instructor: "LANADA & Partenaires", price: 500000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 15, rating: 4.9, competences: ["HACCP", "ISO 22000", "Contrôle qualité", "Traçabilité"], moduleLink: "Incubateur",
-    region: "Abidjan", ville: "Yopougon",
-    outcomes: ["Certificat Technicien Qualité", "Maîtrise des normes HACCP", "Stage intégré en usine"],
-    alternanceDetails: { entreprise: "2 semaines/mois", centre: "2 semaines/mois", rythme: "9 mois — Rentrée janvier" }
-  },
-  // Parcours structurés
-  {
-    id: "13", title: "Parcours — Entrepreneur digital", description: "Parcours complet de 5 modules pour lancer et développer une activité digitale : de l'idée au premier client.",
-    category: "Numérique", level: "debutant", duration: "40h sur 3 mois", format: "hybrid", type: "parcours",
-    instructor: "Pool d'experts CPU Academy", price: 180000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 312, rating: 4.8, competences: ["E-commerce", "Marketing digital", "Gestion", "Réseaux sociaux"], moduleLink: "Marketplace",
-    outcomes: ["Lancer sa boutique en ligne", "Acquérir ses premiers clients", "Badge Entrepreneur Digital"]
-  },
-  {
-    id: "14", title: "Parcours — Manager opérationnel PME", description: "Parcours en 6 modules couvrant la gestion RH, financière, commerciale et stratégique pour les managers de PME.",
-    category: "Management", level: "intermediaire", duration: "60h sur 4 mois", format: "hybrid", type: "parcours",
-    instructor: "CGECI & CPU Academy", price: 300000, isFree: false, isMemberOnly: false, hasCertificate: true,
-    enrolled: 145, rating: 4.7, competences: ["RH", "Finance", "Stratégie", "Leadership"], moduleLink: "Financement",
-    outcomes: ["Piloter une PME efficacement", "Construire un tableau de bord", "Badge Manager PME"]
-  },
-];
+function mapApiToFormation(f: FormationAPI): Formation {
+  return {
+    id: f.id,
+    title: f.title,
+    description: f.description,
+    category: f.category,
+    level: mapNiveau(f.niveau),
+    duration: formatDuration(f.duration),
+    format: mapMode(f.mode),
+    type: mapType(f.mode),
+    instructor: `${f.formateur.firstname} ${f.formateur.lastname}`,
+    instructorPhoto: f.formateur.photo,
+    price: formatPrice(f.price),
+    isFree: !f.isPaid,
+    hasCertificate: f.certification_delivrer_badge,
+    enrolled: f.participants?.length ?? 0,
+    competences: f.competences ?? [],
+    location: f.location,
+    image: f.image,
+    date: f.date,
+    lien: f.lien,
+    chapitresCount: f.chapitres?.length ?? 0,
+    leconsCount: f.chapitres?.reduce((acc, ch) => acc + (ch.lecons?.length ?? 0), 0) ?? 0,
+  };
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const ITEMS_PER_PAGE = 6;
 
 const levelConfig = {
-  debutant: { label: "Débutant", color: "bg-green-500/10 text-green-600" },
-  intermediaire: { label: "Intermédiaire", color: "bg-amber-500/10 text-amber-600" },
-  avance: { label: "Avancé", color: "bg-red-500/10 text-red-600" },
+  debutant:      { label: "Débutant",      color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  intermediaire: { label: "Intermédiaire", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  avance:        { label: "Avancé",        color: "bg-rose-50 text-rose-700 border-rose-200" },
 };
 
 const typeConfig: Record<Formation["type"], { label: string; color: string; icon: typeof GraduationCap }> = {
-  classique: { label: "Classique", color: "bg-muted text-muted-foreground", icon: BookOpen },
-  rac: { label: "RAC", color: "bg-info/10 text-info", icon: Award },
-  alternance: { label: "Alternance", color: "bg-secondary/10 text-secondary", icon: RefreshCw },
-  parcours: { label: "Parcours", color: "bg-primary/10 text-primary", icon: Target },
-  certifiante: { label: "Certifiante", color: "bg-warning/10 text-warning", icon: GraduationCap },
-  webinaire: { label: "Webinaire", color: "bg-destructive/10 text-destructive", icon: Video },
+  classique:   { label: "Classique",   color: "bg-slate-100 text-slate-600",          icon: BookOpen },
+  rac:         { label: "RAC",         color: "bg-blue-50 text-blue-700",             icon: Award },
+  alternance:  { label: "Alternance",  color: "bg-violet-50 text-violet-700",         icon: RefreshCw },
+  parcours:    { label: "Parcours",    color: "bg-primary/10 text-primary",           icon: Target },
+  certifiante: { label: "Certifiante", color: "bg-amber-50 text-amber-700",           icon: GraduationCap },
+  webinaire:   { label: "Webinaire",   color: "bg-pink-50 text-pink-700",            icon: Video },
 };
 
 const formatConfig = {
-  video: { label: "Vidéo", icon: Video },
-  live: { label: "Live", icon: Calendar },
-  presentiel: { label: "Présentiel", icon: MapPin },
-  hybrid: { label: "Hybride", icon: Users },
+  video:      { label: "À son rythme", icon: Video },
+  live:       { label: "En ligne",     icon: Calendar },
+  presentiel: { label: "Présentiel",   icon: MapPin },
+  hybrid:     { label: "Hybride",      icon: Users },
 };
 
-const moduleIcons: Record<string, any> = {
-  AO: FileText,
-  Financement: Wallet,
-  Marketplace: ShoppingCart,
-  Incubateur: Lightbulb,
-  DataHub: BarChart3,
-  Events: Calendar,
-};
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 
-const allCompetences = [...new Set(mockFormations.flatMap(f => f.competences))];
-const allModules = [...new Set(mockFormations.map(f => f.moduleLink))];
-const allCategories = [...new Set(mockFormations.map(f => f.category))];
+function CardSkeleton() {
+  return (
+    <Card className="overflow-hidden">
+      <Skeleton className="h-44 w-full rounded-none" />
+      <CardContent className="p-5 space-y-3">
+        <div className="flex gap-2">
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-20 rounded-full" />
+        </div>
+        <Skeleton className="h-5 w-4/5" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+        <div className="flex items-center justify-between pt-2">
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-8 w-20 rounded-lg" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface CatalogueProps {
   onViewDetail: (formationId: string) => void;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
+  const [formations, setFormations] = useState<Formation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedLevel, setSelectedLevel] = useState("all");
   const [selectedPrice, setSelectedPrice] = useState("all");
   const [selectedFormat, setSelectedFormat] = useState("all");
-  const [selectedModule, setSelectedModule] = useState("all");
-  const [selectedCompetences, setSelectedCompetences] = useState<string[]>([]);
-  const [selectedRegion, setSelectedRegion] = useState("all");
   const [selectedType, setSelectedType] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  const filteredFormations = mockFormations.filter((f) => {
-    const matchesSearch = f.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.description.toLowerCase().includes(searchQuery.toLowerCase());
+  const fetchFormations = () => {
+    setLoading(true);
+    setError(null);
+    formationsApi.getAll()
+      .then((data) => { setFormations(data.map(mapApiToFormation)); setLoading(false); })
+      .catch((err) => { setError(err.message || "Impossible de charger les formations"); setLoading(false); });
+  };
+
+  useEffect(() => { fetchFormations(); }, []);
+
+  // Reset page when filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedCategory, selectedLevel, selectedPrice, selectedFormat, selectedType]);
+
+  const allCategories = [...new Set(formations.map((f) => f.category))].sort();
+
+  const filteredFormations = formations.filter((f) => {
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = f.title.toLowerCase().includes(q) || f.description.toLowerCase().includes(q);
     const matchesCategory = selectedCategory === "all" || f.category === selectedCategory;
     const matchesLevel = selectedLevel === "all" || f.level === selectedLevel;
-    const matchesPrice = selectedPrice === "all" ||
+    const matchesPrice =
+      selectedPrice === "all" ||
       (selectedPrice === "free" && f.isFree) ||
       (selectedPrice === "paid" && !f.isFree) ||
       (selectedPrice === "certifiant" && f.hasCertificate);
     const matchesFormat = selectedFormat === "all" || f.format === selectedFormat;
-    const matchesModule = selectedModule === "all" || f.moduleLink === selectedModule;
-    const matchesCompetences = selectedCompetences.length === 0 || 
-      selectedCompetences.some(c => f.competences.includes(c));
-    const matchesRegion = selectedRegion === "all" || f.region === selectedRegion;
     const matchesType = selectedType === "all" || f.type === selectedType;
-    
-    return matchesSearch && matchesCategory && matchesLevel && matchesPrice && 
-           matchesFormat && matchesModule && matchesCompetences && matchesRegion && matchesType;
+    return matchesSearch && matchesCategory && matchesLevel && matchesPrice && matchesFormat && matchesType;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredFormations.length / ITEMS_PER_PAGE));
+  const paginatedFormations = filteredFormations.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   const clearFilters = () => {
     setSelectedCategory("all");
     setSelectedLevel("all");
     setSelectedPrice("all");
     setSelectedFormat("all");
-    setSelectedModule("all");
-    setSelectedCompetences([]);
-    setSelectedRegion("all");
     setSelectedType("all");
     setSearchQuery("");
   };
 
-  const hasActiveFilters = selectedCategory !== "all" || selectedLevel !== "all" || 
-    selectedPrice !== "all" || selectedFormat !== "all" || selectedModule !== "all" ||
-    selectedCompetences.length > 0 || selectedRegion !== "all" || selectedType !== "all" || searchQuery !== "";
+  const activeFiltersCount = [selectedCategory, selectedLevel, selectedPrice, selectedFormat, selectedType]
+    .filter((v) => v !== "all").length + (searchQuery ? 1 : 0);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card><CardContent className="p-4"><Skeleton className="h-10 w-full" /></CardContent></Card>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-16 text-center space-y-4">
+          <AlertCircle className="w-12 h-12 mx-auto text-destructive/50" />
+          <p className="text-muted-foreground">{error}</p>
+          <Button variant="outline" onClick={fetchFormations}>Réessayer</Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Search & Quick Filters */}
+      {/* ── Search & Filters ── */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
+        <CardContent className="p-4 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -253,55 +252,41 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button 
-              variant={showFilters ? "secondary" : "outline"} 
-              onClick={() => setShowFilters(!showFilters)}
-              className="gap-2"
-            >
-              <Filter className="w-4 h-4" />
-              Filtres avancés
-              {hasActiveFilters && <Badge className="ml-1">{
-                [selectedCategory, selectedLevel, selectedPrice, selectedFormat, selectedModule, selectedRegion]
-                  .filter(f => f !== "all").length + selectedCompetences.length
-              }</Badge>}
-            </Button>
-            {hasActiveFilters && (
-              <Button variant="ghost" onClick={clearFilters} className="gap-1">
-                <X className="w-4 h-4" />
-                Réinitialiser
+            <div className="flex gap-2">
+              <Button
+                variant={showFilters ? "secondary" : "outline"}
+                onClick={() => setShowFilters(!showFilters)}
+                className="gap-2 flex-shrink-0"
+              >
+                <Filter className="w-4 h-4" />
+                Filtres
+                {activeFiltersCount > 0 && (
+                  <Badge className="ml-1 px-1.5 min-w-5 h-5 text-xs">{activeFiltersCount}</Badge>
+                )}
               </Button>
-            )}
+              {activeFiltersCount > 0 && (
+                <Button variant="ghost" size="icon" onClick={clearFilters} title="Réinitialiser">
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
           </div>
 
-          {/* Quick Filters */}
-          <div className="flex flex-wrap gap-2 mt-4">
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue placeholder="Type" />
+          {/* Quick Filters Row */}
+          <div className="flex flex-wrap gap-2">
+            <Select value={selectedFormat} onValueChange={setSelectedFormat}>
+              <SelectTrigger className="w-[155px] h-9 text-sm">
+                <SelectValue placeholder="Format" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Tous types</SelectItem>
-                <SelectItem value="classique">Classique</SelectItem>
-                <SelectItem value="rac">RAC (Acquis)</SelectItem>
-                <SelectItem value="alternance">Alternance</SelectItem>
-                <SelectItem value="parcours">Parcours</SelectItem>
-                <SelectItem value="certifiante">Certifiante</SelectItem>
-                <SelectItem value="webinaire">Webinaire</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={selectedModule} onValueChange={setSelectedModule}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Module lié" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous modules</SelectItem>
-                {allModules.map((mod) => (
-                  <SelectItem key={mod} value={mod}>{mod}</SelectItem>
-                ))}
+                <SelectItem value="all">Tous formats</SelectItem>
+                <SelectItem value="video">À son rythme</SelectItem>
+                <SelectItem value="live">En ligne</SelectItem>
+                <SelectItem value="presentiel">Présentiel</SelectItem>
               </SelectContent>
             </Select>
             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[145px] h-9 text-sm">
                 <SelectValue placeholder="Niveau" />
               </SelectTrigger>
               <SelectContent>
@@ -311,20 +296,8 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                 <SelectItem value="avance">Avancé</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={selectedFormat} onValueChange={setSelectedFormat}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Format" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous formats</SelectItem>
-                <SelectItem value="video">Vidéo</SelectItem>
-                <SelectItem value="live">Live</SelectItem>
-                <SelectItem value="presentiel">Présentiel</SelectItem>
-                <SelectItem value="hybrid">Hybride</SelectItem>
-              </SelectContent>
-            </Select>
             <Select value={selectedPrice} onValueChange={setSelectedPrice}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[140px] h-9 text-sm">
                 <SelectValue placeholder="Prix" />
               </SelectTrigger>
               <SelectContent>
@@ -336,58 +309,39 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
             </Select>
           </div>
 
-          {/* Advanced Filters Panel */}
+          {/* Advanced Panel */}
           {showFilters && (
-            <div className="mt-4 pt-4 border-t">
-              <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Catégorie</label>
+            <div className="pt-3 border-t">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Filtres avancés</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Catégorie</label>
                   <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Catégorie" />
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Toutes catégories" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Toutes</SelectItem>
+                      <SelectItem value="all">Toutes catégories</SelectItem>
                       {allCategories.map((cat) => (
                         <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Région (présentiel)</label>
-                  <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Région" />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Type</label>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Tous types" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Toutes régions</SelectItem>
-                      {regions.slice(0, 10).map((r) => (
-                        <SelectItem key={r} value={r}>{r}</SelectItem>
-                      ))}
+                      <SelectItem value="all">Tous types</SelectItem>
+                      <SelectItem value="classique">Classique</SelectItem>
+                      <SelectItem value="webinaire">Webinaire</SelectItem>
+                      <SelectItem value="certifiante">Certifiante</SelectItem>
+                      <SelectItem value="parcours">Parcours</SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Compétences</label>
-                  <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
-                    {allCompetences.slice(0, 8).map((comp) => (
-                      <Badge 
-                        key={comp}
-                        variant={selectedCompetences.includes(comp) ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => {
-                          setSelectedCompetences(prev => 
-                            prev.includes(comp) 
-                              ? prev.filter(c => c !== comp)
-                              : [...prev, comp]
-                          );
-                        }}
-                      >
-                        {comp}
-                      </Badge>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
@@ -395,148 +349,221 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
         </CardContent>
       </Card>
 
-      {/* Results count */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {filteredFormations.length} formation{filteredFormations.length > 1 ? 's' : ''} trouvée{filteredFormations.length > 1 ? 's' : ''}
-        </p>
+      {/* ── Results info ── */}
+      <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
+        <span>
+          {filteredFormations.length} formation{filteredFormations.length > 1 ? "s" : ""}
+          {activeFiltersCount > 0 ? " filtrée" + (filteredFormations.length > 1 ? "s" : "") : ""}
+        </span>
+        {totalPages > 1 && (
+          <span>Page {currentPage} / {totalPages}</span>
+        )}
       </div>
 
-      {/* Formations Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredFormations.map((formation) => {
-          const level = levelConfig[formation.level];
-          const format = formatConfig[formation.format];
-          const FormatIcon = format.icon;
-          const ModuleIcon = moduleIcons[formation.moduleLink] || Target;
-          const fType = typeConfig[formation.type];
-          const TypeIcon = fType.icon;
-
-          return (
-            <Card key={formation.id} className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group" onClick={() => onViewDetail(formation.id)}>
-              <div className="h-32 bg-gradient-to-r from-primary/20 to-secondary/20 flex items-center justify-center relative">
-                <BookOpen className="w-12 h-12 text-primary/50" />
-                {/* Module badge */}
-                <Badge className="absolute top-3 right-3 gap-1" variant="secondary">
-                  <ModuleIcon className="w-3 h-3" />
-                  {formation.moduleLink}
-                </Badge>
-              </div>
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {formation.type !== "classique" && (
-                    <Badge className={cn(fType.color, "border-0 gap-1")}>
-                      <TypeIcon className="w-3 h-3" />
-                      {fType.label}
-                    </Badge>
-                  )}
-                  <Badge className={level.color}>{level.label}</Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <FormatIcon className="w-3 h-3" />
-                    {format.label}
-                  </Badge>
-                  {formation.hasCertificate && (
-                    <Badge variant="outline" className="gap-1">
-                      <Award className="w-3 h-3" />
-                      Certifiant
-                    </Badge>
-                  )}
-                </div>
-
-                <h3 className="font-semibold line-clamp-2 group-hover:text-primary transition-colors">{formation.title}</h3>
-
-                {/* RAC details */}
-                {formation.type === "rac" && formation.racDetails && (
-                  <div className="p-2.5 rounded-lg bg-info/5 border border-info/20 text-xs space-y-1">
-                    <p className="font-medium text-info flex items-center gap-1">
-                      <Award className="w-3 h-3" />
-                      Reconnaissance des Acquis
-                    </p>
-                    <p className="text-muted-foreground">Prérequis : {formation.racDetails.prerequis}</p>
-                    <p className="text-muted-foreground">Durée : {formation.racDetails.duree}</p>
-                  </div>
-                )}
-
-                {/* Alternance details */}
-                {formation.type === "alternance" && formation.alternanceDetails && (
-                  <div className="p-2.5 rounded-lg bg-secondary/5 border border-secondary/20 text-xs space-y-1">
-                    <p className="font-medium text-secondary flex items-center gap-1">
-                      <RefreshCw className="w-3 h-3" />
-                      Formation en alternance
-                    </p>
-                    <p className="text-muted-foreground">Entreprise : {formation.alternanceDetails.entreprise}</p>
-                    <p className="text-muted-foreground">Centre : {formation.alternanceDetails.centre}</p>
-                    <p className="text-muted-foreground">Rythme : {formation.alternanceDetails.rythme}</p>
-                  </div>
-                )}
-                
-                {/* Outcomes (hidden for rac/alternance to save space) */}
-                {formation.type !== "rac" && formation.type !== "alternance" && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">Ce que vous saurez faire :</p>
-                    {formation.outcomes.slice(0, 2).map((outcome, i) => (
-                      <p key={i} className="text-xs text-muted-foreground flex items-start gap-1">
-                        <Target className="w-3 h-3 mt-0.5 text-secondary flex-shrink-0" />
-                        {outcome}
-                      </p>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    {formation.duration}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    {formation.enrolled}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Star className="w-4 h-4 text-amber-500" />
-                    {formation.rating}
-                  </span>
-                </div>
-
-                {formation.region && (
-                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <MapPin className="w-4 h-4" />
-                    {formation.ville}, {formation.region}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div>
-                    {formation.isFree ? (
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-secondary/10 text-secondary">Gratuit</Badge>
-                        {formation.isMemberOnly && (
-                          <span className="text-xs text-muted-foreground">Membres</span>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="font-bold text-primary">{formation.price.toLocaleString()} FCFA</p>
-                    )}
-                  </div>
-                  <Button size="sm" className="gap-1">
-                    <Play className="w-3 h-3" />
-                    S'inscrire
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {filteredFormations.length === 0 && (
+      {/* ── Grid ── */}
+      {filteredFormations.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">
-            <BookOpen className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
-            <p className="text-muted-foreground mb-4">Aucune formation trouvée</p>
-            <Button variant="outline" onClick={clearFilters}>Réinitialiser les filtres</Button>
+          <CardContent className="py-16 text-center space-y-3">
+            <BookOpen className="w-12 h-12 mx-auto text-muted-foreground/30" />
+            <p className="font-medium">Aucune formation trouvée</p>
+            <p className="text-sm text-muted-foreground">Essayez de modifier vos filtres</p>
+            <Button variant="outline" size="sm" onClick={clearFilters}>Réinitialiser les filtres</Button>
           </CardContent>
         </Card>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {paginatedFormations.map((formation) => {
+            const level = levelConfig[formation.level];
+            const format = formatConfig[formation.format];
+            const FormatIcon = format.icon;
+            const fType = typeConfig[formation.type];
+            const TypeIcon = fType.icon;
+
+            return (
+              <Card
+                key={formation.id}
+                className="overflow-hidden flex flex-col hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group border border-border/60"
+                onClick={() => onViewDetail(formation.id)}
+              >
+                {/* ── Image banner ── */}
+                <div className="relative h-44 overflow-hidden flex-shrink-0">
+                  {formation.image ? (
+                    <img
+                      src={formation.image}
+                      alt={formation.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-primary/25 via-primary/10 to-secondary/20 flex items-center justify-center">
+                      <BookOpen className="w-14 h-14 text-primary/30" />
+                    </div>
+                  )}
+                  {/* Overlay top badges */}
+                  <div className="absolute top-2.5 left-2.5 flex gap-1.5 flex-wrap">
+                    {formation.type !== "classique" && (
+                      <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm border", fType.color)}>
+                        <TypeIcon className="w-3 h-3" />
+                        {fType.label}
+                      </span>
+                    )}
+                    {formation.hasCertificate && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm bg-amber-50/90 text-amber-700 border border-amber-200">
+                        <Award className="w-3 h-3" />
+                        Certifiant
+                      </span>
+                    )}
+                  </div>
+                  {/* Price top-right */}
+                  <div className="absolute top-2.5 right-2.5">
+                    {formation.isFree ? (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm">
+                        Gratuit
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-sm">
+                        {formation.price.toLocaleString()} FCFA
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Body ── */}
+                <CardContent className="p-4 flex flex-col flex-1 space-y-3">
+                  {/* Level + Format */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge variant="outline" className={cn("text-[11px] font-medium border", level.color)}>
+                      {level.label}
+                    </Badge>
+                    <Badge variant="outline" className="text-[11px] gap-1">
+                      <FormatIcon className="w-3 h-3" />
+                      {format.label}
+                    </Badge>
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                    {formation.title}
+                  </h3>
+
+                  {/* Description */}
+                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed flex-1">
+                    {formation.description}
+                  </p>
+
+                  {/* Category tag */}
+                  <p className="text-[11px] text-muted-foreground/70 font-medium truncate">{formation.category}</p>
+
+                  {/* Meta row */}
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {formation.duration && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        {formation.duration}
+                      </span>
+                    )}
+                    {formation.chapitresCount > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Layers className="w-3.5 h-3.5" />
+                        {formation.chapitresCount} ch.
+                      </span>
+                    )}
+                    {formation.leconsCount > 0 && (
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="w-3.5 h-3.5" />
+                        {formation.leconsCount} leçon{formation.leconsCount > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {formation.enrolled > 0 && (
+                      <span className="flex items-center gap-1 ml-auto">
+                        <Users className="w-3.5 h-3.5" />
+                        {formation.enrolled}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Location / Date */}
+                  {(formation.location || formation.date) && (
+                    <div className="flex flex-col gap-1">
+                      {formation.location && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{formation.location}</span>
+                        </span>
+                      )}
+                      {formation.date && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar className="w-3 h-3 flex-shrink-0" />
+                          {new Date(formation.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Instructor + CTA */}
+                  <div className="flex items-center gap-2 pt-3 border-t mt-auto">
+                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border">
+                      {formation.instructorPhoto ? (
+                        <img src={formation.instructorPhoto} alt={formation.instructor} className="w-full h-full object-cover" />
+                      ) : (
+                        <GraduationCap className="w-3.5 h-3.5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground truncate flex-1">{formation.instructor}</span>
+                    <Button
+                      size="sm"
+                      className="gap-1.5 text-xs h-8 px-3 flex-shrink-0"
+                      onClick={(e) => { e.stopPropagation(); onViewDetail(formation.id); }}
+                    >
+                      <Play className="w-3 h-3" />
+                      Voir
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Pagination ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="gap-1.5"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Précédent
+          </Button>
+
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+              <Button
+                key={page}
+                variant={page === currentPage ? "default" : "outline"}
+                size="sm"
+                className="w-9 h-9 p-0"
+                onClick={() => setCurrentPage(page)}
+              >
+                {page}
+              </Button>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="gap-1.5"
+          >
+            Suivant
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
       )}
     </div>
   );
