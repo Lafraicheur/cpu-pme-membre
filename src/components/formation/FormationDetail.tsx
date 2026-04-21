@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import {
   ArrowLeft, BookOpen, Clock, Users, Award, Play, Video, Calendar,
-  User, CheckCircle2, Share2, Heart, CreditCard, MapPin, Layers,
+  User, CheckCircle2, Share2, Heart, CreditCard, MapPin, Layers, Globe, ExternalLink,
+  FileText, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -39,7 +40,7 @@ function DetailSkeleton() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Skeleton className="w-10 h-10 rounded-lg" />
+        <Skeleton className="w-10 h-10 rounded-sm" />
         <div className="flex-1 space-y-2">
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-7 w-2/3" />
@@ -47,12 +48,12 @@ function DetailSkeleton() {
       </div>
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <Skeleton className="aspect-video rounded-xl" />
-          <Skeleton className="h-40 rounded-xl" />
+          <Skeleton className="aspect-video rounded-sm" />
+          <Skeleton className="h-40 rounded-sm" />
         </div>
         <div className="space-y-4">
-          <Skeleton className="h-40 rounded-xl" />
-          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-40 rounded-sm" />
+          <Skeleton className="h-48 rounded-sm" />
         </div>
       </div>
     </div>
@@ -141,11 +142,18 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Banner */}
-          {formation.image ? (
-            <img src={formation.image} alt={formation.title} className="w-full aspect-video object-cover rounded-xl" />
+          {/* Banner : vidéo > image > placeholder */}
+          {formation.fichier?.endsWith(".mp4") ? (
+            <video
+              src={formation.fichier}
+              controls
+              className="w-full aspect-video rounded-sm bg-black"
+              poster={formation.image ?? undefined}
+            />
+          ) : formation.image ? (
+            <img src={formation.image} alt={formation.title} className="w-full aspect-video object-cover rounded-sm" />
           ) : (
-            <div className="aspect-video rounded-xl bg-gradient-to-r from-primary/20 to-secondary/20 flex items-center justify-center">
+            <div className="aspect-video rounded-sm bg-gradient-to-r from-primary/20 to-secondary/20 flex items-center justify-center">
               <Play className="w-16 h-16 text-primary/50" />
             </div>
           )}
@@ -216,7 +224,7 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                   ) : (
                     <div className="space-y-3">
                       {formation.chapitres.map((chapitre, index) => (
-                        <div key={chapitre.id} className="rounded-lg border bg-card overflow-hidden">
+                        <div key={chapitre.id} className="rounded-sm border bg-card overflow-hidden">
                           <div className="flex items-center gap-3 p-4 bg-muted/30">
                             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary flex-shrink-0">
                               {index + 1}
@@ -230,13 +238,50 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                           </div>
                           {chapitre.lecons.length > 0 && (
                             <ul className="divide-y">
-                              {chapitre.lecons.map((lecon) => (
-                                <li key={lecon.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                                  <Play className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                  <span className="text-muted-foreground">{lecon.titre}</span>
-                                  <Badge variant="outline" className="ml-auto text-xs capitalize">{lecon.type_contenu}</Badge>
-                                </li>
-                              ))}
+                              {chapitre.lecons.map((lecon) => {
+                                const isPdf = lecon.type_contenu === "pdf";
+                                const isVideo = lecon.type_contenu === "video";
+                                const hasContent = lecon.contenu && !lecon.contenu.includes("contenu-en-attente");
+                                return (
+                                  <li key={lecon.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                                    {isPdf ? (
+                                      <FileText className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                                    ) : (
+                                      <Play className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                    )}
+                                    <span className="text-muted-foreground flex-1">{lecon.titre}</span>
+                                    <div className="flex items-center gap-2 ml-auto">
+                                      <Badge variant="outline" className="text-xs capitalize">
+                                        {isVideo ? "vidéo" : lecon.type_contenu}
+                                      </Badge>
+                                      {isPdf && hasContent && (
+                                        <a
+                                          href={lecon.contenu}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                        >
+                                          <Download className="w-3 h-3" />
+                                          PDF
+                                        </a>
+                                      )}
+                                      {isVideo && hasContent && (
+                                        <a
+                                          href={lecon.contenu}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                                        >
+                                          <ExternalLink className="w-3 h-3" />
+                                          Voir
+                                        </a>
+                                      )}
+                                    </div>
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                         </div>
@@ -267,6 +312,37 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                   </div>
                   {formation.formateur.bio && (
                     <p className="text-muted-foreground text-sm">{formation.formateur.bio}</p>
+                  )}
+                  {(formation.formateur.linkedin || formation.formateur.website) && (
+                    <div className="flex items-center gap-3 pt-2">
+                      {formation.formateur.linkedin && (
+                        <a
+                          href={formation.formateur.linkedin}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                          </svg>
+                          LinkedIn
+                        </a>
+                      )}
+                      {formation.formateur.website && (
+                        <a
+                          href={formation.formateur.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Globe className="w-4 h-4" />
+                          Site web
+                          <ExternalLink className="w-3 h-3 opacity-60" />
+                        </a>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -390,7 +466,7 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="p-4 rounded-lg bg-muted/50">
+                <div className="p-4 rounded-sm bg-muted/50">
                   <div className="flex justify-between">
                     <span>Total</span>
                     <span className="font-bold text-primary">{price.toLocaleString()} FCFA</span>
@@ -398,7 +474,7 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                 </div>
               </>
             ) : (
-              <div className="p-4 rounded-lg bg-secondary/10 text-center">
+              <div className="p-4 rounded-sm bg-secondary/10 text-center">
                 <Badge className="bg-secondary/20 text-secondary">Formation gratuite</Badge>
                 <p className="text-sm text-muted-foreground mt-2">Accessible aux membres CPU-PME</p>
               </div>

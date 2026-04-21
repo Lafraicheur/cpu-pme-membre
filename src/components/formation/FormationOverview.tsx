@@ -182,9 +182,9 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
       </div>
 
       {/* Streak + Recommandations IA */}
-      <div className="grid lg:grid-cols-3 gap-6">
+      {/* <div className="grid lg:grid-cols-3 gap-6"> */}
         {/* Streak d'apprentissage */}
-        <Card className="lg:col-span-1">
+        {/* <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Flame className="w-5 h-5 text-primary" />
@@ -229,7 +229,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* Recommandations IA */}
         {/* <Card className="lg:col-span-2 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/5">
@@ -273,7 +273,7 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
             </div>
           </CardContent>
         </Card> */}
-      </div>
+      {/* </div> */}
 
       {/* Formations en cours + Graphique progression */}
       {/* <div className="grid lg:grid-cols-5 gap-6"> */}
@@ -329,62 +329,10 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
             ))}
           </CardContent>
         </Card> */}
-
-        {/* Graphique progression */}
-        {/* <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-primary" />
-              Ma progression
-            </CardTitle>
-            <CardDescription>Heures de formation par mois</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={progressionData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="mois" className="text-xs" tick={{ fontSize: 11 }} />
-                  <YAxis className="text-xs" tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "0.75rem",
-                      fontSize: 12,
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="heures"
-                    stroke="hsl(var(--primary))"
-                    fill="hsl(var(--primary) / 0.15)"
-                    strokeWidth={2}
-                    name="Heures"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-4 pt-4 border-t">
-              <p className="text-xs font-semibold text-muted-foreground mb-3">RÉPARTITION PAR DOMAINE</p>
-              <div className="space-y-2">
-                {repartitionData.map((item) => (
-                  <div key={item.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
-                    <span className="text-xs flex-1">{item.name}</span>
-                    <span className="text-xs font-semibold">{item.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card> */}
       {/* </div> */}
 
       {/* Certificats + Budget */}
-      {/* <div className="grid lg:grid-cols-2 gap-6"> */}
-        {/* Certificats récents */}
+      {/* <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -421,114 +369,10 @@ export function FormationOverview({ onNavigate }: OverviewProps) {
             ))}
           </CardContent>
         </Card>
-
-        {/* Budget formation */}
-        {/* <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-secondary" />
-              Budget formation
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6 mb-6">
-              <div className="w-32 h-32">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { value: 42.5, fill: "hsl(var(--primary))" },
-                        { value: 57.5, fill: "hsl(var(--muted))" },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={55}
-                      dataKey="value"
-                      strokeWidth={0}
-                    >
-                      <Cell fill="hsl(var(--primary))" />
-                      <Cell fill="hsl(var(--muted))" />
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-2">
-                <div>
-                  <p className="text-xs text-muted-foreground">Budget annuel</p>
-                  <p className="text-xl font-bold">2 000 000 FCFA</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Consommé</p>
-                  <p className="text-lg font-semibold text-primary">850 000 FCFA</p>
-                </div>
-              </div>
-            </div>
-            <Progress value={42.5} className="h-2.5 mb-2" />
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>42.5% utilisé</span>
-              <span className="font-medium text-secondary">1 150 000 FCFA restant</span>
-            </div>
-
-            <div className="mt-4 pt-4 border-t grid grid-cols-3 gap-3">
-              <div className="text-center p-2 rounded-lg bg-muted/50">
-                <p className="text-sm font-bold">3</p>
-                <p className="text-xs text-muted-foreground">Formations achetées</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-muted/50">
-                <p className="text-sm font-bold">12</p>
-                <p className="text-xs text-muted-foreground">Places utilisées</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-muted/50">
-                <p className="text-sm font-bold">2</p>
-                <p className="text-xs text-muted-foreground">En attente</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card> */}
-      {/* </div> */}
+      </div> */}
 
       {/* Calendrier interactif */}
       <CalendrierFormations />
-
-      {/* Passerelles modules */}
-      {/* <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Rocket className="w-5 h-5 text-primary" />
-            Aller à l'action — Passerelles modules
-          </CardTitle>
-          <CardDescription>De la formation à l'application concrète dans vos opérations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {passerelles.map((p) => {
-              const Icon = p.icon;
-              return (
-                <div
-                  key={p.id}
-                  className={cn(
-                    "p-4 rounded-xl border hover:shadow-md transition-all cursor-pointer group",
-                    p.bgColor
-                  )}
-                >
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 rounded-xl bg-card shadow-sm">
-                      <Icon className={cn("w-5 h-5", p.color)} />
-                    </div>
-                    <h4 className="font-semibold text-sm">{p.title}</h4>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-3">{p.description}</p>
-                  <Button size="sm" variant="outline" className="w-full gap-1 h-8 text-xs group-hover:bg-card">
-                    {p.action}
-                    <ArrowRight className="w-3 h-3" />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card> */}
 
       {/* Actions rapides */}
       {/* <Card>

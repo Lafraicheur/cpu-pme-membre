@@ -44,6 +44,38 @@ async function request<T>(
   return res.json();
 }
 
+async function requestMultipart<T>(
+  path: string,
+  body: FormData,
+  method = "POST"
+): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { method, headers, body });
+
+  if (!res.ok) {
+    let message = `Erreur ${res.status}`;
+    try {
+      const errBody = await res.json();
+      console.error(`[API] ${method} ${path} →`, errBody);
+      if (typeof errBody?.message === "string") message = errBody.message;
+      else if (typeof errBody?.detail === "string") message = errBody.detail;
+      else if (typeof errBody?.error === "string") message = errBody.error;
+      else if (Array.isArray(errBody?.errors)) message = errBody.errors.map((e: { message?: string; msg?: string }) => e.message || e.msg).join(", ");
+      else if (errBody) message = JSON.stringify(errBody);
+    } catch {
+      // ignore
+    }
+    const error = new Error(message) as Error & { status: number };
+    error.status = res.status;
+    throw error;
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
 export interface Evenement {
   id: string;
   titre: string;
@@ -767,6 +799,66 @@ export interface FormationFormateur {
   website: string | null;
 }
 
+export interface FormateurAvecFormations extends FormationFormateur {
+  formations: Array<{
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+    price: string | null;
+    price_member: string | null;
+    duration: number;
+    isActive: boolean;
+    isPaid: boolean;
+    mode: string;
+    location: string | null;
+    lien: string | null;
+    fichier: string | null;
+    date: string | null;
+    image: string | null;
+    niveau: "beginner" | "intermediate" | "advanced" | null;
+    participants: Array<{ id: string }>;
+  }>;
+}
+
+export const formateursApi = {
+  getAll: async (): Promise<FormateurAvecFormations[]> => {
+    const res = await request<FormateurAvecFormations[] | { success: boolean; data: FormateurAvecFormations[] }>(
+      "/api/formation/formateurs"
+    );
+    const list = Array.isArray(res) ? res : (res as { data: FormateurAvecFormations[] }).data;
+
+    // Dédupliquer par email et fusionner les formations
+    const byEmail = new Map<string, FormateurAvecFormations>();
+    for (const f of list) {
+      const decoded: FormateurAvecFormations = {
+        ...f,
+        photo: f.photo ? decodeHtml(f.photo) : null,
+        linkedin: f.linkedin ? decodeHtml(f.linkedin) : null,
+        website: f.website ? decodeHtml(f.website) : null,
+      };
+      const existing = byEmail.get(f.email);
+      if (existing) {
+        // Fusionner les formations (éviter les doublons par id)
+        const existingIds = new Set(existing.formations.map((fo) => fo.id));
+        const newFormations = decoded.formations.filter((fo) => !existingIds.has(fo.id));
+        existing.formations = [...existing.formations, ...newFormations];
+        // Enrichir les champs vides si la nouvelle entrée a de meilleures données
+        if (!existing.photo && decoded.photo) existing.photo = decoded.photo;
+        if (!existing.titre && decoded.titre) existing.titre = decoded.titre;
+        if (!existing.bio && decoded.bio) existing.bio = decoded.bio;
+        if (!existing.phone && decoded.phone) existing.phone = decoded.phone;
+        if (!existing.linkedin && decoded.linkedin) existing.linkedin = decoded.linkedin;
+        if (!existing.website && decoded.website) existing.website = decoded.website;
+      } else {
+        byEmail.set(f.email, decoded);
+      }
+    }
+
+    return Array.from(byEmail.values());
+  },
+};
+
 export interface FormationParticipant {
   id: string;
   formation_id: string;
@@ -815,6 +907,12 @@ export const formationsApi = {
       lien: f.lien ? decodeHtml(f.lien) : null,
       fichier: f.fichier ? decodeHtml(f.fichier) : null,
       image: f.image ? decodeHtml(f.image) : null,
+      formateur: {
+        ...f.formateur,
+        linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
+        website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
+        photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
+      },
     }));
   },
 
@@ -828,7 +926,133 @@ export const formationsApi = {
       lien: f.lien ? decodeHtml(f.lien) : null,
       fichier: f.fichier ? decodeHtml(f.fichier) : null,
       image: f.image ? decodeHtml(f.image) : null,
+      formateur: {
+        ...f.formateur,
+        linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
+        website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
+        photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
+      },
     };
+  },
+
+  create: async (payload: {
+    title: string;
+    description?: string;
+    category?: string;
+    mode?: string;
+    niveau?: string;
+    duration?: number;
+    isPaid?: boolean;
+    isActive?: boolean;
+    price?: number;
+    price_member?: number;
+    moduleId?: string;
+    formateur_id?: string;
+    centreFormationId?: string;
+    lien?: string;
+    date?: string;
+    certification_delivrer_badge?: boolean;
+    certification_quiz_reussi?: boolean;
+    certification_progression_100?: boolean;
+    certification_devoir_valide?: boolean;
+    certification_presence_live?: boolean;
+    certification_nom_badge?: string;
+    chapitres?: unknown[];
+    image?: File | null;
+    fichier?: File | null;
+  }): Promise<FormationAPI> => {
+    const fd = new FormData();
+    fd.append("title", payload.title);
+    if (payload.description) fd.append("description", payload.description);
+    if (payload.category) fd.append("category", payload.category);
+    if (payload.mode) fd.append("mode", payload.mode);
+    if (payload.niveau) fd.append("niveau", payload.niveau);
+    if (payload.duration != null) fd.append("duration", String(payload.duration));
+    if (payload.isPaid != null) fd.append("isPaid", String(payload.isPaid));
+    if (payload.isActive != null) fd.append("isActive", String(payload.isActive));
+    if (payload.price != null) fd.append("price", String(payload.price));
+    if (payload.price_member != null) fd.append("price_member", String(payload.price_member));
+    if (payload.moduleId) fd.append("moduleId", payload.moduleId);
+    if (payload.formateur_id) fd.append("formateur_id", payload.formateur_id);
+    if (payload.centreFormationId) fd.append("centreFormationId", payload.centreFormationId);
+    if (payload.lien) fd.append("lien", payload.lien);
+    if (payload.date) fd.append("date", payload.date);
+    if (payload.certification_delivrer_badge != null) fd.append("certification_delivrer_badge", String(payload.certification_delivrer_badge));
+    if (payload.certification_quiz_reussi != null) fd.append("certification_quiz_reussi", String(payload.certification_quiz_reussi));
+    if (payload.certification_progression_100 != null) fd.append("certification_progression_100", String(payload.certification_progression_100));
+    if (payload.certification_devoir_valide != null) fd.append("certification_devoir_valide", String(payload.certification_devoir_valide));
+    if (payload.certification_presence_live != null) fd.append("certification_presence_live", String(payload.certification_presence_live));
+    if (payload.certification_nom_badge) fd.append("certification_nom_badge", payload.certification_nom_badge);
+    if (payload.chapitres?.length) fd.append("chapitres", JSON.stringify(payload.chapitres));
+    if (payload.image) fd.append("image", payload.image);
+    if (payload.fichier) fd.append("fichier", payload.fichier);
+    return requestMultipart<FormationAPI>("/api/formation/formations", fd);
+  },
+};
+
+export interface CentreFormation {
+  id: string;
+  nom: string;
+  adresse: string;
+  ville: string;
+  description: string | null;
+  telephone: string;
+  email: string;
+}
+
+export const centreFormationsApi = {
+  getAll: async (): Promise<CentreFormation[]> => {
+    const res = await request<{ success: boolean; data: CentreFormation[] }>(
+      "/api/centre-formations"
+    );
+    return res.data;
+  },
+};
+
+export interface FormationModule {
+  id: string;
+  nom: string;
+  description: string | null;
+}
+
+export const formationModulesApi = {
+  getAll: async (): Promise<FormationModule[]> => {
+    const res = await request<{ success: boolean; data: FormationModule[] }>(
+      "/api/formation/modules"
+    );
+    return res.data;
+  },
+};
+
+export interface MonInscription {
+  participantId: string;
+  formation: FormationAPI;
+  status: "pending" | "confirmed" | "started" | "completed" | string;
+  progression: number | null;
+  registeredAt: string;
+  confirmedAt: string | null;
+}
+
+export const mesCoursApi = {
+  getMesFormations: async (): Promise<MonInscription[]> => {
+    const res = await request<{ success: boolean; data: MonInscription[] }>(
+      "/api/formation/participant/me/formations"
+    );
+    return res.data.map((item) => ({
+      ...item,
+      formation: {
+        ...item.formation,
+        lien: item.formation.lien ? decodeHtml(item.formation.lien) : null,
+        fichier: item.formation.fichier ? decodeHtml(item.formation.fichier) : null,
+        image: item.formation.image ? decodeHtml(item.formation.image) : null,
+        formateur: {
+          ...item.formation.formateur,
+          linkedin: item.formation.formateur.linkedin ? decodeHtml(item.formation.formateur.linkedin) : null,
+          website: item.formation.formateur.website ? decodeHtml(item.formation.formateur.website) : null,
+          photo: item.formation.formateur.photo ? decodeHtml(item.formation.formateur.photo) : null,
+        },
+      },
+    }));
   },
 };
 

@@ -1,20 +1,24 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { 
-  BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Copy, 
-  Send, Calendar, CheckCircle, Clock, Eye, FileText, Video, Upload,
-  Award, Lock, Crown, BarChart3, MessageSquare, Settings
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Copy,
+  Send, Calendar, CheckCircle, Clock, Eye, Upload,
+  Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { formationsApi, centreFormationsApi, formationModulesApi, type CentreFormation, type FormationModule } from "@/lib/api";
 
 type SubscriptionTier = "bronze" | "silver" | "gold" | "platine";
 
@@ -44,10 +48,52 @@ const subscriptionLimits: Record<SubscriptionTier, { courses: number; canMonetiz
 };
 
 export function EspaceFormateur() {
-  const { user } = useAuth();
+  useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [courses] = useState<Course[]>(mockCourses);
   const [creationStep, setCreationStep] = useState(1);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [centres, setCentres] = useState<CentreFormation[]>([]);
+  const [modules, setModules] = useState<FormationModule[]>([]);
+
+  useEffect(() => {
+    centreFormationsApi.getAll().then(setCentres).catch(() => {});
+    formationModulesApi.getAll().then(setModules).catch(() => {});
+  }, []);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fichierInputRef = useRef<HTMLInputElement>(null);
+
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    category: "",
+    mode: "",
+    niveau: "",
+    duration: "",
+    moduleId: "",
+    formateur_id: "",
+    centreFormationId: "",
+    lien: "",
+    date: "",
+    isPaid: false,
+    isActive: true,
+    price: "",
+    price_member: "",
+    certification_delivrer_badge: false,
+    certification_quiz_reussi: false,
+    certification_progression_100: false,
+    certification_devoir_valide: false,
+    certification_presence_live: false,
+    certification_nom_badge: "",
+    image: null as File | null,
+    fichier: null as File | null,
+  });
+
+  const setF = (key: string, value: unknown) => setForm((p) => ({ ...p, [key]: value }));
   
   // Simulated subscription
   const subscriptionTier: SubscriptionTier = "gold";
@@ -69,147 +115,232 @@ export function EspaceFormateur() {
     }
   };
 
+  const handleSubmitFormation = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await formationsApi.create({
+        title: form.title,
+        description: form.description || undefined,
+        category: form.category || undefined,
+        mode: form.mode || undefined,
+        niveau: form.niveau || undefined,
+        duration: form.duration ? Number(form.duration) : undefined,
+        isPaid: form.isPaid,
+        isActive: form.isActive,
+        price: form.price ? Number(form.price) : undefined,
+        price_member: form.price_member ? Number(form.price_member) : undefined,
+        moduleId: form.moduleId || undefined,
+        formateur_id: form.formateur_id || undefined,
+        centreFormationId: form.centreFormationId || undefined,
+        lien: form.lien || undefined,
+        date: form.date || undefined,
+        certification_delivrer_badge: form.certification_delivrer_badge,
+        certification_quiz_reussi: form.certification_quiz_reussi,
+        certification_progression_100: form.certification_progression_100,
+        certification_devoir_valide: form.certification_devoir_valide,
+        certification_presence_live: form.certification_presence_live,
+        certification_nom_badge: form.certification_nom_badge || undefined,
+        image: form.image,
+        fichier: form.fichier,
+      });
+      setSubmitSuccess(true);
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Erreur lors de la création");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const renderCreationWizard = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Créer une formation</h2>
-        <div className="flex items-center gap-2">
-          {[1, 2, 3, 4, 5].map((step) => (
-            <div 
-              key={step}
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                step === creationStep ? "bg-primary text-primary-foreground" : 
-                step < creationStep ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {step < creationStep ? <CheckCircle className="w-4 h-4" /> : step}
-            </div>
-          ))}
-        </div>
+      {/* Steps indicator */}
+      <div className="flex items-center justify-end gap-2">
+        {[1, 2, 3, 4, 5].map((step) => (
+          <div
+            key={step}
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+              step === creationStep ? "bg-primary text-primary-foreground" :
+              step < creationStep ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {step < creationStep ? <CheckCircle className="w-4 h-4" /> : step}
+          </div>
+        ))}
       </div>
 
+      {/* Étape 1 — Métadonnées */}
       {creationStep === 1 && (
         <Card>
           <CardHeader>
-            <CardTitle>Étape 1 : Métadonnées</CardTitle>
-            <CardDescription>Informations générales sur votre formation</CardDescription>
+            <CardTitle>Étape 1 : Informations générales</CardTitle>
+            <CardDescription>Renseignez les informations de base de votre formation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Titre de la formation</Label>
-                <Input placeholder="Ex: Maîtriser les marchés publics" />
-              </div>
-              <div className="space-y-2">
-                <Label>Compétence visée</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ao">Appels d'offres</SelectItem>
-                    <SelectItem value="finance">Finance & Bancabilité</SelectItem>
-                    <SelectItem value="vente">Vente & Commercial</SelectItem>
-                    <SelectItem value="production">Production & Qualité</SelectItem>
-                    <SelectItem value="digital">Digital & Pilotage</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
             <div className="space-y-2">
-              <Label>Résumé</Label>
-              <Textarea placeholder="Décrivez brièvement ce que les apprenants vont apprendre..." rows={3} />
+              <Label>Titre <span className="text-destructive">*</span></Label>
+              <Input value={form.title} onChange={(e) => setF("title", e.target.value)} placeholder="Ex: Maîtriser les marchés publics" />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={form.description} onChange={(e) => setF("description", e.target.value)} placeholder="Décrivez ce que les apprenants vont apprendre..." rows={3} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Catégorie</Label>
+                <Input value={form.category} onChange={(e) => setF("category", e.target.value)} placeholder="Ex: Finance, Commerce..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Mode</Label>
+                <Select value={form.mode} onValueChange={(v) => setF("mode", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir le mode" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="a_son_rythme">À son rythme (vidéo)</SelectItem>
+                    <SelectItem value="webinaire">Webinaire / Live</SelectItem>
+                    <SelectItem value="presentiel">Présentiel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Niveau</Label>
-                <Select>
+                <Select value={form.niveau} onValueChange={(v) => setF("niveau", v)}>
                   <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="debutant">Débutant</SelectItem>
-                    <SelectItem value="intermediaire">Intermédiaire</SelectItem>
-                    <SelectItem value="avance">Avancé</SelectItem>
+                    <SelectItem value="beginner">Débutant</SelectItem>
+                    <SelectItem value="intermediate">Intermédiaire</SelectItem>
+                    <SelectItem value="advanced">Avancé</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Format</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Format" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="video">Vidéo à la demande</SelectItem>
-                    <SelectItem value="live">Live / Webinaire</SelectItem>
-                    <SelectItem value="presentiel">Présentiel</SelectItem>
-                    <SelectItem value="hybride">Hybride</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Durée (heures)</Label>
+                <Input type="number" value={form.duration} onChange={(e) => setF("duration", e.target.value)} placeholder="Ex: 10" min={0} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>ID Formateur (UUID)</Label>
+                <Input value={form.formateur_id} onChange={(e) => setF("formateur_id", e.target.value)} placeholder="UUID du formateur" />
               </div>
               <div className="space-y-2">
                 <Label>Module lié</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Module" /></SelectTrigger>
+                <Select value={form.moduleId} onValueChange={(v) => setF("moduleId", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un module" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ao">Appels d'Offres</SelectItem>
-                    <SelectItem value="marketplace">Marketplace</SelectItem>
-                    <SelectItem value="financement">Financement</SelectItem>
-                    <SelectItem value="incubateur">Incubateur</SelectItem>
-                    <SelectItem value="datahub">DataHub</SelectItem>
-                    <SelectItem value="evenements">Événements</SelectItem>
+                    {modules.length === 0 && (
+                      <SelectItem value="_" disabled>Chargement...</SelectItem>
+                    )}
+                    {modules.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.nom}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {/* Champs conditionnels selon le mode */}
+            {form.mode === "webinaire" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Lien du webinaire</Label>
+                  <Input value={form.lien} onChange={(e) => setF("lien", e.target.value)} placeholder="https://zoom.us/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Date & heure</Label>
+                  <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
+                </div>
+              </div>
+            )}
+            {form.mode === "presentiel" && (
+              <div className="space-y-2">
+                <Label>Centre de formation</Label>
+                <Select value={form.centreFormationId} onValueChange={(v) => setF("centreFormationId", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un centre" /></SelectTrigger>
+                  <SelectContent>
+                    {centres.length === 0 && (
+                      <SelectItem value="_" disabled>Chargement...</SelectItem>
+                    )}
+                    {centres.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nom} — {c.ville}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
+      {/* Étape 2 — Médias */}
       {creationStep === 2 && (
         <Card>
           <CardHeader>
-            <CardTitle>Étape 2 : Contenu</CardTitle>
-            <CardDescription>Structure et contenus de votre formation</CardDescription>
+            <CardTitle>Étape 2 : Médias</CardTitle>
+            <CardDescription>Image de couverture et fichier vidéo/document principal</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="border rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">Chapitre 1 : Introduction</h4>
-                <Button variant="ghost" size="sm"><Edit className="w-4 h-4" /></Button>
-              </div>
-              <div className="pl-4 space-y-2">
-                <div className="flex items-center justify-between p-2 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <Video className="w-4 h-4 text-primary" />
-                    <span className="text-sm">Leçon 1.1 : Présentation</span>
+            {/* Image */}
+            <div className="space-y-2">
+              <Label>Image de couverture</Label>
+              <div
+                className="border-2 border-dashed rounded-sm p-6 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => imageInputRef.current?.click()}
+              >
+                {form.image ? (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <ImageIcon className="w-5 h-5 text-primary" />
+                    <span className="font-medium">{form.image.name}</span>
+                    <span className="text-muted-foreground">({(form.image.size / 1024 / 1024).toFixed(1)} Mo)</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">5 min</span>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-muted rounded">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-primary" />
-                    <span className="text-sm">Leçon 1.2 : Ressources</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">PDF</span>
-                </div>
-                <Button variant="outline" size="sm" className="w-full">
-                  <Plus className="w-4 h-4 mr-2" /> Ajouter une leçon
-                </Button>
+                ) : (
+                  <>
+                    <Upload className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium">Cliquer pour choisir une image</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP</p>
+                  </>
+                )}
               </div>
+              <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => setF("image", e.target.files?.[0] ?? null)} />
             </div>
-            
-            <Button variant="outline" className="w-full">
-              <Plus className="w-4 h-4 mr-2" /> Ajouter un chapitre
-            </Button>
 
-            <div className="border-2 border-dashed rounded-lg p-8 text-center">
-              <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="font-medium mb-2">Importer des vidéos</p>
-              <p className="text-sm text-muted-foreground mb-4">MP4, MOV - Max 500 MB par fichier</p>
-              <Button variant="outline">Parcourir</Button>
+            {/* Fichier vidéo/document */}
+            <div className="space-y-2">
+              <Label>Fichier principal (vidéo ou document)</Label>
+              <div
+                className="border-2 border-dashed rounded-sm p-6 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => fichierInputRef.current?.click()}
+              >
+                {form.fichier ? (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <FileVideo className="w-5 h-5 text-primary" />
+                    <span className="font-medium">{form.fichier.name}</span>
+                    <span className="text-muted-foreground">({(form.fichier.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm font-medium">Cliquer pour choisir un fichier</p>
+                    <p className="text-xs text-muted-foreground mt-1">MP4, MOV, PDF — max 500 Mo</p>
+                  </>
+                )}
+              </div>
+              <input ref={fichierInputRef} type="file" accept="video/*,.pdf" className="hidden"
+                onChange={(e) => setF("fichier", e.target.files?.[0] ?? null)} />
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Étape 3 — Certification */}
       {creationStep === 3 && (
         <Card>
           <CardHeader>
@@ -218,7 +349,7 @@ export function EspaceFormateur() {
           </CardHeader>
           <CardContent className="space-y-4">
             {!limits.canCertify ? (
-              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200">
+              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-sm border border-amber-200">
                 <div className="flex items-center gap-2 text-amber-600 mb-2">
                   <Lock className="w-5 h-5" />
                   <span className="font-medium">Fonctionnalité réservée Or+</span>
@@ -232,59 +363,67 @@ export function EspaceFormateur() {
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Proposer une certification</Label>
-                    <p className="text-sm text-muted-foreground">Délivrer un badge/certificat</p>
+                    <Label>Délivrer un badge / certificat</Label>
+                    <p className="text-sm text-muted-foreground">Activez pour proposer une certification</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch checked={form.certification_delivrer_badge} onCheckedChange={(v) => setF("certification_delivrer_badge", v)} />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Critères de réussite</Label>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center gap-2">
-                      <Switch defaultChecked />
-                      <span className="text-sm">Quiz réussi (min 70%)</span>
+                {form.certification_delivrer_badge && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Nom du badge</Label>
+                      <Input value={form.certification_nom_badge} onChange={(e) => setF("certification_nom_badge", e.target.value)} placeholder="Ex: Prêt AO" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Switch />
-                      <span className="text-sm">Devoir validé</span>
+                    <div className="space-y-2">
+                      <Label>Critères de réussite</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { key: "certification_quiz_reussi", label: "Quiz réussi (min 70%)" },
+                          { key: "certification_devoir_valide", label: "Devoir validé" },
+                          { key: "certification_progression_100", label: "100% progression" },
+                          { key: "certification_presence_live", label: "Présence live" },
+                        ].map(({ key, label }) => (
+                          <div key={key} className="flex items-center gap-2">
+                            <Switch checked={(form as Record<string, unknown>)[key] as boolean}
+                              onCheckedChange={(v) => setF(key, v)} />
+                            <span className="text-sm">{label}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Switch defaultChecked />
-                      <span className="text-sm">100% progression</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Switch />
-                      <span className="text-sm">Présence live</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Nom du badge</Label>
-                  <Input placeholder="Ex: Prêt AO" />
-                </div>
+                  </>
+                )}
               </>
             )}
           </CardContent>
         </Card>
       )}
 
+      {/* Étape 4 — Tarification */}
       {creationStep === 4 && (
         <Card>
           <CardHeader>
             <CardTitle>Étape 4 : Tarification</CardTitle>
-            <CardDescription>Définissez le prix de votre formation</CardDescription>
+            <CardDescription>Définissez le prix et la visibilité de votre formation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Formation active (visible)</Label>
+                <p className="text-sm text-muted-foreground">La formation sera visible dans le catalogue</p>
+              </div>
+              <Switch checked={form.isActive} onCheckedChange={(v) => setF("isActive", v)} />
+            </div>
+
             {!limits.canMonetize ? (
-              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200">
+              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-sm border border-amber-200">
                 <div className="flex items-center gap-2 text-amber-600 mb-2">
                   <Lock className="w-5 h-5" />
                   <span className="font-medium">Monétisation réservée Or+</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Votre formation sera gratuite. Passez au plan Or pour monétiser.</p>
-                <Button variant="outline" size="sm" className="mt-2">
+                <p className="text-sm text-muted-foreground">Votre formation sera gratuite. Passez au plan Or pour la monétiser.</p>
+                <Button variant="outline" size="sm" className="mt-2 rounded-sm">
                   <Crown className="w-4 h-4 mr-2" /> Voir les plans
                 </Button>
               </div>
@@ -292,26 +431,80 @@ export function EspaceFormateur() {
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Formation gratuite</Label>
-                    <p className="text-sm text-muted-foreground">Accessible à tous sans paiement</p>
+                    <Label>Formation payante</Label>
+                    <p className="text-sm text-muted-foreground">Désactivez pour rendre la formation gratuite</p>
                   </div>
-                  <Switch />
+                  <Switch checked={form.isPaid} onCheckedChange={(v) => setF("isPaid", v)} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Prix public (FCFA)</Label>
-                    <Input type="number" placeholder="25000" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Prix membre (-20%)</Label>
-                    <Input type="number" placeholder="20000" disabled className="bg-muted" />
-                  </div>
-                </div>
+                {form.isPaid && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Prix public (FCFA)</Label>
+                        <Input type="number" value={form.price} onChange={(e) => setF("price", e.target.value)} placeholder="25000" min={0} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Prix membre (FCFA)</Label>
+                        <Input type="number" value={form.price_member} onChange={(e) => setF("price_member", e.target.value)} placeholder="20000" min={0} />
+                      </div>
+                    </div>
+                    <div className="p-3 bg-muted rounded-sm text-sm">
+                      <p className="font-medium mb-1">Commission CPU Academy</p>
+                      <p className="text-muted-foreground">20% sur chaque vente. Vous recevez 80% du prix.</p>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-                <div className="p-3 bg-muted rounded-lg text-sm">
-                  <p className="font-medium mb-1">Commission CPU Academy</p>
-                  <p className="text-muted-foreground">20% sur chaque vente. Vous recevez 80% du prix.</p>
+      {/* Étape 5 — Récapitulatif */}
+      {creationStep === 5 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Étape 5 : Récapitulatif</CardTitle>
+            <CardDescription>Vérifiez les informations avant de soumettre</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {submitSuccess ? (
+              <div className="py-6 text-center space-y-3">
+                <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
+                <p className="font-semibold text-lg">Formation créée avec succès !</p>
+                <p className="text-sm text-muted-foreground">Elle sera examinée par notre équipe sous 48h.</p>
+                <Button onClick={() => { setCreateOpen(false); setSubmitSuccess(false); setCreationStep(1); }} className="rounded-sm">
+                  Fermer
+                </Button>
+              </div>
+            ) : (
+              <>
+                {[
+                  { label: "Titre", value: form.title || "—" },
+                  { label: "Catégorie", value: form.category || "—" },
+                  { label: "Mode", value: form.mode || "—" },
+                  { label: "Niveau", value: form.niveau || "—" },
+                  { label: "Durée", value: form.duration ? `${form.duration}h` : "—" },
+                  { label: "Image", value: form.image?.name || "—" },
+                  { label: "Fichier", value: form.fichier?.name || "—" },
+                  { label: "Certification", value: form.certification_delivrer_badge ? `Oui — ${form.certification_nom_badge || "sans nom"}` : "Non" },
+                  { label: "Prix", value: form.isPaid ? `${form.price} FCFA (membre: ${form.price_member} FCFA)` : "Gratuit" },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between text-sm py-1.5 border-b last:border-0">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium">{value}</span>
+                  </div>
+                ))}
+
+                {submitError && (
+                  <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{submitError}</div>
+                )}
+
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-sm border border-blue-200">
+                  <p className="text-sm text-blue-600">
+                    Votre formation sera examinée par notre équipe sous 48h. Vous serez notifié par email.
+                  </p>
                 </div>
               </>
             )}
@@ -319,59 +512,28 @@ export function EspaceFormateur() {
         </Card>
       )}
 
-      {creationStep === 5 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Étape 5 : Soumettre</CardTitle>
-            <CardDescription>Vérifiez et soumettez votre formation pour validation</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm">Métadonnées complètes</span>
-              </div>
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm">3 chapitres, 8 leçons</span>
-              </div>
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm">Certification configurée</span>
-              </div>
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm">Prix défini : 25 000 FCFA</span>
-              </div>
-            </div>
-
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200">
-              <p className="text-sm text-blue-600">
-                Votre formation sera examinée par notre équipe sous 48h. Vous serez notifié par email.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {!submitSuccess && (
+        <div className="flex justify-between">
+          <Button variant="outline" className="rounded-sm"
+            onClick={() => setCreationStep(Math.max(1, creationStep - 1))}
+            disabled={creationStep === 1 || submitting}
+          >
+            Précédent
+          </Button>
+          {creationStep < 5 ? (
+            <Button className="rounded-sm" disabled={creationStep === 1 && !form.title}
+              onClick={() => setCreationStep(creationStep + 1)}
+            >
+              Suivant
+            </Button>
+          ) : (
+            <Button className="rounded-sm gap-2" onClick={handleSubmitFormation} disabled={submitting}>
+              {submitting ? <span className="animate-spin">⏳</span> : <Send className="w-4 h-4" />}
+              {submitting ? "Envoi en cours..." : "Soumettre à validation"}
+            </Button>
+          )}
+        </div>
       )}
-
-      <div className="flex justify-between">
-        <Button 
-          variant="outline" 
-          onClick={() => setCreationStep(Math.max(1, creationStep - 1))}
-          disabled={creationStep === 1}
-        >
-          Précédent
-        </Button>
-        {creationStep < 5 ? (
-          <Button onClick={() => setCreationStep(creationStep + 1)}>
-            Suivant
-          </Button>
-        ) : (
-          <Button>
-            <Send className="w-4 h-4 mr-2" /> Soumettre à validation
-          </Button>
-        )}
-      </div>
     </div>
   );
 
@@ -406,10 +568,6 @@ export function EspaceFormateur() {
           </TabsTrigger>
           <TabsTrigger value="courses" className="gap-2">
             <BookOpen className="w-4 h-4" /> Mes cours
-          </TabsTrigger>
-          <TabsTrigger value="create" className="gap-2" disabled={!canCreateMore}>
-            <Plus className="w-4 h-4" /> Créer
-            {!canCreateMore && <Lock className="w-3 h-3 ml-1" />}
           </TabsTrigger>
           <TabsTrigger value="sessions" className="gap-2">
             <Calendar className="w-4 h-4" /> Sessions
@@ -526,7 +684,7 @@ export function EspaceFormateur() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <Input placeholder="Rechercher un cours..." className="max-w-sm" />
-              <Button onClick={() => setActiveTab("create")} disabled={!canCreateMore}>
+              <Button onClick={() => { setCreationStep(1); setCreateOpen(true); }} disabled={!canCreateMore}>
                 <Plus className="w-4 h-4 mr-2" /> Nouvelle formation
               </Button>
             </div>
@@ -576,25 +734,6 @@ export function EspaceFormateur() {
           </div>
         </TabsContent>
 
-        <TabsContent value="create">
-          {canCreateMore ? (
-            renderCreationWizard()
-          ) : (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <Lock className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">Limite atteinte</h3>
-                <p className="text-muted-foreground mb-4">
-                  Vous avez atteint le nombre maximum de cours pour votre abonnement {subscriptionTier}.
-                </p>
-                <Button>
-                  <Crown className="w-4 h-4 mr-2" /> Passer au plan supérieur
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
         <TabsContent value="sessions">
           <Card>
             <CardContent className="p-8 text-center text-muted-foreground">
@@ -622,6 +761,26 @@ export function EspaceFormateur() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Créer une formation</DialogTitle>
+          </DialogHeader>
+          {canCreateMore ? renderCreationWizard() : (
+            <div className="p-4 text-center space-y-4">
+              <Lock className="w-12 h-12 mx-auto text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Limite atteinte</h3>
+              <p className="text-muted-foreground">
+                Vous avez atteint le nombre maximum de cours pour votre abonnement {subscriptionTier}.
+              </p>
+              <Button>
+                <Crown className="w-4 h-4 mr-2" /> Passer au plan supérieur
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

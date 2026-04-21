@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   BookOpen, Search, Clock, Users, Award, Play, Video, Calendar,
   Filter, MapPin, Target, X, RefreshCw, GraduationCap, AlertCircle,
-  ChevronLeft, ChevronRight, Layers,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formationsApi, type FormationAPI } from "@/lib/api";
@@ -135,7 +135,7 @@ function CardSkeleton() {
         <Skeleton className="h-4 w-2/3" />
         <div className="flex items-center justify-between pt-2">
           <Skeleton className="h-5 w-16" />
-          <Skeleton className="h-8 w-20 rounded-lg" />
+          <Skeleton className="h-8 w-20 rounded-sm" />
         </div>
       </CardContent>
     </Card>
@@ -240,42 +240,23 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
   return (
     <div className="space-y-6">
       {/* ── Search & Filters ── */}
-      <Card>
-        <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+      <Card className="rounded-sm">
+        <CardContent className="p-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Barre de recherche */}
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
                 placeholder="Rechercher une formation..."
-                className="pl-10"
+                className="pl-8 h-9 text-sm rounded-sm w-full"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={showFilters ? "secondary" : "outline"}
-                onClick={() => setShowFilters(!showFilters)}
-                className="gap-2 flex-shrink-0"
-              >
-                <Filter className="w-4 h-4" />
-                Filtres
-                {activeFiltersCount > 0 && (
-                  <Badge className="ml-1 px-1.5 min-w-5 h-5 text-xs">{activeFiltersCount}</Badge>
-                )}
-              </Button>
-              {activeFiltersCount > 0 && (
-                <Button variant="ghost" size="icon" onClick={clearFilters} title="Réinitialiser">
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-          </div>
 
-          {/* Quick Filters Row */}
-          <div className="flex flex-wrap gap-2">
+            {/* Sélects inline */}
             <Select value={selectedFormat} onValueChange={setSelectedFormat}>
-              <SelectTrigger className="w-[155px] h-9 text-sm">
+              <SelectTrigger className="w-[135px] h-9 text-sm rounded-sm">
                 <SelectValue placeholder="Format" />
               </SelectTrigger>
               <SelectContent>
@@ -286,7 +267,7 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
               </SelectContent>
             </Select>
             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-[145px] h-9 text-sm">
+              <SelectTrigger className="w-[130px] h-9 text-sm rounded-sm">
                 <SelectValue placeholder="Niveau" />
               </SelectTrigger>
               <SelectContent>
@@ -297,7 +278,7 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
               </SelectContent>
             </Select>
             <Select value={selectedPrice} onValueChange={setSelectedPrice}>
-              <SelectTrigger className="w-[140px] h-9 text-sm">
+              <SelectTrigger className="w-[120px] h-9 text-sm rounded-sm">
                 <SelectValue placeholder="Prix" />
               </SelectTrigger>
               <SelectContent>
@@ -307,6 +288,24 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                 <SelectItem value="certifiant">Certifiant</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Filtres avancés + reset */}
+            <Button
+              variant={showFilters ? "secondary" : "outline"}
+              onClick={() => setShowFilters(!showFilters)}
+              className="h-9 gap-1.5 text-sm rounded-sm"
+            >
+              <Filter className="w-3.5 h-3.5" />
+              Filtres
+              {activeFiltersCount > 0 && (
+                <Badge className="ml-0.5 px-1.5 min-w-5 h-4 text-[10px]">{activeFiltersCount}</Badge>
+              )}
+            </Button>
+            {activeFiltersCount > 0 && (
+              <Button variant="ghost" size="icon" onClick={clearFilters} title="Réinitialiser" className="h-9 w-9 rounded-sm">
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            )}
           </div>
 
           {/* Advanced Panel */}
@@ -376,8 +375,6 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
             const level = levelConfig[formation.level];
             const format = formatConfig[formation.format];
             const FormatIcon = format.icon;
-            const fType = typeConfig[formation.type];
-            const TypeIcon = fType.icon;
 
             return (
               <Card
