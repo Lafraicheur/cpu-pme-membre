@@ -371,7 +371,7 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {paginatedFormations.map((formation) => {
             const level = levelConfig[formation.level];
             const format = formatConfig[formation.format];
@@ -382,143 +382,88 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
             return (
               <Card
                 key={formation.id}
-                className="overflow-hidden flex flex-col hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group border border-border/60"
+                className="overflow-hidden relative h-52 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group border-0"
                 onClick={() => onViewDetail(formation.id)}
               >
-                {/* ── Image banner ── */}
-                <div className="relative h-44 overflow-hidden flex-shrink-0">
-                  {formation.image ? (
-                    <img
-                      src={formation.image}
-                      alt={formation.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-primary/25 via-primary/10 to-secondary/20 flex items-center justify-center">
-                      <BookOpen className="w-14 h-14 text-primary/30" />
-                    </div>
-                  )}
-                  {/* Overlay top badges */}
-                  <div className="absolute top-2.5 left-2.5 flex gap-1.5 flex-wrap">
-                    {formation.type !== "classique" && (
-                      <span className={cn("inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm border", fType.color)}>
-                        <TypeIcon className="w-3 h-3" />
-                        {fType.label}
-                      </span>
-                    )}
+                {/* ── Image plein fond ── */}
+                {formation.image ? (
+                  <img
+                    src={formation.image}
+                    alt={formation.title}
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/80 via-primary/60 to-secondary/70" />
+                )}
+
+                {/* Dégradé sombre bas */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+
+                {/* ── Badges haut ── */}
+                <div className="absolute top-2 left-2 right-2 flex items-start justify-between gap-1">
+                  <div className="flex gap-1 flex-wrap">
+                    <span className={cn("inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white border border-white/30")}>
+                      <FormatIcon className="w-2.5 h-2.5" />
+                      {format.label}
+                    </span>
                     {formation.hasCertificate && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full backdrop-blur-sm bg-amber-50/90 text-amber-700 border border-amber-200">
-                        <Award className="w-3 h-3" />
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-500/90 text-white">
+                        <Award className="w-2.5 h-2.5" />
                         Certifiant
                       </span>
                     )}
                   </div>
-                  {/* Price top-right */}
-                  <div className="absolute top-2.5 right-2.5">
-                    {formation.isFree ? (
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-sm">
-                        Gratuit
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-primary text-primary-foreground shadow-sm">
-                        {formation.price.toLocaleString()} FCFA
-                      </span>
-                    )}
-                  </div>
+                  {formation.isFree ? (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500 text-white flex-shrink-0">
+                      Gratuit
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white border border-white/30 flex-shrink-0">
+                      {formation.price.toLocaleString()} F
+                    </span>
+                  )}
                 </div>
 
-                {/* ── Body ── */}
-                <CardContent className="p-4 flex flex-col flex-1 space-y-3">
-                  {/* Level + Format */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Badge variant="outline" className={cn("text-[11px] font-medium border", level.color)}>
-                      {level.label}
-                    </Badge>
-                    <Badge variant="outline" className="text-[11px] gap-1">
-                      <FormatIcon className="w-3 h-3" />
-                      {format.label}
-                    </Badge>
-                  </div>
+                {/* ── Contenu bas ── */}
+                <div className="absolute bottom-0 left-0 right-0 p-3 flex flex-col gap-1.5">
+                  {/* Niveau */}
+                  <Badge className={cn("self-start text-[10px] h-4 px-1.5 border", level.color)}>
+                    {level.label}
+                  </Badge>
 
-                  {/* Title */}
-                  <h3 className="font-semibold text-sm leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                  {/* Titre */}
+                  <h3 className="font-semibold text-sm text-white leading-snug line-clamp-2">
                     {formation.title}
                   </h3>
 
-                  {/* Description */}
-                  <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed flex-1">
-                    {formation.description}
-                  </p>
-
-                  {/* Category tag */}
-                  <p className="text-[11px] text-muted-foreground/70 font-medium truncate">{formation.category}</p>
-
-                  {/* Meta row */}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {formation.duration && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {formation.duration}
-                      </span>
-                    )}
-                    {formation.chapitresCount > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Layers className="w-3.5 h-3.5" />
-                        {formation.chapitresCount} ch.
-                      </span>
-                    )}
-                    {formation.leconsCount > 0 && (
-                      <span className="flex items-center gap-1">
-                        <BookOpen className="w-3.5 h-3.5" />
-                        {formation.leconsCount} leçon{formation.leconsCount > 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {formation.enrolled > 0 && (
-                      <span className="flex items-center gap-1 ml-auto">
-                        <Users className="w-3.5 h-3.5" />
-                        {formation.enrolled}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Location / Date */}
-                  {(formation.location || formation.date) && (
-                    <div className="flex flex-col gap-1">
-                      {formation.location && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{formation.location}</span>
-                        </span>
-                      )}
-                      {formation.date && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Calendar className="w-3 h-3 flex-shrink-0" />
-                          {new Date(formation.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                  {/* Meta + CTA */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-[11px] text-white/70 min-w-0">
+                      <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {formation.instructorPhoto ? (
+                          <img src={formation.instructorPhoto} alt={formation.instructor} className="w-full h-full object-cover" />
+                        ) : (
+                          <GraduationCap className="w-2.5 h-2.5 text-white" />
+                        )}
+                      </div>
+                      <span className="truncate">{formation.instructor}</span>
+                      {formation.duration && (
+                        <span className="flex items-center gap-0.5 flex-shrink-0">
+                          <Clock className="w-3 h-3" />{formation.duration}
                         </span>
                       )}
                     </div>
-                  )}
-
-                  {/* Instructor + CTA */}
-                  <div className="flex items-center gap-2 pt-3 border-t mt-auto">
-                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border border-border">
-                      {formation.instructorPhoto ? (
-                        <img src={formation.instructorPhoto} alt={formation.instructor} className="w-full h-full object-cover" />
-                      ) : (
-                        <GraduationCap className="w-3.5 h-3.5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground truncate flex-1">{formation.instructor}</span>
                     <Button
                       size="sm"
-                      className="gap-1.5 text-xs h-8 px-3 flex-shrink-0"
+                      variant="secondary"
+                      className="h-6 px-2 text-[10px] gap-1 flex-shrink-0 bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
                       onClick={(e) => { e.stopPropagation(); onViewDetail(formation.id); }}
                     >
-                      <Play className="w-3 h-3" />
+                      <Play className="w-2.5 h-2.5" />
                       Voir
                     </Button>
                   </div>
-                </CardContent>
+                </div>
               </Card>
             );
           })}
