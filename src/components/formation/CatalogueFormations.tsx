@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formationsApi, type FormationAPI } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Mapping API → UI ──────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ interface Formation {
   instructor: string;
   instructorPhoto: string | null;
   price: number;
+  priceMember: number;
   isFree: boolean;
   hasCertificate: boolean;
   enrolled: number;
@@ -80,6 +82,7 @@ function mapApiToFormation(f: FormationAPI): Formation {
     instructor: `${f.formateur.firstname} ${f.formateur.lastname}`,
     instructorPhoto: f.formateur.photo,
     price: formatPrice(f.price),
+    priceMember: formatPrice(f.price_member),
     isFree: !f.isPaid,
     hasCertificate: f.certification_delivrer_badge,
     enrolled: f.participants?.length ?? 0,
@@ -151,6 +154,7 @@ interface CatalogueProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
+  const { user } = useAuth();
   const [formations, setFormations] = useState<Formation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -413,6 +417,10 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                   {formation.isFree ? (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500 text-white flex-shrink-0">
                       Gratuit
+                    </span>
+                  ) : user ? (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/80 backdrop-blur-sm text-white border border-white/30 flex-shrink-0">
+                      {(formation.priceMember || formation.price).toLocaleString()} F
                     </span>
                   ) : (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-white border border-white/30 flex-shrink-0">

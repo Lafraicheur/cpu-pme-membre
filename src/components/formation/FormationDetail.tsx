@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { formationsApi, FormationAPI } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface FormationDetailProps {
   formationId: string;
@@ -61,6 +62,7 @@ function DetailSkeleton() {
 }
 
 export function FormationDetail({ formationId, onBack, onStartLearning }: FormationDetailProps) {
+  const { user } = useAuth();
   const [formation, setFormation] = useState<FormationAPI | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +97,9 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
   }
 
   const isFree = !formation.isPaid || !formation.price || parseFloat(formation.price) === 0;
-  const price = formation.price ? parseFloat(formation.price) : 0;
+  const pricePublic = formation.price ? parseFloat(formation.price) : 0;
+  const priceMember = formation.price_member ? parseFloat(formation.price_member) : 0;
+  const price = user && priceMember > 0 ? priceMember : pricePublic;
   const levelInfo = getLevelLabel(formation.niveau);
   const modeInfo = getModeLabel(formation.mode);
   const totalLecons = formation.chapitres.reduce((acc, c) => acc + c.lecons.length, 0);
@@ -358,7 +362,18 @@ export function FormationDetail({ formationId, onBack, onStartLearning }: Format
                 {isFree ? (
                   <Badge className="bg-secondary/10 text-secondary text-lg px-4 py-1">Gratuit</Badge>
                 ) : (
-                  <p className="text-3xl font-bold text-primary">{price.toLocaleString()} FCFA</p>
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold text-primary">{price.toLocaleString()} FCFA</p>
+                    {user && priceMember > 0 && (
+                      <p className="text-xs text-muted-foreground line-through">{pricePublic.toLocaleString()} FCFA</p>
+                    )}
+                    {user && priceMember > 0 && (
+                      <p className="text-xs text-emerald-600 font-medium">Prix membre</p>
+                    )}
+                    {!user && pricePublic > 0 && (
+                      <p className="text-xs text-muted-foreground">Connectez-vous pour le prix membre</p>
+                    )}
+                  </div>
                 )}
               </div>
               <Button onClick={() => setShowEnrollDialog(true)} className="w-full gap-2" size="lg">

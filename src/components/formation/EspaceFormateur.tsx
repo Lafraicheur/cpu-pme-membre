@@ -244,17 +244,17 @@ export function EspaceFormateur() {
               </div>
             </div>
 
+            {/* Date — visible pour tous les modes */}
+            <div className="space-y-2">
+              <Label>Date & heure de la formation</Label>
+              <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
+            </div>
+
             {/* Champs conditionnels selon le mode */}
             {form.mode === "webinaire" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Lien du webinaire</Label>
-                  <Input value={form.lien} onChange={(e) => setF("lien", e.target.value)} placeholder="https://zoom.us/..." />
-                </div>
-                <div className="space-y-2">
-                  <Label>Date & heure</Label>
-                  <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
-                </div>
+              <div className="space-y-2">
+                <Label>Lien du webinaire</Label>
+                <Input value={form.lien} onChange={(e) => setF("lien", e.target.value)} placeholder="https://zoom.us/..." />
               </div>
             )}
             {form.mode === "presentiel" && (

@@ -192,6 +192,7 @@ function FormateurDrawer({
                   const ModeIcon = mode.icon;
                   const isFree = !fo.isPaid || !fo.price || parseFloat(fo.price) === 0;
                   const price = fo.price ? parseFloat(fo.price) : 0;
+                  const priceMember = fo.price_member ? parseFloat(fo.price_member) : 0;
 
                   return (
                     <div key={fo.id} className={cn(
@@ -255,7 +256,14 @@ function FormateurDrawer({
                           {isFree ? (
                             <span className="text-xs font-semibold text-emerald-600">Gratuit</span>
                           ) : (
-                            <span className="text-xs font-semibold text-primary">{price.toLocaleString()} FCFA</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-primary">{price.toLocaleString()} FCFA</span>
+                              {priceMember > 0 && (
+                                <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-sm">
+                                  Membre : {priceMember.toLocaleString()} FCFA
+                                </span>
+                              )}
+                            </div>
                           )}
                           <span className="text-[11px] text-muted-foreground">
                             {fo.participants?.length ?? 0} inscrit{(fo.participants?.length ?? 0) > 1 ? "s" : ""}

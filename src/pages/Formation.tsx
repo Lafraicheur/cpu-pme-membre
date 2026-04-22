@@ -88,16 +88,17 @@ export default function Formation() {
               <PlayCircle className="w-3.5 h-3.5" />
               Mes cours
             </TabsTrigger>
+            <TabsTrigger value="formateur" className="gap-1.5 text-xs sm:text-sm">
+              <Lock className="w-3.5 h-3.5" />
+              Formateur
+            </TabsTrigger>
             <TabsTrigger value="parcours" className="gap-1.5 text-xs sm:text-sm">
               <Target className="w-3.5 h-3.5" />
               Parcours
             </TabsTrigger>
             
             
-            <TabsTrigger value="formateur" className="gap-1.5 text-xs sm:text-sm">
-              <Lock className="w-3.5 h-3.5" />
-              Formateur
-            </TabsTrigger>
+            
             <TabsTrigger value="rac" className="gap-1.5 text-xs sm:text-sm">
               <ClipboardCheck className="w-3.5 h-3.5" />
               RAC
