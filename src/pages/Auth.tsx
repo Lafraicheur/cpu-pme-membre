@@ -222,14 +222,14 @@ export default function Auth() {
           </div>
           <div className="space-y-2">
             <h1 className="text-4xl font-bold tracking-tight">CPU-PME</h1>
-            <p className="text-lg text-white/80 font-light">Plateforme des entreprises camerounaises</p>
+            <p className="text-lg text-white/80 font-light">Plateforme des entreprises</p>
           </div>
 
           <div className="flex flex-col gap-4 mt-10 text-left">
             {[
-              { icon: "🏢", title: "Annuaire entreprises", desc: "Accédez à tout l'écosystème PME" },
-              { icon: "📅", title: "Événements & Forums", desc: "Rejoignez les rencontres business" },
-              { icon: "💼", title: "Marketplace", desc: "Achetez et vendez en B2B" },
+              { icon: "", title: "Annuaire entreprises", desc: "Accédez à tout l'écosystème PME" },
+              { icon: "", title: "Événements & Forums", desc: "Rejoignez les rencontres business" },
+              { icon: "", title: "Marketplace", desc: "Achetez et vendez en B2B" },
             ].map((item) => (
               <div key={item.title} className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3 border border-white/10 backdrop-blur-sm">
                 <span className="text-2xl">{item.icon}</span>
@@ -251,7 +251,7 @@ export default function Auth() {
           <div className="lg:hidden text-center space-y-2">
             <img src={logo} alt="CPU-PME" className="w-16 h-16 mx-auto rounded-xl shadow-lg" />
             <h1 className="text-xl font-bold">CPU-PME</h1>
-            <p className="text-sm text-muted-foreground">Plateforme des entreprises camerounaises</p>
+            <p className="text-sm text-muted-foreground">Plateforme des entreprises</p>
           </div>
 
           {/* ── Étape email ── */}

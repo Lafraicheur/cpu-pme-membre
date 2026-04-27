@@ -27,6 +27,7 @@ import {
   publicCiblesApi,
   ticketTypesApi,
   createEvenementApi,
+  createEvenementApiJson,
   TypeEvenement,
   Region,
   Filiere,
@@ -280,17 +281,17 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const [done, setDone]         = useState(false);
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
       typeEvenementsApi.getAll(),
       regionsApi.getAll(),
       filieresApi.getAll(),
       publicCiblesApi.getAll(),
     ]).then(([te, r, f, pc]) => {
-      setTypeEvenements(te);
-      setRegions(r);
-      setFilieres(f);
-      setPublicCibles(pc);
-    }).catch(() => {});
+      if (te.status === "fulfilled") setTypeEvenements(te.value);
+      if (r.status  === "fulfilled") setRegions(r.value);
+      if (f.status  === "fulfilled") setFilieres(f.value);
+      if (pc.status === "fulfilled") setPublicCibles(pc.value);
+    });
   }, []);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,71 +349,113 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const handleSubmitEvent = async () => {
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append("titre", titre);
-      if (description) fd.append("description", description);
-      fd.append("format", format);
-      if (descriptionTypeFormat) fd.append("description_type_format", descriptionTypeFormat);
-      if (typeEvenementId) fd.append("type_evenement_id", typeEvenementId);
-      if (regionId) fd.append("region_id", regionId);
-      if (filiereId) fd.append("filiere_id", filiereId);
-      const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim());
-      if (validFiliereConcerner.length > 0) fd.append("filiere_concerner", JSON.stringify(validFiliereConcerner.map((o) => o.texte)));
-      const selectedPc = publicCibles.filter((p) => publicCibleIds.includes(p.id));
-      if (selectedPc.length > 0) fd.append("type_audience", selectedPc.map((p) => p.libelle).join(", "));
-      if (dateDebut) {
-        fd.append("date_debut", new Date(dateDebut).toISOString());
-        fd.append("heure_debut", dateDebut.slice(11, 16)); // extrait "HH:MM"
-      }
-      if (dateFin) {
-        fd.append("date_fin", new Date(dateFin).toISOString());
-        fd.append("heure_fin", dateFin.slice(11, 16));
-      }
-      if (lieu) fd.append("lieu", lieu);
-      if (lienUrl) fd.append("lien_url", lienUrl);
-      const validObjectifs = objectifs.filter((o) => o.texte.trim());
-      if (validObjectifs.length > 0) fd.append("objectifs", JSON.stringify(validObjectifs.map((o) => o.texte)));
-      const validProgramme = programme.filter((r) => r.heure.trim() || r.activite.trim());
-      if (validProgramme.length > 0) fd.append("programme", JSON.stringify(validProgramme));
-      if (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite) {
-        fd.append("informations_pratiques", JSON.stringify(informationsPratiques));
-      }
-      fd.append("exiger_kyc_verifie", String(exigerKyc));
-      fd.append("activer_matchmaking_b2b", String(matchmakingB2b));
-      fd.append("autoriser_liste_attente", String(listeAttente));
-      fd.append("generer_qr_checkin", String(qrCheckin));
-      fd.append("attestation_participation", String(attestation));
-      fd.append("partage_photos_autorise", String(partagePhotos));
-      fd.append("ala_une", String(alaUne));
-      fd.append("isActive", String(isActive));
-      fd.append("prix", prix);
-      fd.append("prix_membre", prixMembre);
-      fd.append("capacite_max", capaciteMax);
-      fd.append("gratuit_pour_tous", String(gratuitPourTous));
-      fd.append("gratuit_membre_uniquement", String(gratuitMembreUniquement));
-      const validCequiInclu = cequiInclu.filter((o) => o.texte.trim());
-      if (validCequiInclu.length > 0) fd.append("cequiInclu", JSON.stringify(validCequiInclu.map((o) => o.texte)));
+      // Champs communs
+      const validObjectifs  = objectifs.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const validProgramme  = programme.filter((r) => r.heure.trim() || r.activite.trim());
+      const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const validCequiInclu = cequiInclu.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const selectedPc      = publicCibles.filter((p) => publicCibleIds.includes(p.id));
+      const typeAudience    = selectedPc.length > 0 ? selectedPc.map((p) => p.libelle).join(", ") : null;
+      const infoPratiques   = (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite)
+        ? informationsPratiques : null;
       const intervenantsData = intervenants
         .filter((iv) => iv.nom_complet.trim())
         .map(({ nom_complet, titre_fonction, entreprise_organisation }) => ({
-          nom_complet, titre_fonction, entreprise_organisation,
+          nom_complet, titre_fonction, entreprise_organisation, image: null as string | null,
         }));
-      if (intervenantsData.length > 0) {
-        fd.append("intervenants", JSON.stringify(intervenantsData));
-        intervenants.filter((iv) => iv.nom_complet.trim()).forEach((iv) => {
-          if (iv.imageFile) fd.append("intervenant_images", iv.imageFile);
+
+      let ev: import("@/lib/api").Evenement;
+
+      if (imageFile) {
+        // Multipart quand un fichier image est sélectionné
+        const fd = new FormData();
+        fd.append("titre", titre);
+        if (description) fd.append("description", description);
+        fd.append("format", format);
+        if (descriptionTypeFormat) fd.append("description_type_format", descriptionTypeFormat);
+        if (typeEvenementId) fd.append("type_evenement_id", typeEvenementId);
+        if (regionId) fd.append("region_id", regionId);
+        if (filiereId) fd.append("filiere_id", filiereId);
+        if (validFiliereConcerner.length > 0) fd.append("filiere_concerner", JSON.stringify(validFiliereConcerner));
+        if (typeAudience) fd.append("type_audience", typeAudience);
+        if (dateDebut) {
+          fd.append("date_debut", new Date(dateDebut).toISOString());
+          fd.append("heure_debut", dateDebut.slice(11, 16));
+        }
+        if (dateFin) {
+          fd.append("date_fin", new Date(dateFin).toISOString());
+          fd.append("heure_fin", dateFin.slice(11, 16));
+        }
+        if (lieu) fd.append("lieu", lieu);
+        if (lienUrl) fd.append("lien_url", lienUrl);
+        if (validObjectifs.length > 0) fd.append("objectifs", JSON.stringify(validObjectifs));
+        if (validProgramme.length > 0) fd.append("programme", JSON.stringify(validProgramme));
+        if (infoPratiques) fd.append("informations_pratiques", JSON.stringify(infoPratiques));
+        fd.append("exiger_kyc_verifie", String(exigerKyc));
+        fd.append("activer_matchmaking_b2b", String(matchmakingB2b));
+        fd.append("autoriser_liste_attente", String(listeAttente));
+        fd.append("generer_qr_checkin", String(qrCheckin));
+        fd.append("attestation_participation", String(attestation));
+        fd.append("partage_photos_autorise", String(partagePhotos));
+        fd.append("ala_une", String(alaUne));
+        fd.append("isActive", String(isActive));
+        fd.append("prix", prix);
+        fd.append("prix_membre", prixMembre);
+        fd.append("capacite_max", capaciteMax);
+        fd.append("gratuit_pour_tous", String(gratuitPourTous));
+        fd.append("gratuit_membre_uniquement", String(gratuitMembreUniquement));
+        if (validCequiInclu.length > 0) fd.append("cequiInclu", JSON.stringify(validCequiInclu));
+        if (intervenantsData.length > 0) {
+          fd.append("intervenants", JSON.stringify(intervenantsData));
+          intervenants.filter((iv) => iv.nom_complet.trim()).forEach((iv) => {
+            if (iv.imageFile) fd.append("intervenant_images", iv.imageFile);
+          });
+        }
+        fd.append("image_flayer", imageFile);
+        if (user?.id) fd.append("created_by", String(user.id));
+        ev = await createEvenementApi(fd);
+      } else {
+        // JSON quand pas de fichier (token récupéré automatiquement via Authorization header)
+        ev = await createEvenementApiJson({
+          titre,
+          description:              description || null,
+          format,
+          description_type_format:  descriptionTypeFormat || null,
+          type_evenement_id:        typeEvenementId || undefined,
+          region_id:                regionId || null,
+          filiere_id:               filiereId || null,
+          filiere_concerner:        validFiliereConcerner.length > 0 ? validFiliereConcerner : null,
+          type_audience:            typeAudience,
+          date_debut:               dateDebut ? new Date(dateDebut).toISOString() : null,
+          heure_debut:              dateDebut ? dateDebut.slice(11, 16) : undefined,
+          date_fin:                 dateFin ? new Date(dateFin).toISOString() : null,
+          heure_fin:                dateFin ? dateFin.slice(11, 16) : undefined,
+          lieu:                     lieu || null,
+          lien_url:                 lienUrl || null,
+          objectifs:                validObjectifs.length > 0 ? validObjectifs : null,
+          programme:                validProgramme.length > 0 ? validProgramme : null,
+          informations_pratiques:   infoPratiques as unknown as Record<string, string> | null,
+          exiger_kyc_verifie:       exigerKyc,
+          activer_matchmaking_b2b:  matchmakingB2b,
+          autoriser_liste_attente:  listeAttente,
+          generer_qr_checkin:       qrCheckin,
+          attestation_participation: attestation,
+          partage_photos_autorise:  partagePhotos,
+          ala_une:                  alaUne,
+          isActive,
+          prix,
+          prix_membre:              prixMembre,
+          capacite_max:             parseInt(capaciteMax) || 100,
+          gratuit_pour_tous:        gratuitPourTous,
+          gratuit_membre_uniquement: gratuitMembreUniquement,
+          cequiInclu:               validCequiInclu.length > 0 ? validCequiInclu : null,
+          intervenants:             intervenantsData.length > 0 ? intervenantsData : null,
+          image_flayer:             null,
+          created_by:               user?.id ? String(user.id) : undefined,
         });
       }
-      if (imageFile) fd.append("image_flayer", imageFile);
-      if (user?.id) {
-        const rawId = user.id;
-        fd.append("created_by", `${rawId}`);
-      }
 
-      // 1. Créer l'événement
-      const ev = await createEvenementApi(fd);
-
-      // 2. Créer les billets configurés à l'étape 3
+      // Créer les billets configurés à l'étape 3
       const validTickets = tickets.filter((t) => t.nom.trim());
       if (validTickets.length > 0) {
         await Promise.all(validTickets.map((t) =>
@@ -426,7 +469,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
         ));
       }
 
-      // 3. Afficher le succès directement
       setDone(true);
       toast({ title: "Événement publié !", description: "L'événement et ses billets sont créés." });
     } catch (err) {

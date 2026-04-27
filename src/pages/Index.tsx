@@ -1,27 +1,29 @@
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ActionCenter } from "@/components/dashboard/ActionCenter";
-import { ModuleCard } from "@/components/dashboard/ModuleCard";
 import { HealthScore } from "@/components/dashboard/HealthScore";
 import {
   CheckCircle,
   CreditCard,
   Users,
   Activity,
-  Rocket,
-  FileText,
-  GraduationCap,
-  ShoppingCart,
-  Wallet,
-  BarChart3,
 } from "lucide-react";
+
+const statutLabel: Record<string, string> = {
+  approved: "Approuvé",
+  pending:  "En attente",
+  rejected: "Rejeté",
+  active:   "Actif",
+};
 
 const Index = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const [displayed, setDisplayed] = useState("");
+  const tidRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -29,16 +31,78 @@ const Index = () => {
     }
   }, [isAuthenticated, isLoading, navigate]);
 
+  // Effet typewriter : alterne entre les deux messages
+  useEffect(() => {
+    if (!user?.name) return;
+
+    const messages = [
+      `Bienvenue, ${user.name}`,
+      "Nous sommes content de vous revoir",
+    ];
+    let msgIdx = 0;
+    let charIdx = 0;
+    let deleting = false;
+
+    const tick = () => {
+      const current = messages[msgIdx];
+      if (!deleting) {
+        charIdx++;
+        setDisplayed(current.slice(0, charIdx));
+        if (charIdx === current.length) {
+          deleting = true;
+          tidRef.current = setTimeout(tick, 2000); // pause avant effacement
+        } else {
+          tidRef.current = setTimeout(tick, 65);
+        }
+      } else {
+        charIdx--;
+        setDisplayed(current.slice(0, charIdx));
+        if (charIdx === 0) {
+          deleting = false;
+          msgIdx = (msgIdx + 1) % messages.length;
+          tidRef.current = setTimeout(tick, 500); // pause entre les messages
+        } else {
+          tidRef.current = setTimeout(tick, 35);
+        }
+      }
+    };
+
+    tidRef.current = setTimeout(tick, 400);
+    return () => { if (tidRef.current) clearTimeout(tidRef.current); };
+  }, [user?.name]);
+
   if (isLoading || !isAuthenticated) return null;
+
+  const statut     = user?.statut ? (statutLabel[user.statut] ?? user.statut) : "Actif";
+  const entreprise = user?.organisationName || user?.companyName || user?.name || "Mon entreprise";
+  const plan       = user?.planLibelle || user?.subscription?.tier || "—";
+  const secteur    = user?.filiereNom || user?.secteurPrincipal || "—";
+  const region     = [user?.communeNom, user?.regionNom].filter(Boolean).join(", ") || "—";
+
+  // Sépare le préfixe "Bienvenue, " du nom pour colorer uniquement le nom
+  const WELCOME_PREFIX = "Bienvenue, ";
+  const isWelcomeMsg = displayed.startsWith(WELCOME_PREFIX);
+  const textPrefix   = isWelcomeMsg ? WELCOME_PREFIX : "";
+  const textName     = isWelcomeMsg ? displayed.slice(WELCOME_PREFIX.length) : "";
+  const textOther    = isWelcomeMsg ? "" : displayed;
 
   return (
     <DashboardLayout>
       {/* Welcome Section */}
       <div className="mb-6 md:mb-8 opacity-0 animate-slide-up" style={{ animationFillMode: "forwards" }}>
-        <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">
-          Bienvenue, <span className="text-primary">SARL AgriTech Ivoire</span>
+        <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-1 min-h-[2.25rem] flex items-center gap-0.5">
+          {isWelcomeMsg ? (
+            <>
+              <span className="text-foreground">{textPrefix}</span>
+              <span className="text-primary">{textName}</span>
+            </>
+          ) : (
+            <span className="text-foreground">{textOther}</span>
+          )}
+          <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
         </h1>
-        <p className="text-muted-foreground">
+        <p className="text-base font-medium text-foreground/80">{entreprise}</p>
+        <p className="text-sm text-muted-foreground mt-0.5">
           Voici un aperçu de votre activité et de vos tâches en attente.
         </p>
       </div>
@@ -48,8 +112,8 @@ const Index = () => {
         <div className="opacity-0 animate-slide-up stagger-1" style={{ animationFillMode: "forwards" }}>
           <KPICard
             title="Statut compte"
-            value="Actif"
-            subtitle="KYC validé à 85%"
+            value={statut}
+            subtitle={user?.typeMembre || "Membre"}
             icon={CheckCircle}
             variant="success"
             actions={[{ label: "Voir KYC" }, { label: "Support" }]}
@@ -58,8 +122,8 @@ const Index = () => {
         <div className="opacity-0 animate-slide-up stagger-2" style={{ animationFillMode: "forwards" }}>
           <KPICard
             title="Abonnement"
-            value="Argent"
-            subtitle="Expire dans 45 jours"
+            value={plan}
+            subtitle={user?.nombreEmployes ? `${user.nombreEmployes} employés` : "Mon plan"}
             icon={CreditCard}
             variant="primary"
             actions={[{ label: "Renouveler" }, { label: "Upgrader" }]}
@@ -67,22 +131,22 @@ const Index = () => {
         </div>
         <div className="opacity-0 animate-slide-up stagger-3" style={{ animationFillMode: "forwards" }}>
           <KPICard
-            title="Affiliation"
-            value="COOPAGRI"
-            subtitle="Filière Agroalimentaire"
+            title="Secteur & Filière"
+            value={secteur}
+            subtitle={user?.sousFiliereNom || region}
             icon={Users}
             variant="default"
-            actions={[{ label: "Changer affiliation" }]}
+            actions={[{ label: "Mon entreprise", onClick: () => navigate("/mon-entreprise") }]}
           />
         </div>
         <div className="opacity-0 animate-slide-up stagger-4" style={{ animationFillMode: "forwards" }}>
           <KPICard
-            title="Pipeline business"
-            value="12"
-            subtitle="Opportunités actives"
+            title="Localisation"
+            value={user?.communeNom || user?.regionNom || "—"}
+            subtitle={user?.interventionScope === "national" ? "Portée nationale" : region}
             icon={Activity}
             variant="warning"
-            actions={[{ label: "Ouvrir Action Center" }]}
+            actions={[{ label: "Voir profil", onClick: () => navigate("/parametres") }]}
           />
         </div>
       </div>

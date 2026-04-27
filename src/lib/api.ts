@@ -235,8 +235,15 @@ export const evenementsApi = {
 export interface TypeEvenement {
   id: string;
   nom: string;
+  description: string | null;
   couleur: string;
-  icone: string;
+  icone: string | null;
+  is_active: boolean;
+  creator_user_id: string | null;
+  creator_role: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface Region {
@@ -355,11 +362,17 @@ export const publicCiblesApi = {
 };
 
 export const typeEvenementsApi = {
-  getAll: async (): Promise<TypeEvenement[]> => {
+  getAll: async (creatorUserId?: string): Promise<TypeEvenement[]> => {
+    const query = creatorUserId ? `?creatorUserId=${encodeURIComponent(creatorUserId)}` : "";
     const res = await request<{ success: boolean; data: TypeEvenement[] } | TypeEvenement[]>(
-      "/api/type-evenements"
+      `/api/type-evenements${query}`
     );
-    return Array.isArray(res) ? res : (res as { data: TypeEvenement[] }).data;
+    const list = Array.isArray(res) ? res : (res as { data: TypeEvenement[] }).data;
+    return list.map((t) => ({
+      ...t,
+      nom:         decodeHtml(t.nom),
+      description: t.description ? decodeHtml(t.description) : null,
+    }));
   },
 };
 
@@ -417,6 +430,50 @@ export const createEvenementApi = async (formData: FormData): Promise<Evenement>
   const json = await res.json();
   return (json as { data: Evenement }).data ?? (json as Evenement);
 };
+
+export interface CreateEvenementJsonPayload {
+  titre: string;
+  description?: string | null;
+  date_debut?: string | null;
+  date_fin?: string | null;
+  image_flayer?: string | null;
+  lieu?: string | null;
+  heure_debut?: string;
+  heure_fin?: string;
+  objectifs?: string[] | null;
+  programme?: { heure: string; activite: string }[] | null;
+  format?: string;
+  description_type_format?: string | null;
+  lien_url?: string | null;
+  type_audience?: string | null;
+  filiere_concerner?: string[] | null;
+  cequiInclu?: string[] | null;
+  exiger_kyc_verifie?: boolean;
+  gratuit_membre_uniquement?: boolean;
+  gratuit_pour_tous?: boolean;
+  activer_matchmaking_b2b?: boolean;
+  intervenants?: { nom_complet: string; titre_fonction: string; entreprise_organisation: string; image?: string | null }[] | null;
+  autoriser_liste_attente?: boolean;
+  generer_qr_checkin?: boolean;
+  attestation_participation?: boolean;
+  partage_photos_autorise?: boolean;
+  informations_pratiques?: Record<string, string> | null;
+  prix?: string;
+  prix_membre?: string;
+  capacite_max?: number;
+  isActive?: boolean;
+  ala_une?: boolean;
+  type_evenement_id?: string;
+  region_id?: string | null;
+  filiere_id?: string | null;
+  created_by?: string;
+}
+
+export const createEvenementApiJson = (payload: CreateEvenementJsonPayload): Promise<Evenement> =>
+  request<{ data: Evenement } | Evenement>("/api/evenements", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }).then((res) => (res as { data: Evenement }).data ?? (res as Evenement));
 
 export interface VendeurEligibility {
   eligible: boolean;
@@ -885,7 +942,7 @@ export interface FormationAPI {
   date: string | null;
   image: string | null;
   niveau: "beginner" | "intermediate" | "advanced" | null;
-  formateur: FormationFormateur;
+  formateur: FormationFormateur | null;
   centreFormation: { id: string; nom: string; adresse: string; ville: string } | null;
   chapitres: FormationChapitre[];
   participants: FormationParticipant[];
@@ -907,12 +964,12 @@ export const formationsApi = {
       lien: f.lien ? decodeHtml(f.lien) : null,
       fichier: f.fichier ? decodeHtml(f.fichier) : null,
       image: f.image ? decodeHtml(f.image) : null,
-      formateur: {
+      formateur: f.formateur ? {
         ...f.formateur,
         linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
         website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
         photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
-      },
+      } : null,
     }));
   },
 
@@ -926,12 +983,12 @@ export const formationsApi = {
       lien: f.lien ? decodeHtml(f.lien) : null,
       fichier: f.fichier ? decodeHtml(f.fichier) : null,
       image: f.image ? decodeHtml(f.image) : null,
-      formateur: {
+      formateur: f.formateur ? {
         ...f.formateur,
         linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
         website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
         photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
-      },
+      } : null,
     };
   },
 

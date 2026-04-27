@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { 
-  Settings as SettingsIcon, 
+  Settings as SettingsIcon,
   User,
   Bell,
-  Shield,
   Palette,
   Globe,
-  Key,
   Smartphone,
   Mail,
   Save,
@@ -32,7 +30,7 @@ export default function Parametres() {
   // Profile state
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
-  const [phone, setPhone] = useState("+225 07 XX XX XX XX");
+  const [phone, setPhone] = useState(user?.phone || "");
   
   // Notifications state
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -86,10 +84,6 @@ export default function Parametres() {
                 <Bell className="h-4 w-4 flex-shrink-0" />
                 <span className="hidden sm:inline">Notifications</span>
                 <span className="sm:hidden">Notifs</span>
-              </TabsTrigger>
-              <TabsTrigger value="security" className="gap-2 text-xs sm:text-sm">
-                <Shield className="h-4 w-4 flex-shrink-0" />
-                Sécurité
               </TabsTrigger>
               <TabsTrigger value="preferences" className="gap-2 text-xs sm:text-sm">
                 <Palette className="h-4 w-4 flex-shrink-0" />
@@ -238,71 +232,6 @@ export default function Parametres() {
             </TabsContent>
 
             {/* Security Tab */}
-            <TabsContent value="security" className="mt-6 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Mot de passe</CardTitle>
-                  <CardDescription>Modifiez votre mot de passe</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Mot de passe actuel</Label>
-                    <Input type="password" placeholder="••••••••" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nouveau mot de passe</Label>
-                    <Input type="password" placeholder="••••••••" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Confirmer le nouveau mot de passe</Label>
-                    <Input type="password" placeholder="••••••••" />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button>
-                      <Key className="mr-2 h-4 w-4" />
-                      Modifier le mot de passe
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Authentification à deux facteurs</CardTitle>
-                  <CardDescription>Ajoutez une couche de sécurité supplémentaire</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                    <div>
-                      <p className="font-medium">2FA par SMS</p>
-                      <p className="text-sm text-muted-foreground">Non activé</p>
-                    </div>
-                    <Button variant="outline">Activer</Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Sessions actives</CardTitle>
-                  <CardDescription>Gérez vos sessions de connexion</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="font-medium">Session actuelle</p>
-                        <p className="text-sm text-muted-foreground">Chrome · Abidjan, CI · Maintenant</p>
-                      </div>
-                      <span className="text-xs text-green-500 font-medium">Active</span>
-                    </div>
-                  </div>
-                  <Button variant="outline" className="w-full mt-4">
-                    Déconnecter toutes les autres sessions
-                  </Button>
-                </CardContent>
-              </Card>
-            </TabsContent>
 
             {/* Preferences Tab */}
             <TabsContent value="preferences" className="mt-6 space-y-6">

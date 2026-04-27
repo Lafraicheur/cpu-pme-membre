@@ -72,7 +72,7 @@ export default function Evenements() {
             <TabsTrigger value="apercu" className="gap-2"><Calendar className="w-4 h-4" />Aperçu</TabsTrigger>
             <TabsTrigger value="decouvrir" className="gap-2"><Calendar className="w-4 h-4" />Découvrir</TabsTrigger>
             <TabsTrigger value="inscriptions" className="gap-2"><Ticket className="w-4 h-4" />Mes inscriptions</TabsTrigger>
-            <TabsTrigger value="ajouter" className="gap-2"><PlusCircle className="w-4 h-4" />Ajouter un événement</TabsTrigger>
+            {/* <TabsTrigger value="ajouter" className="gap-2"><PlusCircle className="w-4 h-4" />Ajouter un événement</TabsTrigger> */}
             {/* <TabsTrigger value="b2b" className="gap-2"><Handshake className="w-4 h-4" />B2B Matchmaking</TabsTrigger> */}
             {canOrganize ? (
               <>

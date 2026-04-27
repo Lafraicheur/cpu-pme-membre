@@ -10,9 +10,22 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: UserRole;
   companyId?: string;
   companyName?: string;
+  // Données enrichies du profil API
+  organisationName?: string;
+  statut?: string;
+  planLibelle?: string;
+  secteurPrincipal?: string;
+  filiereNom?: string;
+  sousFiliereNom?: string;
+  regionNom?: string;
+  communeNom?: string;
+  nombreEmployes?: string;
+  typeMembre?: string;
+  interventionScope?: string;
   subscription: Subscription;
 }
 
@@ -58,20 +71,45 @@ function mapPlanToTier(profile: Record<string, unknown>): SubscriptionTier {
   }
 }
 
+function get<T>(obj: unknown, key: string): T | undefined {
+  return (obj as Record<string, unknown>)?.[key] as T | undefined;
+}
+
 function mapProfileToUser(profile: Record<string, unknown>): User {
   const tier = mapPlanToTier(profile);
   const tierConfig = TIER_CONFIGS[tier] || TIER_CONFIGS["ME_ARGENT"];
 
-  // L'API retourne "name" directement (ex: "Boni Christ")
   const fullName = (profile.name || profile.nom || profile.prenom || "Membre") as string;
+
+  const abonnement = profile.abonnement as Record<string, unknown> | undefined;
+  const secteurPrincipal = profile.secteurPrincipal as Record<string, unknown> | undefined;
+  const filiere         = profile.filiere         as Record<string, unknown> | undefined;
+  const sousFiliere     = profile.sousFiliere      as Record<string, unknown> | undefined;
+  const siegeRegion     = profile.siegeRegion      as Record<string, unknown> | undefined;
+  const siegeCommune    = profile.siegeCommune     as Record<string, unknown> | undefined;
+  const typeMembreObj   = profile.typeMembre       as Record<string, unknown> | undefined;
 
   return {
     id: String(profile.id || ""),
     name: fullName,
     email: String(profile.email || ""),
+    phone: (profile.phone as string) || undefined,
     role: "owner",
     companyId: undefined,
     companyName: (profile.position as string) || undefined,
+    organisationName: (profile.customOrganisationName as string)
+                   || (profile.organisationName as string)
+                   || undefined,
+    statut:            (profile.statut as string)            || undefined,
+    planLibelle:       get<string>(abonnement, "libelle")    || undefined,
+    secteurPrincipal:  get<string>(secteurPrincipal, "name") || undefined,
+    filiereNom:        get<string>(filiere, "name")          || undefined,
+    sousFiliereNom:    get<string>(sousFiliere, "name")      || undefined,
+    regionNom:         get<string>(siegeRegion, "name")      || undefined,
+    communeNom:        get<string>(siegeCommune, "name")     || undefined,
+    nombreEmployes:    (profile.nombre_employee as string)   || undefined,
+    typeMembre:        get<string>(typeMembreObj, "name")    || undefined,
+    interventionScope: (profile.interventionScope as string) || undefined,
     subscription: {
       tier,
       category: tierConfig.category || "individual",
