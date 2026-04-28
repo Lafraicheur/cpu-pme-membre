@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,28 +27,6 @@ interface OverviewProps {
   onNavigate: (tab: string) => void;
 }
 
-
-const upcomingRDV = [
-  {
-    id: "rdv-001",
-    company: "SIFCA Group",
-    contact: "Jean Konan",
-    date: "2024-03-15",
-    time: "10:00",
-    objective: "Partenariat distribution",
-    status: "accepted",
-  },
-  {
-    id: "rdv-002",
-    company: "Nestlé CI",
-    contact: "Marie Bamba",
-    date: "2024-03-15",
-    time: "14:30",
-    objective: "Sourcing local",
-    status: "requested",
-  },
-];
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("fr-FR", {
     day: "numeric",
@@ -58,17 +37,20 @@ function formatDate(iso: string) {
 
 function EventCard({ event }: { event: Evenement }) {
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
+  const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3">
+    <div
+      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3 cursor-pointer"
+      onClick={() => window.open(`https://evenement.cpupme.ci/evenement/${event.id}`, "_blank")}
+    >
       <div className="flex items-center gap-3 min-w-0">
-        {/* Image ou icône */}
-        {event.image_flayer ? (
+        {event.image_flayer && !imgError ? (
           <img
             src={event.image_flayer}
             alt={event.titre}
             className="w-12 h-12 rounded-lg object-cover shrink-0"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -82,10 +64,12 @@ function EventCard({ event }: { event: Evenement }) {
               <Calendar className="w-3 h-3" />
               {formatDate(event.date_debut)}
             </span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {event.lieu.split(",")[0]}
-            </span>
+            {event.lieu && (
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {event.lieu.split(",")[0]}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -203,7 +187,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg">Événements récents</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("decouvrir")}>
+            <Button variant="ghost" size="sm" onClick={() => window.open("https://evenement.cpupme.ci/agenda", "_blank")}>
               Voir tout <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
@@ -223,7 +207,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
             )}
             {!isLoading && !isError && recentEvents?.length === 0 && (
               <p className="text-sm text-muted-foreground p-4 text-center">
-                Aucun événement récent.
+                Aucun événement à venir.
               </p>
             )}
             {recentEvents?.slice(0, 3).map((event) => (

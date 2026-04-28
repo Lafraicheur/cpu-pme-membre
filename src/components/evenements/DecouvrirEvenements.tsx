@@ -10,7 +10,6 @@ import {
   Calendar,
   MapPin,
   Clock,
-  Star,
   Video,
   ExternalLink,
   AlertCircle,
@@ -23,7 +22,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { evenementsApi, type Evenement } from "@/lib/api";
 
-const SITE_EVENEMENTS = "https://dev-evenement.cpupme.ci/agenda";
+const SITE_EVENEMENTS = "https://evenement.cpupme.ci/agenda";
 const PAGE_SIZE = 6;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -87,7 +86,7 @@ function EventCardGrid({ event }: { event: Evenement }) {
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
   const typeNom = event.type_evenement?.nom ?? "Événement";
   const image = resolveImage(event);
-  const eventUrl = `https://dev-evenement.cpupme.ci/evenement/${event.id}`;
+  const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
 
   return (
     <a
@@ -182,7 +181,7 @@ function EventCardGrid({ event }: { event: Evenement }) {
 
 function EventCardList({ event }: { event: Evenement }) {
   const image = resolveImage(event);
-  const eventUrl = `https://dev-evenement.cpupme.ci/evenement/${event.id}`;
+  const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
   const prix = formatPrice(event);
 
   return (
@@ -287,21 +286,12 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
   const [selectedPrice, setSelectedPrice] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  // À la une
-  const { data: alaUne, isLoading: isLoadingAlaUne } = useQuery({
-    queryKey: ["evenements", "ala-une"],
-    queryFn: evenementsApi.getAlaUne,
-    staleTime: 5 * 60 * 1000,
-  });
-
   // Tous les événements
   const { data: allEvents, isLoading: isLoadingAll, isError } = useQuery({
     queryKey: ["evenements", "all"],
     queryFn: evenementsApi.getAll,
     staleTime: 5 * 60 * 1000,
   });
-
-  const isLoading = isLoadingAlaUne || isLoadingAll;
 
   // Types uniques pour le filtre
   const typeOptions = useMemo(() => {
@@ -317,7 +307,6 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
   const filtered = useMemo(() => {
     if (!allEvents) return [];
     return allEvents.filter((e) => {
-      if (e.ala_une) return false; // déjà dans la section "à la une"
       const matchSearch =
         !searchQuery ||
         e.titre.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -337,23 +326,6 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
 
   return (
     <div className="space-y-8">
-      {/* ── À la une ── */}
-      {(isLoadingAlaUne || (alaUne && alaUne.length > 0)) && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Star className="w-5 h-5 text-primary" />
-            Événements à la une
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-            {isLoadingAlaUne ? (
-              <><GridSkeleton /><GridSkeleton /><GridSkeleton /></>
-            ) : (
-              alaUne!.map((e) => <EventCardGrid key={e.id} event={e} />)
-            )}
-          </div>
-        </section>
-      )}
-
       {/* ── Filtres ── */}
       <Card>
         <CardContent className="p-4">
@@ -492,7 +464,7 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
               rel="noopener noreferrer"
               className="text-primary hover:underline underline-offset-2"
             >
-              dev-evenement.cpupme.ci
+              evenement.cpupme.ci
             </a>
           </p>
         )}

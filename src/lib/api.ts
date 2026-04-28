@@ -8,18 +8,19 @@ function getToken(): string | null {
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit & { skipAuth?: boolean } = {}
 ): Promise<T> {
+  const { skipAuth, ...fetchOptions } = options;
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(fetchOptions.headers as Record<string, string>),
   };
-  if (token) {
+  if (token && !skipAuth) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
 
   if (!res.ok) {
     let message = `Erreur ${res.status}`;
@@ -156,6 +157,31 @@ export interface Registration {
   details: TicketDetail[];
 }
 
+export interface Payment {
+  id: string;
+  transactionId: string;
+  payableType: string;
+  payableId: string;
+  registrationId: string | null;
+  payerUserId: string | null;
+  amount: string;
+  currency: string;
+  status: "success" | "pending" | "cancelled";
+  checkoutUrl: string | null;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export const paymentsApi = {
+  getByUser: async (userId: string): Promise<Payment[]> => {
+    const res = await request<{ success: boolean; data: Payment[] } | Payment[]>(
+      `/api/payments?payerUserId=${encodeURIComponent(userId)}`
+    );
+    const list = Array.isArray(res) ? res : ((res as { data: Payment[] }).data ?? []);
+    return list;
+  },
+};
+
 export const registrationsApi = {
   getByUser: async (userId: string): Promise<Registration[]> => {
     const res = await request<{ success: boolean; data: Registration[] } | Registration[]>(
@@ -183,13 +209,13 @@ export const evenementsApi = {
 
   getAlaUne: async (): Promise<Evenement[]> => {
     const res = await request<{ success: boolean; data: Evenement[] } | Evenement[]>(
-      "/api/evenements/ala-une"
+      "/api/evenements/ala-une", { skipAuth: true }
     );
     const list = Array.isArray(res) ? res : (res as { data: Evenement[] }).data;
     return list.map((e) => ({
       ...e,
-      titre: decodeHtml(e.titre),
-      description: decodeHtml(e.description),
+      titre: e.titre ? decodeHtml(e.titre) : e.titre,
+      description: e.description ? decodeHtml(e.description) : e.description,
       lieu: e.lieu ? decodeHtml(e.lieu) : e.lieu,
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
@@ -201,13 +227,13 @@ export const evenementsApi = {
 
   getAll: async (): Promise<Evenement[]> => {
     const res = await request<{ success: boolean; data: Evenement[] } | Evenement[]>(
-      "/api/evenements"
+      "/api/evenements", { skipAuth: true }
     );
-    const list = Array.isArray(res) ? res : (res as { data: Evenement[] }).data;
+    const list = Array.isArray(res) ? res : ((res as { data: Evenement[] }).data ?? []);
     return list.map((e) => ({
       ...e,
-      titre: decodeHtml(e.titre),
-      description: decodeHtml(e.description),
+      titre: e.titre ? decodeHtml(e.titre) : e.titre,
+      description: e.description ? decodeHtml(e.description) : e.description,
       lieu: e.lieu ? decodeHtml(e.lieu) : e.lieu,
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
@@ -219,14 +245,14 @@ export const evenementsApi = {
 
   getRecentUpcoming: async (): Promise<Evenement[]> => {
     const res = await request<{ success: boolean; data: Evenement[] } | Evenement[]>(
-      "/api/evenements/recent-upcoming"
+      "/api/evenements/recent-upcoming", { skipAuth: true }
     );
     const list = Array.isArray(res) ? res : (res as { data: Evenement[] }).data;
     return list.map((e) => ({
       ...e,
       titre: decodeHtml(e.titre),
-      description: decodeHtml(e.description),
-      lieu: decodeHtml(e.lieu),
+      description: e.description ? decodeHtml(e.description) : e.description,
+      lieu: e.lieu ? decodeHtml(e.lieu) : null,
       image_flayer: e.image_flayer ? decodeHtml(e.image_flayer) : null,
     }));
   },
