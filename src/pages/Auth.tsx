@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,7 +148,19 @@ export default function Auth() {
 
   const { sendOtp, login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  const returnUrl = searchParams.get("returnUrl");
+  const isSafeReturnUrl = (url: string | null): url is string => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname === "localhost" || parsed.hostname.endsWith(".cpupme.ci");
+    } catch {
+      return false;
+    }
+  };
 
   const { remaining, formatted } = useCountdown(OTP_EXPIRY_SECONDS, countdownActive);
   const isExpired = countdownActive && remaining === 0;
@@ -181,7 +193,11 @@ export default function Auth() {
       await login(email, code);
       playSuccessSound();
       toast({ title: "Connexion réussie", description: "Bienvenue sur CPU-PME !" });
-      navigate("/");
+      if (isSafeReturnUrl(returnUrl)) {
+        window.location.href = returnUrl;
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       const status = (err as Error & { status?: number }).status;
       playErrorSound();
