@@ -907,9 +907,9 @@ export interface FormateurAvecFormations extends FormationFormateur {
 export const formateursApi = {
   getAll: async (): Promise<FormateurAvecFormations[]> => {
     const res = await request<FormateurAvecFormations[] | { success: boolean; data: FormateurAvecFormations[] }>(
-      "/api/formation/formateurs"
+      "/api/formation/formateurs", { skipAuth: true }
     );
-    const list = Array.isArray(res) ? res : (res as { data: FormateurAvecFormations[] }).data;
+    const list = Array.isArray(res) ? res : ((res as { data: FormateurAvecFormations[] }).data ?? []);
 
     // Dédupliquer par email et fusionner les formations
     const byEmail = new Map<string, FormateurAvecFormations>();
@@ -982,9 +982,9 @@ export interface FormationAPI {
 export const formationsApi = {
   getAll: async (): Promise<FormationAPI[]> => {
     const res = await request<{ success: boolean; data: FormationAPI[] } | FormationAPI[]>(
-      "/api/formation/formations"
+      "/api/formation/formations", { skipAuth: true }
     );
-    const list = Array.isArray(res) ? res : (res as { data: FormationAPI[] }).data;
+    const list = Array.isArray(res) ? res : ((res as { data: FormationAPI[] }).data ?? []);
     return list.map((f) => ({
       ...f,
       lien: f.lien ? decodeHtml(f.lien) : null,
@@ -1001,7 +1001,7 @@ export const formationsApi = {
 
   getById: async (id: string): Promise<FormationAPI> => {
     const res = await request<{ success: boolean; data: FormationAPI } | FormationAPI>(
-      `/api/formation/formations/${id}`
+      `/api/formation/formations/${id}`, { skipAuth: true }
     );
     const f = (res as { data: FormationAPI }).data ?? (res as FormationAPI);
     return {
@@ -1086,7 +1086,7 @@ export interface CentreFormation {
 export const centreFormationsApi = {
   getAll: async (): Promise<CentreFormation[]> => {
     const res = await request<{ success: boolean; data: CentreFormation[] }>(
-      "/api/centre-formations"
+      "/api/centre-formations", { skipAuth: true }
     );
     return res.data;
   },
@@ -1101,7 +1101,7 @@ export interface FormationModule {
 export const formationModulesApi = {
   getAll: async (): Promise<FormationModule[]> => {
     const res = await request<{ success: boolean; data: FormationModule[] }>(
-      "/api/formation/modules"
+      "/api/formation/modules", { skipAuth: true }
     );
     return res.data;
   },

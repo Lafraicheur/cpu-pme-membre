@@ -71,7 +71,7 @@ function mapFormationToEvent(f: FormationAPI): CalendarEvent | null {
     date,
     type: (f.mode === "live" ? "webinaire" : (f.mode as EventType)) ?? "a_son_rythme",
     category: f.category,
-    expert: `${f.formateur.firstname} ${f.formateur.lastname}`,
+    expert: f.formateur ? `${f.formateur.firstname} ${f.formateur.lastname}` : "Formateur inconnu",
     lieu: f.location,
     lien: f.lien,
     description: f.description,
