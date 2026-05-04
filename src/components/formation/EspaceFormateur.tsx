@@ -20,7 +20,7 @@ import {
   Send, Calendar, CheckCircle, Clock, Eye, Upload,
   Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
   MapPin, Globe, Phone, Mail, Award, GraduationCap, Video,
-  PlayCircle, FileText, AlertCircle, Layers, ClipboardList, HelpCircle, ListChecks,
+  PlayCircle, FileText, AlertCircle, Layers, ClipboardList, HelpCircle, ListChecks, Pencil,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { formationsApi, centreFormationsApi, formationModulesApi, formationCategoriesApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, type CentreFormation, type FormationModule, type FormationCategorie, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion } from "@/lib/api";
@@ -504,6 +504,14 @@ export function EspaceFormateur() {
   const [questionListLoading, setQuestionListLoading] = useState(false);
   const [questionDeleteTarget, setQuestionDeleteTarget] = useState<FormationQuestion | null>(null);
   const [questionDeleteSubmitting, setQuestionDeleteSubmitting] = useState(false);
+  const [questionEditTarget, setQuestionEditTarget] = useState<FormationQuestion | null>(null);
+  const [questionEditTexte, setQuestionEditTexte] = useState("");
+  const [questionEditType, setQuestionEditType] = useState<"single_choice" | "multiple_choice">("single_choice");
+  const [questionEditOptions, setQuestionEditOptions] = useState<string[]>([]);
+  const [questionEditReponsesCorrectes, setQuestionEditReponsesCorrectes] = useState<number[]>([]);
+  const [questionEditPoints, setQuestionEditPoints] = useState(1);
+  const [questionEditSubmitting, setQuestionEditSubmitting] = useState(false);
+  const [questionEditError, setQuestionEditError] = useState<string | null>(null);
 
   const openQuestionDialog = (quizId: string, quizTitre: string) => {
     setQuestionQuizId(quizId);
@@ -585,6 +593,37 @@ export function EspaceFormateur() {
       // silent
     } finally {
       setQuestionDeleteSubmitting(false);
+    }
+  };
+
+  const openQuestionEdit = (q: FormationQuestion) => {
+    setQuestionEditTarget(q);
+    setQuestionEditTexte(q.texte);
+    setQuestionEditType(q.type);
+    setQuestionEditOptions([...q.options]);
+    setQuestionEditReponsesCorrectes([...q.reponses_correctes]);
+    setQuestionEditPoints(q.points);
+    setQuestionEditError(null);
+  };
+
+  const handleQuestionEditSave = async () => {
+    if (!questionEditTarget || !questionEditTexte.trim() || questionEditOptions.some((o) => !o.trim()) || questionEditReponsesCorrectes.length === 0) return;
+    setQuestionEditSubmitting(true);
+    setQuestionEditError(null);
+    try {
+      const updated = await questionsApi.update(questionEditTarget.id, {
+        texte: questionEditTexte,
+        type: questionEditType,
+        options: questionEditOptions,
+        reponses_correctes: questionEditReponsesCorrectes,
+        points: questionEditPoints,
+      });
+      setQuestionListItems((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      setQuestionEditTarget(null);
+    } catch (e: unknown) {
+      setQuestionEditError(e instanceof Error ? e.message : "Erreur lors de la modification");
+    } finally {
+      setQuestionEditSubmitting(false);
     }
   };
 
@@ -3269,9 +3308,14 @@ export function EspaceFormateur() {
                         <span className="text-xs text-muted-foreground">{q.points} pt{q.points > 1 ? "s" : ""}</span>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive shrink-0" title="Supprimer" onClick={() => setQuestionDeleteTarget(q)}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => openQuestionEdit(q)}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setQuestionDeleteTarget(q)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {q.options.map((opt, i) => (
@@ -3434,6 +3478,130 @@ export function EspaceFormateur() {
       </Dialog>
 
       {/* Dialog Confirmer suppression question */}
+      {/* Dialog Modifier une question */}
+      <Dialog open={!!questionEditTarget} onOpenChange={(open) => { if (!open) setQuestionEditTarget(null); }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Modifier la question
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Type */}
+            <div className="space-y-2">
+              <Label>Type de question <span className="text-destructive">*</span></Label>
+              <Select value={questionEditType} onValueChange={(v) => { setQuestionEditType(v as "single_choice" | "multiple_choice"); setQuestionEditReponsesCorrectes([]); }}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="single_choice">Choix unique (une seule bonne réponse)</SelectItem>
+                  <SelectItem value="multiple_choice">Choix multiple (plusieurs bonnes réponses)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Texte */}
+            <div className="space-y-2">
+              <Label>Question <span className="text-destructive">*</span></Label>
+              <Textarea
+                value={questionEditTexte}
+                onChange={(e) => setQuestionEditTexte(e.target.value)}
+                placeholder="Énoncé de la question…"
+                rows={3}
+              />
+            </div>
+
+            {/* Options */}
+            <div className="space-y-2">
+              <Label>Options de réponse <span className="text-destructive">*</span></Label>
+              <p className="text-xs text-muted-foreground">
+                {questionEditType === "single_choice" ? "Cochez la bonne réponse." : "Cochez toutes les bonnes réponses."}
+              </p>
+              <div className="space-y-2">
+                {questionEditOptions.map((opt, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      type={questionEditType === "single_choice" ? "radio" : "checkbox"}
+                      name="edit-reponse-correcte"
+                      checked={questionEditReponsesCorrectes.includes(i)}
+                      onChange={() => {
+                        if (questionEditType === "single_choice") {
+                          setQuestionEditReponsesCorrectes([i]);
+                        } else {
+                          setQuestionEditReponsesCorrectes((prev) =>
+                            prev.includes(i) ? prev.filter((r) => r !== i) : [...prev, i]
+                          );
+                        }
+                      }}
+                      className="shrink-0"
+                    />
+                    <Input
+                      value={opt}
+                      onChange={(e) => setQuestionEditOptions((prev) => prev.map((o, j) => j === i ? e.target.value : o))}
+                      placeholder={`Option ${i + 1}`}
+                      className="flex-1"
+                    />
+                    {questionEditOptions.length > 2 && (
+                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive" onClick={() => {
+                        setQuestionEditOptions((prev) => prev.filter((_, j) => j !== i));
+                        setQuestionEditReponsesCorrectes((prev) =>
+                          prev.filter((r) => r !== i).map((r) => (r > i ? r - 1 : r))
+                        );
+                      }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" className="rounded-sm gap-1.5" onClick={() => setQuestionEditOptions((prev) => [...prev, ""])}>
+                <Plus className="w-3.5 h-3.5" /> Ajouter une option
+              </Button>
+            </div>
+
+            {/* Points */}
+            <div className="space-y-2">
+              <Label>Points</Label>
+              <Input
+                type="number"
+                min={1}
+                value={questionEditPoints}
+                onChange={(e) => setQuestionEditPoints(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-24"
+              />
+            </div>
+
+            {questionEditError && (
+              <div className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-sm">
+                {questionEditError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionEditTarget(null)} disabled={questionEditSubmitting}>
+              Annuler
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={handleQuestionEditSave}
+              disabled={
+                questionEditSubmitting ||
+                !questionEditTexte.trim() ||
+                questionEditOptions.some((o) => !o.trim()) ||
+                questionEditReponsesCorrectes.length === 0
+              }
+            >
+              {questionEditSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {questionEditSubmitting ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!questionDeleteTarget} onOpenChange={(open) => { if (!open) setQuestionDeleteTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

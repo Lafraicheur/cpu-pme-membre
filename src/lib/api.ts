@@ -1064,6 +1064,45 @@ export const formationsApi = {
     }));
   },
 
+  getPublic: async (params?: {
+    q?: string;
+    category?: string;
+    niveau?: string;
+    mode?: string;
+    isPaid?: string;
+    priceMin?: string;
+    priceMax?: string;
+    sort?: "date" | "title" | "price" | "price_desc";
+  }): Promise<FormationAPI[]> => {
+    const qs = new URLSearchParams();
+    if (params?.q)        qs.set("q",        params.q);
+    if (params?.category) qs.set("category", params.category);
+    if (params?.niveau)   qs.set("niveau",   params.niveau);
+    if (params?.mode)     qs.set("mode",     params.mode);
+    if (params?.isPaid)   qs.set("isPaid",   params.isPaid);
+    if (params?.priceMin) qs.set("priceMin", params.priceMin);
+    if (params?.priceMax) qs.set("priceMax", params.priceMax);
+    if (params?.sort)     qs.set("sort",     params.sort);
+    const url = `/api/formation/formations/public${qs.toString() ? "?" + qs.toString() : ""}`;
+    const res = await request<{ success: boolean; data: FormationAPI[] } | FormationAPI[]>(url);
+    const list = Array.isArray(res) ? res : ((res as { data: FormationAPI[] }).data ?? []);
+    return list.map((f) => ({
+      chapitres: [],
+      participants: [],
+      competences: [],
+      ...f,
+      lien: f.lien ? decodeHtml(f.lien) : null,
+      fichier: f.fichier ? decodeHtml(f.fichier) : null,
+      image: f.image ? decodeHtml(f.image) : null,
+      formateur: f.formateur ? {
+        ...f.formateur,
+        linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
+        website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
+        photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
+      } : null,
+    }));
+  },
+
   getById: async (id: string): Promise<FormationAPI> => {
     const res = await request<{ success: boolean; data: FormationAPI } | FormationAPI>(
       `/api/formation/formations/${id}`, { skipAuth: true }
@@ -1488,6 +1527,23 @@ export const questionsApi = {
     const res = await request<{ success: boolean; data: FormationQuestion } | FormationQuestion>(
       "/api/formation/questions",
       { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationQuestion }).data ?? (res as FormationQuestion);
+  },
+
+  update: async (id: string, payload: {
+    texte?: string;
+    type?: "single_choice" | "multiple_choice";
+    options?: string[];
+    reponses_correctes?: number[];
+    points?: number;
+    quiz_id?: string;
+    devoir_id?: string;
+    ordre?: number;
+  }): Promise<FormationQuestion> => {
+    const res = await request<{ success: boolean; data: FormationQuestion } | FormationQuestion>(
+      `/api/formation/questions/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
     );
     return (res as { data: FormationQuestion }).data ?? (res as FormationQuestion);
   },
