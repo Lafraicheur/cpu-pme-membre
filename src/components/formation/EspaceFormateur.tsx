@@ -196,6 +196,8 @@ export function EspaceFormateur() {
   // Delete dialog
   const [deleteTarget, setDeleteTarget] = useState<FormationAPI | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [coursesPage, setCoursesPage] = useState(1);
+  const COURSES_PER_PAGE = 6;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -365,7 +367,6 @@ export function EspaceFormateur() {
   const [editChapitreTarget, setEditChapitreTarget] = useState<FormationChapitre | null>(null);
   const [editChapitreTitre, setEditChapitreTitre] = useState("");
   const [editChapitreNewLecons, setEditChapitreNewLecons] = useState<LessonDraft[]>([]);
-  const [editChapitreIdsToDelete, setEditChapitreIdsToDelete] = useState<string[]>([]);
   const [editChapitreSubmitting, setEditChapitreSubmitting] = useState(false);
   const [editChapitreError, setEditChapitreError] = useState<string | null>(null);
 
@@ -373,15 +374,8 @@ export function EspaceFormateur() {
     setEditChapitreTarget(ch);
     setEditChapitreTitre(ch.titre);
     setEditChapitreNewLecons([]);
-    setEditChapitreIdsToDelete([]);
     setEditChapitreError(null);
     setEditChapitreOpen(true);
-  };
-
-  const toggleLeconDelete = (leconId: string) => {
-    setEditChapitreIdsToDelete((prev) =>
-      prev.includes(leconId) ? prev.filter((id) => id !== leconId) : [...prev, leconId]
-    );
   };
 
   const addNewLeconToEdit = () => {
@@ -423,7 +417,6 @@ export function EspaceFormateur() {
       await chapitresApi.update(editChapitreTarget.id, {
         titre: editChapitreTitre,
         lecons: leconsJson.length > 0 ? leconsJson : undefined,
-        leconIdsToDelete: editChapitreIdsToDelete.length > 0 ? editChapitreIdsToDelete : undefined,
         files: Object.keys(files).length > 0 ? files : undefined,
       });
       setEditChapitreOpen(false);
@@ -1231,95 +1224,142 @@ export function EspaceFormateur() {
             </div>
 
             {/* Liste des formations */}
-            <div className="space-y-3">
-              {coursesLoading && (
-                <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
-              )}
-              {!coursesLoading && courses.length === 0 && (
-                <Card className="rounded-sm">
-                  <CardContent className="py-12 text-center space-y-2">
-                    <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                    <p className="font-medium">Vous n'avez pas encore créé de formation.</p>
-                    <Button size="sm" className="mt-2 gap-2" onClick={() => { setCreationStep(1); setCreateOpen(true); }}>
-                      <Plus className="w-4 h-4" /> Créer ma première formation
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-              {courses.map((course) => {
-                const status = courseStatus(course);
-                const learners = course.participants?.length ?? 0;
-                const chapitresCount = course.chapitres?.length ?? 0;
-                const price = course.price ? parseFloat(course.price) : 0;
-                return (
-                  <Card key={course.id} className="rounded-sm">
-                    <CardContent className="p-0">
-                      {/* Ligne principale */}
-                      <div className="flex items-center justify-between p-4 gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-semibold truncate">{course.title}</h3>
-                            {getStatusBadge(status)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                            <span className="flex items-center gap-1">
-                              <Users className="w-3.5 h-3.5" /> {learners} apprenant{learners > 1 ? "s" : ""}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <FileText className="w-3.5 h-3.5" /> {chapitresCount} chapitre{chapitresCount > 1 ? "s" : ""}
-                            </span>
-                            {course.isPaid && price > 0 ? (
-                              <span className="flex items-center gap-1 text-primary font-medium">
-                                <DollarSign className="w-3.5 h-3.5" /> {price.toLocaleString()} FCFA
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-emerald-600">
-                                <Star className="w-3.5 h-3.5" /> Gratuit
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {/* Actions principales */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" title="Voir le détail" onClick={() => openDetail(course)}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" title="Modifier la formation" onClick={() => openEdit(course)}>
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteTarget(course)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
+            {coursesLoading && (
+              <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            )}
+            {!coursesLoading && courses.length === 0 && (
+              <Card className="rounded-sm">
+                <CardContent className="py-12 text-center space-y-2">
+                  <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/30" />
+                  <p className="font-medium">Vous n'avez pas encore créé de formation.</p>
+                  <Button size="sm" className="mt-2 gap-2" onClick={() => { setCreationStep(1); setCreateOpen(true); }}>
+                    <Plus className="w-4 h-4" /> Créer ma première formation
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+            {!coursesLoading && courses.length > 0 && (() => {
+              const totalPages = Math.ceil(courses.length / COURSES_PER_PAGE);
+              const paginated = courses.slice((coursesPage - 1) * COURSES_PER_PAGE, coursesPage * COURSES_PER_PAGE);
+              return (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {paginated.map((course) => {
+                      const status = courseStatus(course);
+                      const learners = course.participants?.length ?? 0;
+                      const chapitresCount = course.chapitres?.length ?? 0;
+                      const price = course.price ? parseFloat(course.price) : 0;
+                      return (
+                        <Card key={course.id} className="rounded-sm flex flex-col">
+                          <CardContent className="p-0 flex flex-col flex-1">
+                            {/* Contenu principal */}
+                            <div className="p-4 flex-1">
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <h3 className="font-semibold leading-tight line-clamp-2">{course.title}</h3>
+                                {getStatusBadge(status)}
+                              </div>
+                              <div className="flex flex-col gap-1.5 text-sm text-muted-foreground mt-3">
+                                <span className="flex items-center gap-1.5">
+                                  <Users className="w-3.5 h-3.5 shrink-0" /> {learners} apprenant{learners > 1 ? "s" : ""}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  <FileText className="w-3.5 h-3.5 shrink-0" /> {chapitresCount} chapitre{chapitresCount > 1 ? "s" : ""}
+                                </span>
+                                {course.isPaid && price > 0 ? (
+                                  <span className="flex items-center gap-1.5 text-primary font-medium">
+                                    <DollarSign className="w-3.5 h-3.5 shrink-0" /> {price.toLocaleString()} FCFA
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 text-emerald-600">
+                                    <Star className="w-3.5 h-3.5 shrink-0" /> Gratuit
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-                      {/* Barre d'actions contenu */}
-                      <div className="border-t px-4 py-2 bg-muted/30 flex items-center gap-2 flex-wrap rounded-b-sm">
-                        <span className="text-xs text-muted-foreground mr-1">Ajouter :</span>
+                            {/* Actions icônes */}
+                            <div className="border-t px-4 py-2 flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="icon" title="Voir le détail" onClick={() => openDetail(course)}>
+                                <Eye className="w-4 h-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" title="Modifier la formation" onClick={() => openEdit(course)}>
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteTarget(course)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            {/* Barre d'actions contenu */}
+                            <div className="border-t px-4 py-2 bg-muted/30 flex items-center gap-2 flex-wrap rounded-b-sm">
+                              <span className="text-xs text-muted-foreground mr-1">Ajouter :</span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 rounded-sm"
+                                onClick={() => openChapterDialog(course.id)}
+                              >
+                                <Layers className="w-3.5 h-3.5" />
+                                Chapitre
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 rounded-sm"
+                                onClick={() => openDevoirDialog(course.id)}
+                              >
+                                <ClipboardList className="w-3.5 h-3.5" />
+                                Devoir
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between pt-2">
+                      <p className="text-sm text-muted-foreground">
+                        Page {coursesPage} sur {totalPages} — {courses.length} formation{courses.length > 1 ? "s" : ""}
+                      </p>
+                      <div className="flex items-center gap-1">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs gap-1.5 rounded-sm"
-                          onClick={() => openChapterDialog(course.id)}
+                          className="h-8 px-3"
+                          disabled={coursesPage === 1}
+                          onClick={() => setCoursesPage(p => p - 1)}
                         >
-                          <Layers className="w-3.5 h-3.5" />
-                          Chapitre
+                          Précédent
                         </Button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                          <Button
+                            key={page}
+                            variant={page === coursesPage ? "default" : "outline"}
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setCoursesPage(page)}
+                          >
+                            {page}
+                          </Button>
+                        ))}
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs gap-1.5 rounded-sm"
-                          onClick={() => openDevoirDialog(course.id)}
+                          className="h-8 px-3"
+                          disabled={coursesPage === totalPages}
+                          onClick={() => setCoursesPage(p => p + 1)}
                         >
-                          <ClipboardList className="w-3.5 h-3.5" />
-                          Devoir
+                          Suivant
                         </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </TabsContent>
 
@@ -2170,6 +2210,31 @@ export function EspaceFormateur() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Confirmer suppression leçon */}
+      <Dialog open={!!deleteLeconTarget} onOpenChange={(open) => { if (!open) setDeleteLeconTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer la leçon
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteLeconTarget?.titre}&nbsp;»</span> ?
+            Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteLeconTarget(null)} disabled={deleteLeconSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteLecon} disabled={deleteLeconSubmitting}>
+              {deleteLeconSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {deleteLeconSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog Modifier une leçon */}
       <Dialog open={editLeconOpen} onOpenChange={setEditLeconOpen}>
         <DialogContent className="max-w-lg">
@@ -2295,51 +2360,37 @@ export function EspaceFormateur() {
               <div className="space-y-2">
                 <Label>Leçons existantes</Label>
                 <div className="space-y-1.5">
-                  {editChapitreTarget.lecons.map((lecon) => {
-                    const markedForDelete = editChapitreIdsToDelete.includes(lecon.id);
-                    return (
-                      <div
-                        key={lecon.id}
-                        className={`flex items-center gap-2 p-2.5 rounded-sm border text-sm transition-colors ${
-                          markedForDelete ? "border-destructive/40 bg-destructive/5 opacity-60" : "bg-muted/30"
-                        }`}
+                  {editChapitreTarget.lecons.map((lecon) => (
+                    <div
+                      key={lecon.id}
+                      className="flex items-center gap-2 p-2.5 rounded-sm border bg-muted/30 text-sm"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="flex-1 truncate">{lecon.titre}</span>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm shrink-0">
+                        {lecon.type_contenu}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-6 h-6 shrink-0"
+                        onClick={() => openEditLecon(lecon)}
+                        title="Modifier la leçon"
                       >
-                        <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span className={`flex-1 truncate ${markedForDelete ? "line-through text-muted-foreground" : ""}`}>
-                          {lecon.titre}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm shrink-0">
-                          {lecon.type_contenu}
-                        </Badge>
-                        {!markedForDelete && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="w-6 h-6 shrink-0"
-                            onClick={() => openEditLecon(lecon)}
-                            title="Modifier la leçon"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        <Button
-                          variant={markedForDelete ? "outline" : "ghost"}
-                          size="icon"
-                          className={`w-6 h-6 shrink-0 ${markedForDelete ? "text-foreground" : "text-destructive hover:text-destructive"}`}
-                          onClick={() => toggleLeconDelete(lecon.id)}
-                          title={markedForDelete ? "Annuler la suppression" : "Marquer pour suppression"}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-6 h-6 shrink-0 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteLeconTarget(lecon)}
+                        title="Supprimer la leçon"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-                {editChapitreIdsToDelete.length > 0 && (
-                  <p className="text-xs text-destructive">
-                    {editChapitreIdsToDelete.length} leçon(s) seront supprimées à la sauvegarde
-                  </p>
-                )}
               </div>
             )}
 
