@@ -20,10 +20,10 @@ import {
   Send, Calendar, CheckCircle, Clock, Eye, Upload,
   Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
   MapPin, Globe, Phone, Mail, Award, GraduationCap, Video,
-  PlayCircle, FileText, AlertCircle, Layers, ClipboardList,
+  PlayCircle, FileText, AlertCircle, Layers, ClipboardList, HelpCircle, ListChecks,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, formationModulesApi, formationCategoriesApi, formateursApi, chapitresApi, devoirsApi, leconsApi, type CentreFormation, type FormationModule, type FormationCategorie, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir } from "@/lib/api";
+import { formationsApi, centreFormationsApi, formationModulesApi, formationCategoriesApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, type CentreFormation, type FormationModule, type FormationCategorie, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion } from "@/lib/api";
 
 interface LessonDraft {
   id: string;
@@ -359,6 +359,232 @@ export function EspaceFormateur() {
       setDevoirError(e instanceof Error ? e.message : "Erreur lors de la création du devoir");
     } finally {
       setDevoirSubmitting(false);
+    }
+  };
+
+  // ── Quiz dialog ────────────────────────────────────────────────────────────
+  const [quizOpen, setQuizOpen] = useState(false);
+  const [quizFormationId, setQuizFormationId] = useState("");
+  const [quizChapitreId, setQuizChapitreId] = useState("");
+  const [quizLeconId, setQuizLeconId] = useState("");
+  const [quizTitre, setQuizTitre] = useState("");
+  const [quizDescription, setQuizDescription] = useState("");
+  const [quizChapitres, setQuizChapitres] = useState<FormationChapitre[]>([]);
+  const [quizChapitresLoading, setQuizChapitresLoading] = useState(false);
+  const [quizSubmitting, setQuizSubmitting] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizSuccess, setQuizSuccess] = useState(false);
+  // ── Quiz list/edit/delete ──
+  const [quizListOpen, setQuizListOpen] = useState(false);
+  const [quizListFormationId, setQuizListFormationId] = useState("");
+  const [quizListItems, setQuizListItems] = useState<FormationQuiz[]>([]);
+  const [quizListLoading, setQuizListLoading] = useState(false);
+  const [quizEditTarget, setQuizEditTarget] = useState<FormationQuiz | null>(null);
+  const [quizEditTitre, setQuizEditTitre] = useState("");
+  const [quizEditDescription, setQuizEditDescription] = useState("");
+  const [quizEditSubmitting, setQuizEditSubmitting] = useState(false);
+  const [quizEditError, setQuizEditError] = useState<string | null>(null);
+  const [quizDeleteTarget, setQuizDeleteTarget] = useState<FormationQuiz | null>(null);
+  const [quizDeleteSubmitting, setQuizDeleteSubmitting] = useState(false);
+
+  const openQuizDialog = (preselectedFormationId?: string) => {
+    setQuizFormationId(preselectedFormationId ?? "");
+    setQuizChapitreId("");
+    setQuizLeconId("");
+    setQuizTitre("");
+    setQuizDescription("");
+    setQuizChapitres([]);
+    setQuizError(null);
+    setQuizSuccess(false);
+    if (preselectedFormationId) {
+      formationsApi.getById(preselectedFormationId)
+        .then((f) => setQuizChapitres(f.chapitres ?? []))
+        .catch(() => {});
+    }
+    setQuizOpen(true);
+  };
+
+  const handleQuizFormationChange = (formationId: string) => {
+    setQuizFormationId(formationId);
+    setQuizChapitreId("");
+    setQuizLeconId("");
+    setQuizChapitres([]);
+    setQuizChapitresLoading(true);
+    formationsApi.getById(formationId)
+      .then((f) => setQuizChapitres(f.chapitres ?? []))
+      .catch(() => {})
+      .finally(() => setQuizChapitresLoading(false));
+  };
+
+  const quizLecons: FormationLecon[] =
+    quizChapitreId
+      ? (quizChapitres.find((c) => c.id === quizChapitreId)?.lecons ?? [])
+      : [];
+
+  const handleCreateQuiz = async () => {
+    if (!quizFormationId || !quizTitre.trim()) return;
+    setQuizSubmitting(true);
+    setQuizError(null);
+    try {
+      await quizApi.create({
+        titre: quizTitre,
+        description: quizDescription || undefined,
+        formation_id: quizFormationId,
+        chapitre_id: quizChapitreId && quizChapitreId !== "_none" ? quizChapitreId : undefined,
+        lecon_id: quizLeconId && quizLeconId !== "_none" ? quizLeconId : undefined,
+      });
+      setQuizSuccess(true);
+    } catch (e: unknown) {
+      setQuizError(e instanceof Error ? e.message : "Erreur lors de la création du quiz");
+    } finally {
+      setQuizSubmitting(false);
+    }
+  };
+
+  const openQuizList = (formationId: string) => {
+    setQuizListFormationId(formationId);
+    setQuizListItems([]);
+    setQuizListLoading(true);
+    setQuizListOpen(true);
+    quizApi.getByFormation(formationId)
+      .then(setQuizListItems)
+      .catch(() => {})
+      .finally(() => setQuizListLoading(false));
+  };
+
+  const handleQuizEditSave = async () => {
+    if (!quizEditTarget || !quizEditTitre.trim()) return;
+    setQuizEditSubmitting(true);
+    setQuizEditError(null);
+    try {
+      const updated = await quizApi.update(quizEditTarget.id, {
+        titre: quizEditTitre,
+        description: quizEditDescription || undefined,
+      });
+      setQuizListItems((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      setQuizEditTarget(null);
+    } catch (e: unknown) {
+      setQuizEditError(e instanceof Error ? e.message : "Erreur lors de la modification");
+    } finally {
+      setQuizEditSubmitting(false);
+    }
+  };
+
+  const handleQuizDelete = async () => {
+    if (!quizDeleteTarget) return;
+    setQuizDeleteSubmitting(true);
+    try {
+      await quizApi.delete(quizDeleteTarget.id);
+      setQuizListItems((prev) => prev.filter((q) => q.id !== quizDeleteTarget.id));
+      setQuizDeleteTarget(null);
+    } catch {
+      // silent
+    } finally {
+      setQuizDeleteSubmitting(false);
+    }
+  };
+
+  // ── Questions dialog ────────────────────────────────────────────────────────
+  const [questionOpen, setQuestionOpen] = useState(false);
+  const [questionQuizId, setQuestionQuizId] = useState("");
+  const [questionQuizTitre, setQuestionQuizTitre] = useState("");
+  const [questionTexte, setQuestionTexte] = useState("");
+  const [questionType, setQuestionType] = useState<"single_choice" | "multiple_choice">("single_choice");
+  const [questionOptions, setQuestionOptions] = useState<string[]>(["", ""]);
+  const [questionReponsesCorrectes, setQuestionReponsesCorrectes] = useState<number[]>([]);
+  const [questionPoints, setQuestionPoints] = useState(1);
+  const [questionSubmitting, setQuestionSubmitting] = useState(false);
+  const [questionError, setQuestionError] = useState<string | null>(null);
+  const [questionSuccess, setQuestionSuccess] = useState(false);
+  // Liste des questions d'un quiz
+  const [questionListOpen, setQuestionListOpen] = useState(false);
+  const [questionListQuizId, setQuestionListQuizId] = useState("");
+  const [questionListQuizTitre, setQuestionListQuizTitre] = useState("");
+  const [questionListItems, setQuestionListItems] = useState<FormationQuestion[]>([]);
+  const [questionListLoading, setQuestionListLoading] = useState(false);
+  const [questionDeleteTarget, setQuestionDeleteTarget] = useState<FormationQuestion | null>(null);
+  const [questionDeleteSubmitting, setQuestionDeleteSubmitting] = useState(false);
+
+  const openQuestionDialog = (quizId: string, quizTitre: string) => {
+    setQuestionQuizId(quizId);
+    setQuestionQuizTitre(quizTitre);
+    setQuestionTexte("");
+    setQuestionType("single_choice");
+    setQuestionOptions(["", ""]);
+    setQuestionReponsesCorrectes([]);
+    setQuestionPoints(1);
+    setQuestionError(null);
+    setQuestionSuccess(false);
+    setQuestionOpen(true);
+  };
+
+  const openQuestionList = (quizId: string, quizTitre: string) => {
+    setQuestionListQuizId(quizId);
+    setQuestionListQuizTitre(quizTitre);
+    setQuestionListItems([]);
+    setQuestionListLoading(true);
+    setQuestionListOpen(true);
+    questionsApi.getByQuiz(quizId)
+      .then(setQuestionListItems)
+      .catch(() => {})
+      .finally(() => setQuestionListLoading(false));
+  };
+
+  const addQuestionOption = () => setQuestionOptions((prev) => [...prev, ""]);
+  const removeQuestionOption = (idx: number) => {
+    setQuestionOptions((prev) => prev.filter((_, i) => i !== idx));
+    setQuestionReponsesCorrectes((prev) => {
+      const updated = prev.filter((r) => r !== idx).map((r) => (r > idx ? r - 1 : r));
+      return updated;
+    });
+  };
+  const updateQuestionOption = (idx: number, val: string) => {
+    setQuestionOptions((prev) => prev.map((o, i) => (i === idx ? val : o)));
+  };
+  const toggleReponseCorrecte = (idx: number) => {
+    if (questionType === "single_choice") {
+      setQuestionReponsesCorrectes([idx]);
+    } else {
+      setQuestionReponsesCorrectes((prev) =>
+        prev.includes(idx) ? prev.filter((r) => r !== idx) : [...prev, idx]
+      );
+    }
+  };
+
+  const handleCreateQuestion = async () => {
+    if (!questionQuizId || !questionTexte.trim() || questionOptions.some((o) => !o.trim()) || questionReponsesCorrectes.length === 0) return;
+    setQuestionSubmitting(true);
+    setQuestionError(null);
+    try {
+      const created = await questionsApi.create({
+        texte: questionTexte,
+        type: questionType,
+        options: questionOptions,
+        reponses_correctes: questionReponsesCorrectes,
+        points: questionPoints,
+        quiz_id: questionQuizId,
+        ordre: (questionListItems.length || 0) + 1,
+      });
+      setQuestionListItems((prev) => [...prev, created]);
+      setQuestionSuccess(true);
+    } catch (e: unknown) {
+      setQuestionError(e instanceof Error ? e.message : "Erreur lors de la création");
+    } finally {
+      setQuestionSubmitting(false);
+    }
+  };
+
+  const handleQuestionDelete = async () => {
+    if (!questionDeleteTarget) return;
+    setQuestionDeleteSubmitting(true);
+    try {
+      await questionsApi.delete(questionDeleteTarget.id);
+      setQuestionListItems((prev) => prev.filter((q) => q.id !== questionDeleteTarget.id));
+      setQuestionDeleteTarget(null);
+    } catch {
+      // silent
+    } finally {
+      setQuestionDeleteSubmitting(false);
     }
   };
 
@@ -1310,6 +1536,24 @@ export function EspaceFormateur() {
                               >
                                 <ClipboardList className="w-3.5 h-3.5" />
                                 Devoir
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 rounded-sm"
+                                onClick={() => openQuizDialog(course.id)}
+                              >
+                                <HelpCircle className="w-3.5 h-3.5" />
+                                Quiz
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 rounded-sm"
+                                onClick={() => openQuizList(course.id)}
+                              >
+                                <ListChecks className="w-3.5 h-3.5" />
+                                Voir quiz
                               </Button>
                             </div>
                           </CardContent>
@@ -2749,6 +2993,467 @@ export function EspaceFormateur() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Créer un quiz */}
+      <Dialog open={quizOpen} onOpenChange={setQuizOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-primary" />
+              Créer un quiz
+            </DialogTitle>
+          </DialogHeader>
+
+          {quizSuccess ? (
+            <div className="py-10 text-center space-y-4">
+              <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
+              <p className="font-semibold text-lg">Quiz créé avec succès !</p>
+              <p className="text-sm text-muted-foreground">Le quiz a bien été ajouté à la formation.</p>
+              <Button className="rounded-sm" onClick={() => { setQuizOpen(false); setQuizSuccess(false); }}>
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {/* Formation */}
+              <div className="space-y-2">
+                <Label>Formation <span className="text-destructive">*</span></Label>
+                <Select value={quizFormationId} onValueChange={handleQuizFormationChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir une formation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Chapitre (optionnel) */}
+              {quizFormationId && (
+                <div className="space-y-2">
+                  <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Select
+                    value={quizChapitreId}
+                    onValueChange={(v) => { setQuizChapitreId(v); setQuizLeconId(""); }}
+                    disabled={quizChapitresLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={quizChapitresLoading ? "Chargement…" : "Choisir un chapitre"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Aucun chapitre</SelectItem>
+                      {quizChapitres.map((ch) => (
+                        <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Leçon (optionnel) */}
+              {quizChapitreId && quizChapitreId !== "_none" && quizLecons.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Select value={quizLeconId} onValueChange={setQuizLeconId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choisir une leçon" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Aucune leçon</SelectItem>
+                      {quizLecons.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Titre */}
+              <div className="space-y-2">
+                <Label>Titre <span className="text-destructive">*</span></Label>
+                <Input
+                  value={quizTitre}
+                  onChange={(e) => setQuizTitre(e.target.value)}
+                  placeholder="Ex: Quiz sur les bases de NestJS"
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={quizDescription}
+                  onChange={(e) => setQuizDescription(e.target.value)}
+                  placeholder="Décrivez l'objectif du quiz…"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+
+              {quizError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {quizError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!quizSuccess && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" className="rounded-sm" onClick={() => setQuizOpen(false)} disabled={quizSubmitting}>
+                Annuler
+              </Button>
+              <Button
+                className="rounded-sm gap-2"
+                onClick={handleCreateQuiz}
+                disabled={quizSubmitting || !quizFormationId || !quizTitre.trim()}
+              >
+                {quizSubmitting ? <span className="animate-spin">⏳</span> : <HelpCircle className="w-4 h-4" />}
+                {quizSubmitting ? "Création en cours…" : "Créer le quiz"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Liste des quiz */}
+      <Dialog open={quizListOpen} onOpenChange={setQuizListOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListChecks className="w-5 h-5 text-primary" />
+              Quiz de la formation
+            </DialogTitle>
+          </DialogHeader>
+
+          {quizListLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+          ) : quizListItems.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <HelpCircle className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Aucun quiz pour cette formation.</p>
+              <Button size="sm" className="gap-2 mt-2" onClick={() => { setQuizListOpen(false); openQuizDialog(quizListFormationId); }}>
+                <Plus className="w-4 h-4" /> Créer un quiz
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              {quizListItems.map((q) => (
+                <div key={q.id} className="flex items-start justify-between gap-3 p-3 border rounded-sm">
+                  {quizEditTarget?.id === q.id ? (
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        value={quizEditTitre}
+                        onChange={(e) => setQuizEditTitre(e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                      <Textarea
+                        value={quizEditDescription}
+                        onChange={(e) => setQuizEditDescription(e.target.value)}
+                        rows={2}
+                        className="resize-none text-sm"
+                        placeholder="Description…"
+                      />
+                      {quizEditError && (
+                        <p className="text-xs text-destructive">{quizEditError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-7 text-xs rounded-sm gap-1" onClick={handleQuizEditSave} disabled={quizEditSubmitting}>
+                          <CheckCircle className="w-3 h-3" />
+                          {quizEditSubmitting ? "Enregistrement…" : "Enregistrer"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs rounded-sm" onClick={() => setQuizEditTarget(null)}>
+                          Annuler
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{q.titre}</p>
+                      {q.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{q.description}</p>
+                      )}
+                    </div>
+                  )}
+                  {quizEditTarget?.id !== q.id && (
+                    <div className="flex gap-1 shrink-0">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" title="Questions" onClick={() => { setQuizListOpen(false); openQuestionList(q.id, q.titre); }}>
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        Questions
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => {
+                        setQuizEditTarget(q);
+                        setQuizEditTitre(q.titre);
+                        setQuizEditDescription(q.description ?? "");
+                        setQuizEditError(null);
+                      }}>
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setQuizDeleteTarget(q)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setQuizListOpen(false)}>Fermer</Button>
+            <Button className="rounded-sm gap-2" onClick={() => { setQuizListOpen(false); openQuizDialog(quizListFormationId); }}>
+              <Plus className="w-4 h-4" /> Nouveau quiz
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmer suppression quiz */}
+      <Dialog open={!!quizDeleteTarget} onOpenChange={(open) => { if (!open) setQuizDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer le quiz
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{quizDeleteTarget?.titre}&nbsp;»</span> ?
+            Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setQuizDeleteTarget(null)} disabled={quizDeleteSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleQuizDelete} disabled={quizDeleteSubmitting}>
+              {quizDeleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {quizDeleteSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Liste des questions d'un quiz */}
+      <Dialog open={questionListOpen} onOpenChange={setQuestionListOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-primary" />
+              Questions — {questionListQuizTitre}
+            </DialogTitle>
+          </DialogHeader>
+
+          {questionListLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+          ) : questionListItems.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <HelpCircle className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Aucune question pour ce quiz.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              {questionListItems.map((q, idx) => (
+                <div key={q.id} className="border rounded-sm p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">Q{idx + 1}. {q.texte}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          {q.type === "single_choice" ? "Choix unique" : "Choix multiple"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{q.points} pt{q.points > 1 ? "s" : ""}</span>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive shrink-0" title="Supprimer" onClick={() => setQuestionDeleteTarget(q)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {q.options.map((opt, i) => (
+                      <div key={i} className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${q.reponses_correctes.includes(i) ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 font-medium" : "bg-muted text-muted-foreground"}`}>
+                        {q.reponses_correctes.includes(i) ? <CheckCircle className="w-3 h-3 shrink-0" /> : <span className="w-3 h-3 shrink-0 inline-block" />}
+                        {opt}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionListOpen(false)}>Fermer</Button>
+            <Button className="rounded-sm gap-2" onClick={() => { setQuestionListOpen(false); openQuestionDialog(questionListQuizId, questionListQuizTitre); }}>
+              <Plus className="w-4 h-4" /> Ajouter une question
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Créer une question */}
+      <Dialog open={questionOpen} onOpenChange={setQuestionOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-primary" />
+              Ajouter une question — {questionQuizTitre}
+            </DialogTitle>
+          </DialogHeader>
+
+          {questionSuccess ? (
+            <div className="py-10 text-center space-y-4">
+              <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
+              <p className="font-semibold text-lg">Question ajoutée !</p>
+              <div className="flex gap-2 justify-center">
+                <Button variant="outline" className="rounded-sm" onClick={() => { setQuestionSuccess(false); }}>
+                  Ajouter une autre
+                </Button>
+                <Button className="rounded-sm" onClick={() => { setQuestionOpen(false); openQuestionList(questionQuizId, questionQuizTitre); }}>
+                  Voir les questions
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {/* Type */}
+              <div className="space-y-2">
+                <Label>Type de question <span className="text-destructive">*</span></Label>
+                <Select value={questionType} onValueChange={(v) => { setQuestionType(v as "single_choice" | "multiple_choice"); setQuestionReponsesCorrectes([]); }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single_choice">Choix unique (une seule bonne réponse)</SelectItem>
+                    <SelectItem value="multiple_choice">Choix multiple (plusieurs bonnes réponses)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Texte de la question */}
+              <div className="space-y-2">
+                <Label>Question <span className="text-destructive">*</span></Label>
+                <Textarea
+                  value={questionTexte}
+                  onChange={(e) => setQuestionTexte(e.target.value)}
+                  placeholder="Quelle est la syntaxe correcte pour…"
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+
+              {/* Options de réponse */}
+              <div className="space-y-2">
+                <Label>Options de réponse <span className="text-destructive">*</span></Label>
+                <p className="text-xs text-muted-foreground">
+                  {questionType === "single_choice" ? "Cliquez sur une option pour la marquer comme correcte." : "Cliquez sur les options correctes (plusieurs possibles)."}
+                </p>
+                <div className="space-y-2">
+                  {questionOptions.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleReponseCorrecte(idx)}
+                        className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                          questionReponsesCorrectes.includes(idx)
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : "border-muted-foreground/30 hover:border-emerald-400"
+                        }`}
+                        title="Marquer comme réponse correcte"
+                      >
+                        {questionReponsesCorrectes.includes(idx) && <CheckCircle className="w-3.5 h-3.5" />}
+                      </button>
+                      <Input
+                        value={opt}
+                        onChange={(e) => updateQuestionOption(idx, e.target.value)}
+                        placeholder={`Option ${idx + 1}`}
+                        className="flex-1 h-8 text-sm"
+                      />
+                      {questionOptions.length > 2 && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" onClick={() => removeQuestionOption(idx)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 rounded-sm" onClick={addQuestionOption}>
+                  <Plus className="w-3.5 h-3.5" /> Ajouter une option
+                </Button>
+              </div>
+
+              {/* Points */}
+              <div className="space-y-2">
+                <Label>Points</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={questionPoints}
+                  onChange={(e) => setQuestionPoints(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-28 h-8"
+                />
+              </div>
+
+              {questionError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {questionError}
+                </div>
+              )}
+              {questionReponsesCorrectes.length === 0 && questionTexte.trim() && (
+                <p className="text-xs text-amber-600">Sélectionnez au moins une réponse correcte.</p>
+              )}
+            </div>
+          )}
+
+          {!questionSuccess && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" className="rounded-sm" onClick={() => setQuestionOpen(false)} disabled={questionSubmitting}>
+                Annuler
+              </Button>
+              <Button
+                className="rounded-sm gap-2"
+                onClick={handleCreateQuestion}
+                disabled={
+                  questionSubmitting ||
+                  !questionTexte.trim() ||
+                  questionOptions.some((o) => !o.trim()) ||
+                  questionReponsesCorrectes.length === 0
+                }
+              >
+                {questionSubmitting ? <span className="animate-spin">⏳</span> : <Plus className="w-4 h-4" />}
+                {questionSubmitting ? "Ajout en cours…" : "Ajouter la question"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmer suppression question */}
+      <Dialog open={!!questionDeleteTarget} onOpenChange={(open) => { if (!open) setQuestionDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer la question
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer cette question ? Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionDeleteTarget(null)} disabled={questionDeleteSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleQuestionDelete} disabled={questionDeleteSubmitting}>
+              {questionDeleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {questionDeleteSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

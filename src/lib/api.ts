@@ -1402,6 +1402,101 @@ export const leconsApi = {
   },
 };
 
+export interface FormationQuiz {
+  id: string;
+  titre: string;
+  description: string | null;
+  formation_id: string;
+  chapitre_id: string | null;
+  lecon_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const quizApi = {
+  getByFormation: async (formationId: string): Promise<FormationQuiz[]> => {
+    const res = await request<{ success: boolean; data: FormationQuiz[] } | FormationQuiz[]>(
+      `/api/formation/quiz?formation_id=${encodeURIComponent(formationId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationQuiz[] }).data ?? []);
+  },
+
+  create: async (payload: {
+    titre: string;
+    description?: string;
+    formation_id: string;
+    chapitre_id?: string;
+    lecon_id?: string;
+  }): Promise<FormationQuiz> => {
+    const res = await request<{ success: boolean; data: FormationQuiz } | FormationQuiz>(
+      "/api/formation/quiz",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationQuiz }).data ?? (res as FormationQuiz);
+  },
+
+  update: async (id: string, payload: {
+    titre?: string;
+    description?: string;
+    formation_id?: string;
+    chapitre_id?: string;
+    lecon_id?: string;
+  }): Promise<FormationQuiz> => {
+    const res = await request<{ success: boolean; data: FormationQuiz } | FormationQuiz>(
+      `/api/formation/quiz/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationQuiz }).data ?? (res as FormationQuiz);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/quiz/${id}`, { method: "DELETE" });
+  },
+};
+
+export interface FormationQuestion {
+  id: string;
+  texte: string;
+  type: "single_choice" | "multiple_choice";
+  options: string[];
+  reponses_correctes: number[];
+  points: number;
+  ordre: number | null;
+  quiz_id: string | null;
+  devoir_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const questionsApi = {
+  getByQuiz: async (quizId: string): Promise<FormationQuestion[]> => {
+    const res = await request<{ success: boolean; data: FormationQuestion[] } | FormationQuestion[]>(
+      `/api/formation/questions?quiz_id=${encodeURIComponent(quizId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationQuestion[] }).data ?? []);
+  },
+
+  create: async (payload: {
+    texte: string;
+    type: "single_choice" | "multiple_choice";
+    options: string[];
+    reponses_correctes: number[];
+    points?: number;
+    quiz_id: string;
+    ordre?: number;
+  }): Promise<FormationQuestion> => {
+    const res = await request<{ success: boolean; data: FormationQuestion } | FormationQuestion>(
+      "/api/formation/questions",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationQuestion }).data ?? (res as FormationQuestion);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/questions/${id}`, { method: "DELETE" });
+  },
+};
+
 export const authApi = {
   sendOtp: (email: string) =>
     request<void>("/api/auth/adhesion/send-otp", {
