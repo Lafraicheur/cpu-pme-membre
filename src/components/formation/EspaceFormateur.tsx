@@ -10,59 +10,587 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Copy,
+  BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Trash2,
   Send, Calendar, CheckCircle, Clock, Eye, Upload,
   Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
+  MapPin, Globe, Phone, Mail, Award, GraduationCap, Video,
+  PlayCircle, FileText, AlertCircle, Layers, ClipboardList,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, formationModulesApi, type CentreFormation, type FormationModule } from "@/lib/api";
+import { formationsApi, centreFormationsApi, formationModulesApi, formationCategoriesApi, formateursApi, chapitresApi, devoirsApi, leconsApi, type CentreFormation, type FormationModule, type FormationCategorie, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir } from "@/lib/api";
 
-type SubscriptionTier = "bronze" | "silver" | "gold" | "platine";
-
-interface Course {
+interface LessonDraft {
   id: string;
-  title: string;
-  status: "draft" | "submitted" | "published" | "rejected";
-  learners: number;
-  completion: number;
-  rating: number;
-  revenue: number;
-  createdAt: string;
+  titre: string;
+  type_contenu: "video" | "pdf" | "texte";
+  file: File | null;
+  contenu: string;
 }
 
-const mockCourses: Course[] = [
-  { id: "1", title: "Maîtriser les Appels d'Offres", status: "published", learners: 156, completion: 78, rating: 4.8, revenue: 450000, createdAt: "2025-10-15" },
-  { id: "2", title: "Excellence opérationnelle PME", status: "published", learners: 89, completion: 65, rating: 4.6, revenue: 280000, createdAt: "2025-11-20" },
-  { id: "3", title: "Négociation bancaire", status: "submitted", learners: 0, completion: 0, rating: 0, revenue: 0, createdAt: "2026-01-02" },
-  { id: "4", title: "Export vers la CEDEAO", status: "draft", learners: 0, completion: 0, rating: 0, revenue: 0, createdAt: "2026-01-03" },
-];
+type SubscriptionTier = "bronze" | "silver" | "gold" | "platine";
 
 const subscriptionLimits: Record<SubscriptionTier, { courses: number; canMonetize: boolean; canCertify: boolean }> = {
   bronze: { courses: 0, canMonetize: false, canCertify: false },
   silver: { courses: 1, canMonetize: false, canCertify: false },
   gold: { courses: 5, canMonetize: true, canCertify: true },
-  platine: { courses: -1, canMonetize: true, canCertify: true }, // -1 = illimité
+  platine: { courses: -1, canMonetize: true, canCertify: true },
 };
 
+function courseStatus(f: FormationAPI): "draft" | "submitted" | "published" | "rejected" {
+  if (f.isActive) return "published";
+  return "draft";
+}
+
 export function EspaceFormateur() {
-  useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [courses] = useState<Course[]>(mockCourses);
+  const [courses, setCourses] = useState<FormationAPI[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
   const [creationStep, setCreationStep] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [centres, setCentres] = useState<CentreFormation[]>([]);
   const [modules, setModules] = useState<FormationModule[]>([]);
+  const [categories, setCategories] = useState<FormationCategorie[]>([]);
+  const [formateurs, setFormateurs] = useState<FormateurAvecFormations[]>([]);
+
+  const fetchCourses = () => {
+    if (!user?.id) return;
+    setCoursesLoading(true);
+    formationsApi.getByCreator(user.id)
+      .then(setCourses)
+      .catch(() => {})
+      .finally(() => setCoursesLoading(false));
+  };
 
   useEffect(() => {
     centreFormationsApi.getAll().then(setCentres).catch(() => {});
     formationModulesApi.getAll().then(setModules).catch(() => {});
-  }, []);
+    formationCategoriesApi.getAll().then(setCategories).catch(() => {});
+    if (user?.id) {
+      formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
+      fetchCourses();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<FormationAPI | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: "", description: "", category: "", mode: "", niveau: "",
+    duration: "", moduleId: "", formateur_id: "",
+    isPaid: false, isActive: false, price: "", price_member: "",
+    image: null as File | null, fichier: null as File | null,
+  });
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const editImageRef = useRef<HTMLInputElement>(null);
+  const editFichierRef = useRef<HTMLInputElement>(null);
+
+  const openEdit = (course: FormationAPI) => {
+    setEditTarget(course);
+    setEditForm({
+      title:        course.title,
+      description:  course.description ?? "",
+      category:     course.category ?? "",
+      mode:         course.mode ?? "",
+      niveau:       course.niveau ?? "",
+      duration:     course.duration ? String(course.duration) : "",
+      moduleId:     "",
+      formateur_id: course.formateur?.id ?? "",
+      isPaid:       course.isPaid,
+      isActive:     course.isActive,
+      price:        course.price ? String(parseFloat(course.price)) : "",
+      price_member: course.price_member ? String(parseFloat(course.price_member)) : "",
+      image:        null,
+      fichier:      null,
+    });
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const setEF = (key: string, value: unknown) => setEditForm((p) => ({ ...p, [key]: value }));
+
+  const handleEditSubmit = async () => {
+    if (!editTarget) return;
+    setEditSubmitting(true);
+    setEditError(null);
+    try {
+      await formationsApi.update(editTarget.id, {
+        title:        editForm.title        || undefined,
+        description:  editForm.description  || undefined,
+        category:     editForm.category     || undefined,
+        mode:         editForm.mode         || undefined,
+        niveau:       editForm.niveau       || undefined,
+        duration:     editForm.duration     ? Number(editForm.duration)     : undefined,
+        isPaid:       editForm.isPaid,
+        isActive:     editForm.isActive,
+        price:        editForm.price        ? Number(editForm.price)        : undefined,
+        price_member: editForm.price_member ? Number(editForm.price_member) : undefined,
+        moduleId:     editForm.moduleId     || undefined,
+        formateur_id: editForm.formateur_id || undefined,
+        image:        editForm.image,
+        fichier:      editForm.fichier,
+      });
+      setEditOpen(false);
+      fetchCourses();
+    } catch (e: unknown) {
+      setEditError(e instanceof Error ? e.message : "Erreur lors de la mise à jour");
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  // Detail drawer
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailFormation, setDetailFormation] = useState<FormationAPI | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailChapitres, setDetailChapitres] = useState<FormationChapitre[]>([]);
+  const [detailDevoirs, setDetailDevoirs] = useState<FormationDevoir[]>([]);
+
+  const openDetail = async (course: FormationAPI) => {
+    setDetailFormation(course);
+    setDetailChapitres([]);
+    setDetailDevoirs([]);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    try {
+      const [full, chapitres, devoirs] = await Promise.all([
+        formationsApi.getById(course.id),
+        chapitresApi.getByFormation(course.id),
+        devoirsApi.getByFormation(course.id),
+      ]);
+      setDetailFormation(full);
+      setDetailChapitres(chapitres);
+      setDetailDevoirs(devoirs);
+    } catch {
+      // garde les données de base déjà disponibles
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const reloadDetailChapitres = () => {
+    if (!detailFormation) return;
+    chapitresApi.getByFormation(detailFormation.id)
+      .then(setDetailChapitres)
+      .catch(() => {});
+  };
+
+  const reloadDetailDevoirs = () => {
+    if (!detailFormation) return;
+    devoirsApi.getByFormation(detailFormation.id)
+      .then(setDetailDevoirs)
+      .catch(() => {});
+  };
+
+  // Delete dialog
+  const [deleteTarget, setDeleteTarget] = useState<FormationAPI | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteSubmitting(true);
+    try {
+      await formationsApi.delete(deleteTarget.id);
+      setDeleteTarget(null);
+      fetchCourses();
+    } catch {
+      // garde le dialog ouvert, l'erreur est silencieuse (cas rare)
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
+  // ── Chapitre dialog ────────────────────────────────────────────────────────
+  const [chapterOpen, setChapterOpen] = useState(false);
+  const [chapterFormationId, setChapterFormationId] = useState("");
+  const [chapterTitre, setChapterTitre] = useState("");
+  const [chapterLecons, setChapterLecons] = useState<LessonDraft[]>([]);
+  const [chapterSubmitting, setChapterSubmitting] = useState(false);
+  const [chapterError, setChapterError] = useState<string | null>(null);
+  const [chapterSuccess, setChapterSuccess] = useState(false);
+
+  const openChapterDialog = (preselectedFormationId?: string) => {
+    setChapterFormationId(preselectedFormationId ?? "");
+    setChapterTitre("");
+    setChapterLecons([]);
+    setChapterError(null);
+    setChapterSuccess(false);
+    setChapterOpen(true);
+  };
+
+  const addLecon = () => {
+    setChapterLecons((prev) => [...prev, {
+      id: crypto.randomUUID(),
+      titre: "",
+      type_contenu: "video",
+      file: null,
+      contenu: "",
+    }]);
+  };
+
+  const updateLecon = (id: string, updates: Partial<LessonDraft>) => {
+    setChapterLecons((prev) => prev.map((l) => l.id === id ? { ...l, ...updates } : l));
+  };
+
+  const removeLecon = (id: string) => {
+    setChapterLecons((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  const handleCreateChapter = async () => {
+    if (!chapterFormationId || !chapterTitre.trim()) return;
+    setChapterSubmitting(true);
+    setChapterError(null);
+    try {
+      const leconsJson: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }> = [];
+      const files: { [key: string]: File } = {};
+      let fileIndex = 0;
+
+      for (const lecon of chapterLecons) {
+        if (!lecon.titre.trim()) continue;
+        const entry: { titre: string; type_contenu: string; fileField?: string; contenu?: string } = {
+          titre: lecon.titre,
+          type_contenu: lecon.type_contenu,
+        };
+        if (lecon.type_contenu !== "texte" && lecon.file) {
+          const fieldName = `leconFile_${fileIndex++}`;
+          entry.fileField = fieldName;
+          files[fieldName] = lecon.file;
+        } else if (lecon.type_contenu === "texte" && lecon.contenu.trim()) {
+          entry.contenu = lecon.contenu;
+        }
+        leconsJson.push(entry);
+      }
+
+      await chapitresApi.create({
+        formation_id: chapterFormationId,
+        titre: chapterTitre,
+        lecons: leconsJson.length > 0 ? leconsJson : undefined,
+        files: Object.keys(files).length > 0 ? files : undefined,
+      });
+      setChapterSuccess(true);
+      fetchCourses();
+    } catch (e: unknown) {
+      setChapterError(e instanceof Error ? e.message : "Erreur lors de la création du chapitre");
+    } finally {
+      setChapterSubmitting(false);
+    }
+  };
+
+  // ── Devoir dialog ──────────────────────────────────────────────────────────
+  const [devoirOpen, setDevoirOpen] = useState(false);
+  const [devoirFormationId, setDevoirFormationId] = useState("");
+  const [devoirChapitreId, setDevoirChapitreId] = useState("");
+  const [devoirLeconId, setDevoirLeconId] = useState("");
+  const [devoirTitre, setDevoirTitre] = useState("");
+  const [devoirDescription, setDevoirDescription] = useState("");
+  const [devoirConsignes, setDevoirConsignes] = useState("");
+  const [devoirDateLimite, setDevoirDateLimite] = useState("");
+  const [devoirChapitres, setDevoirChapitres] = useState<FormationChapitre[]>([]);
+  const [devoirChapitresLoading, setDevoirChapitresLoading] = useState(false);
+  const [devoirSubmitting, setDevoirSubmitting] = useState(false);
+  const [devoirError, setDevoirError] = useState<string | null>(null);
+  const [devoirSuccess, setDevoirSuccess] = useState(false);
+
+  const openDevoirDialog = (preselectedFormationId?: string) => {
+    setDevoirFormationId(preselectedFormationId ?? "");
+    setDevoirChapitreId("");
+    setDevoirLeconId("");
+    setDevoirTitre("");
+    setDevoirDescription("");
+    setDevoirConsignes("");
+    setDevoirDateLimite("");
+    setDevoirChapitres([]);
+    setDevoirError(null);
+    setDevoirSuccess(false);
+    if (preselectedFormationId) {
+      formationsApi.getById(preselectedFormationId)
+        .then((f) => setDevoirChapitres(f.chapitres ?? []))
+        .catch(() => {});
+    }
+    setDevoirOpen(true);
+  };
+
+  const handleDevoirFormationChange = (formationId: string) => {
+    setDevoirFormationId(formationId);
+    setDevoirChapitreId("");
+    setDevoirLeconId("");
+    setDevoirChapitres([]);
+    setDevoirChapitresLoading(true);
+    formationsApi.getById(formationId)
+      .then((f) => setDevoirChapitres(f.chapitres ?? []))
+      .catch(() => {})
+      .finally(() => setDevoirChapitresLoading(false));
+  };
+
+  const devoirLecons: FormationLecon[] =
+    devoirChapitreId
+      ? (devoirChapitres.find((c) => c.id === devoirChapitreId)?.lecons ?? [])
+      : [];
+
+  const handleCreateDevoir = async () => {
+    if (!devoirFormationId || !devoirTitre.trim()) return;
+    setDevoirSubmitting(true);
+    setDevoirError(null);
+    try {
+      await devoirsApi.create({
+        titre: devoirTitre,
+        description: devoirDescription || undefined,
+        consignes: devoirConsignes || undefined,
+        date_limite: devoirDateLimite || undefined,
+        formation_id: devoirFormationId,
+        chapitre_id: devoirChapitreId || undefined,
+        lecon_id: devoirLeconId || undefined,
+      });
+      setDevoirSuccess(true);
+    } catch (e: unknown) {
+      setDevoirError(e instanceof Error ? e.message : "Erreur lors de la création du devoir");
+    } finally {
+      setDevoirSubmitting(false);
+    }
+  };
+
+  // ── Edit chapitre dialog ───────────────────────────────────────────────────
+  const [editChapitreOpen, setEditChapitreOpen] = useState(false);
+  const [editChapitreTarget, setEditChapitreTarget] = useState<FormationChapitre | null>(null);
+  const [editChapitreTitre, setEditChapitreTitre] = useState("");
+  const [editChapitreNewLecons, setEditChapitreNewLecons] = useState<LessonDraft[]>([]);
+  const [editChapitreIdsToDelete, setEditChapitreIdsToDelete] = useState<string[]>([]);
+  const [editChapitreSubmitting, setEditChapitreSubmitting] = useState(false);
+  const [editChapitreError, setEditChapitreError] = useState<string | null>(null);
+
+  const openEditChapitre = (ch: FormationChapitre) => {
+    setEditChapitreTarget(ch);
+    setEditChapitreTitre(ch.titre);
+    setEditChapitreNewLecons([]);
+    setEditChapitreIdsToDelete([]);
+    setEditChapitreError(null);
+    setEditChapitreOpen(true);
+  };
+
+  const toggleLeconDelete = (leconId: string) => {
+    setEditChapitreIdsToDelete((prev) =>
+      prev.includes(leconId) ? prev.filter((id) => id !== leconId) : [...prev, leconId]
+    );
+  };
+
+  const addNewLeconToEdit = () => {
+    setEditChapitreNewLecons((prev) => [...prev, {
+      id: crypto.randomUUID(), titre: "", type_contenu: "video", file: null, contenu: "",
+    }]);
+  };
+
+  const updateNewLecon = (id: string, updates: Partial<LessonDraft>) => {
+    setEditChapitreNewLecons((prev) => prev.map((l) => l.id === id ? { ...l, ...updates } : l));
+  };
+
+  const removeNewLecon = (id: string) => {
+    setEditChapitreNewLecons((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  const handleUpdateChapitre = async () => {
+    if (!editChapitreTarget || !editChapitreTitre.trim()) return;
+    setEditChapitreSubmitting(true);
+    setEditChapitreError(null);
+    try {
+      const leconsJson: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }> = [];
+      const files: { [key: string]: File } = {};
+      let fileIndex = 0;
+      for (const lecon of editChapitreNewLecons) {
+        if (!lecon.titre.trim()) continue;
+        const entry: { titre: string; type_contenu: string; fileField?: string; contenu?: string } = {
+          titre: lecon.titre, type_contenu: lecon.type_contenu,
+        };
+        if (lecon.type_contenu !== "texte" && lecon.file) {
+          const fieldName = `leconFile_${fileIndex++}`;
+          entry.fileField = fieldName;
+          files[fieldName] = lecon.file;
+        } else if (lecon.type_contenu === "texte" && lecon.contenu.trim()) {
+          entry.contenu = lecon.contenu;
+        }
+        leconsJson.push(entry);
+      }
+      await chapitresApi.update(editChapitreTarget.id, {
+        titre: editChapitreTitre,
+        lecons: leconsJson.length > 0 ? leconsJson : undefined,
+        leconIdsToDelete: editChapitreIdsToDelete.length > 0 ? editChapitreIdsToDelete : undefined,
+        files: Object.keys(files).length > 0 ? files : undefined,
+      });
+      setEditChapitreOpen(false);
+      reloadDetailChapitres();
+    } catch (e: unknown) {
+      setEditChapitreError(e instanceof Error ? e.message : "Erreur lors de la mise à jour du chapitre");
+    } finally {
+      setEditChapitreSubmitting(false);
+    }
+  };
+
+  // ── Delete chapitre ────────────────────────────────────────────────────────
+  const [deleteChapitreTarget, setDeleteChapitreTarget] = useState<FormationChapitre | null>(null);
+  const [deleteChapitreSubmitting, setDeleteChapitreSubmitting] = useState(false);
+
+  const handleDeleteChapitre = async () => {
+    if (!deleteChapitreTarget) return;
+    setDeleteChapitreSubmitting(true);
+    try {
+      await chapitresApi.delete(deleteChapitreTarget.id);
+      setDeleteChapitreTarget(null);
+      reloadDetailChapitres();
+    } catch {
+      // garde le dialog ouvert
+    } finally {
+      setDeleteChapitreSubmitting(false);
+    }
+  };
+
+  // ── Edit leçon dialog ─────────────────────────────────────────────────────
+  const [editLeconOpen, setEditLeconOpen] = useState(false);
+  const [editLeconTarget, setEditLeconTarget] = useState<FormationLecon | null>(null);
+  const [editLeconTitre, setEditLeconTitre] = useState("");
+  const [editLeconType, setEditLeconType] = useState<"video" | "pdf" | "texte">("video");
+  const [editLeconContenu, setEditLeconContenu] = useState("");
+  const [editLeconFile, setEditLeconFile] = useState<File | null>(null);
+  const [editLeconSubmitting, setEditLeconSubmitting] = useState(false);
+  const [editLeconError, setEditLeconError] = useState<string | null>(null);
+
+  const [deleteLeconTarget, setDeleteLeconTarget] = useState<FormationLecon | null>(null);
+  const [deleteLeconSubmitting, setDeleteLeconSubmitting] = useState(false);
+
+  const handleDeleteLecon = async () => {
+    if (!deleteLeconTarget) return;
+    setDeleteLeconSubmitting(true);
+    try {
+      await leconsApi.delete(deleteLeconTarget.id);
+      setDeleteLeconTarget(null);
+      reloadDetailChapitres();
+      // met aussi à jour la cible du dialog edit chapitre si ouvert
+      if (editChapitreTarget) {
+        setEditChapitreTarget((prev) =>
+          prev ? { ...prev, lecons: prev.lecons.filter((l) => l.id !== deleteLeconTarget.id) } : prev
+        );
+      }
+    } catch {
+      // garde le dialog ouvert
+    } finally {
+      setDeleteLeconSubmitting(false);
+    }
+  };
+
+  const openEditLecon = (lecon: FormationLecon) => {
+    setEditLeconTarget(lecon);
+    setEditLeconTitre(lecon.titre);
+    setEditLeconType((lecon.type_contenu as "video" | "pdf" | "texte") ?? "video");
+    setEditLeconContenu(lecon.type_contenu === "texte" ? lecon.contenu : "");
+    setEditLeconFile(null);
+    setEditLeconError(null);
+    setEditLeconOpen(true);
+  };
+
+  const handleUpdateLecon = async () => {
+    if (!editLeconTarget || !editLeconTitre.trim()) return;
+    setEditLeconSubmitting(true);
+    setEditLeconError(null);
+    try {
+      await leconsApi.update(editLeconTarget.id, {
+        titre: editLeconTitre,
+        type_contenu: editLeconType,
+        chapitre_id: editLeconTarget.chapitre_id,
+        file: editLeconType !== "texte" && editLeconFile ? editLeconFile : undefined,
+      });
+      setEditLeconOpen(false);
+      reloadDetailChapitres();
+    } catch (e: unknown) {
+      setEditLeconError(e instanceof Error ? e.message : "Erreur lors de la mise à jour de la leçon");
+    } finally {
+      setEditLeconSubmitting(false);
+    }
+  };
+
+  // ── Edit devoir dialog ─────────────────────────────────────────────────────
+  const [editDevoirOpen, setEditDevoirOpen] = useState(false);
+  const [editDevoirTarget, setEditDevoirTarget] = useState<FormationDevoir | null>(null);
+  const [editDevoirTitre, setEditDevoirTitre] = useState("");
+  const [editDevoirDescription, setEditDevoirDescription] = useState("");
+  const [editDevoirConsignes, setEditDevoirConsignes] = useState("");
+  const [editDevoirDateLimite, setEditDevoirDateLimite] = useState("");
+  const [editDevoirChapitreId, setEditDevoirChapitreId] = useState("");
+  const [editDevoirLeconId, setEditDevoirLeconId] = useState("");
+  const [editDevoirChapitres, setEditDevoirChapitres] = useState<FormationChapitre[]>([]);
+  const [editDevoirSubmitting, setEditDevoirSubmitting] = useState(false);
+  const [editDevoirError, setEditDevoirError] = useState<string | null>(null);
+
+  const openEditDevoir = (devoir: FormationDevoir) => {
+    setEditDevoirTarget(devoir);
+    setEditDevoirTitre(devoir.titre);
+    setEditDevoirDescription(devoir.description ?? "");
+    setEditDevoirConsignes(devoir.consignes ?? "");
+    setEditDevoirDateLimite(devoir.date_limite ? devoir.date_limite.slice(0, 16) : "");
+    setEditDevoirChapitreId(devoir.chapitre_id ?? "");
+    setEditDevoirLeconId(devoir.lecon_id ?? "");
+    setEditDevoirChapitres([]);
+    setEditDevoirError(null);
+    if (devoir.formation_id) {
+      formationsApi.getById(devoir.formation_id)
+        .then((f) => setEditDevoirChapitres(f.chapitres ?? []))
+        .catch(() => {});
+    }
+    setEditDevoirOpen(true);
+  };
+
+  const editDevoirLecons: FormationLecon[] =
+    editDevoirChapitreId
+      ? (editDevoirChapitres.find((c) => c.id === editDevoirChapitreId)?.lecons ?? [])
+      : [];
+
+  const handleUpdateDevoir = async () => {
+    if (!editDevoirTarget || !editDevoirTitre.trim()) return;
+    setEditDevoirSubmitting(true);
+    setEditDevoirError(null);
+    try {
+      await devoirsApi.update(editDevoirTarget.id, {
+        titre: editDevoirTitre,
+        description: editDevoirDescription || undefined,
+        consignes: editDevoirConsignes || undefined,
+        date_limite: editDevoirDateLimite || undefined,
+        chapitre_id: editDevoirChapitreId || undefined,
+        lecon_id: editDevoirLeconId || undefined,
+      });
+      setEditDevoirOpen(false);
+      reloadDetailDevoirs();
+    } catch (e: unknown) {
+      setEditDevoirError(e instanceof Error ? e.message : "Erreur lors de la mise à jour du devoir");
+    } finally {
+      setEditDevoirSubmitting(false);
+    }
+  };
+
+  // ── Delete devoir ──────────────────────────────────────────────────────────
+  const [deleteDevoirTarget, setDeleteDevoirTarget] = useState<FormationDevoir | null>(null);
+  const [deleteDevoirSubmitting, setDeleteDevoirSubmitting] = useState(false);
+
+  const handleDeleteDevoir = async () => {
+    if (!deleteDevoirTarget) return;
+    setDeleteDevoirSubmitting(true);
+    try {
+      await devoirsApi.delete(deleteDevoirTarget.id);
+      setDeleteDevoirTarget(null);
+      reloadDetailDevoirs();
+    } catch {
+      // garde le dialog ouvert
+    } finally {
+      setDeleteDevoirSubmitting(false);
+    }
+  };
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fichierInputRef = useRef<HTMLInputElement>(null);
@@ -80,7 +608,7 @@ export function EspaceFormateur() {
     lien: "",
     date: "",
     isPaid: false,
-    isActive: true,
+    isActive: false,
     price: "",
     price_member: "",
     certification_delivrer_badge: false,
@@ -95,18 +623,14 @@ export function EspaceFormateur() {
 
   const setF = (key: string, value: unknown) => setForm((p) => ({ ...p, [key]: value }));
   
-  // Simulated subscription
   const subscriptionTier: SubscriptionTier = "gold";
   const limits = subscriptionLimits[subscriptionTier];
-  const publishedCount = courses.filter(c => c.status === "published").length;
+  const publishedCount = courses.filter(c => c.isActive).length;
   const canCreateMore = limits.courses === -1 || publishedCount < limits.courses;
 
-  const totalLearners = courses.reduce((acc, c) => acc + c.learners, 0);
-  const avgCompletion = Math.round(courses.filter(c => c.learners > 0).reduce((acc, c) => acc + c.completion, 0) / courses.filter(c => c.learners > 0).length) || 0;
-  const avgRating = (courses.filter(c => c.rating > 0).reduce((acc, c) => acc + c.rating, 0) / courses.filter(c => c.rating > 0).length).toFixed(1) || "0";
-  const totalRevenue = courses.reduce((acc, c) => acc + c.revenue, 0);
+  const totalLearners = courses.reduce((acc, c) => acc + (c.participants?.length ?? 0), 0);
 
-  const getStatusBadge = (status: Course["status"]) => {
+  const getStatusBadge = (status: "draft" | "submitted" | "published" | "rejected") => {
     switch (status) {
       case "draft": return <Badge variant="secondary">Brouillon</Badge>;
       case "submitted": return <Badge variant="outline" className="border-amber-500 text-amber-500">En validation</Badge>;
@@ -145,6 +669,7 @@ export function EspaceFormateur() {
         fichier: form.fichier,
       });
       setSubmitSuccess(true);
+      fetchCourses();
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : "Erreur lors de la création");
     } finally {
@@ -190,7 +715,15 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Catégorie</Label>
-                <Input value={form.category} onChange={(e) => setF("category", e.target.value)} placeholder="Ex: Finance, Commerce..." />
+                <Select value={form.category} onValueChange={(v) => setF("category", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.length === 0 && <SelectItem value="_" disabled>Chargement…</SelectItem>}
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Mode</Label>
@@ -225,8 +758,20 @@ export function EspaceFormateur() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>ID Formateur (UUID)</Label>
-                <Input value={form.formateur_id} onChange={(e) => setF("formateur_id", e.target.value)} placeholder="UUID du formateur" />
+                <Label>Formateur</Label>
+                <Select value={form.formateur_id} onValueChange={(v) => setF("formateur_id", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un formateur" /></SelectTrigger>
+                  <SelectContent>
+                    {formateurs.length === 0 && (
+                      <SelectItem value="_" disabled>Aucun formateur trouvé</SelectItem>
+                    )}
+                    {formateurs.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.firstname} {f.lastname}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>Module lié</Label>
@@ -408,14 +953,6 @@ export function EspaceFormateur() {
             <CardDescription>Définissez le prix et la visibilité de votre formation</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Formation active (visible)</Label>
-                <p className="text-sm text-muted-foreground">La formation sera visible dans le catalogue</p>
-              </div>
-              <Switch checked={form.isActive} onCheckedChange={(v) => setF("isActive", v)} />
-            </div>
-
             {!limits.canMonetize ? (
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-sm border border-amber-200">
                 <div className="flex items-center gap-2 text-amber-600 mb-2">
@@ -569,9 +1106,9 @@ export function EspaceFormateur() {
           <TabsTrigger value="courses" className="gap-2">
             <BookOpen className="w-4 h-4" /> Mes cours
           </TabsTrigger>
-          <TabsTrigger value="sessions" className="gap-2">
+          {/* <TabsTrigger value="sessions" className="gap-2">
             <Calendar className="w-4 h-4" /> Sessions
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger value="evaluations" className="gap-2">
             <MessageSquare className="w-4 h-4" /> Évaluations
           </TabsTrigger>
@@ -589,7 +1126,7 @@ export function EspaceFormateur() {
                   <BookOpen className="w-4 h-4" />
                   <span className="text-sm">Cours publiés</span>
                 </div>
-                <p className="text-2xl font-bold">{courses.filter(c => c.status === "published").length}</p>
+                <p className="text-2xl font-bold">{coursesLoading ? "…" : publishedCount}</p>
               </CardContent>
             </Card>
             <Card>
@@ -598,34 +1135,34 @@ export function EspaceFormateur() {
                   <Users className="w-4 h-4" />
                   <span className="text-sm">Apprenants</span>
                 </div>
-                <p className="text-2xl font-bold">{totalLearners}</p>
+                <p className="text-2xl font-bold">{coursesLoading ? "…" : totalLearners}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <BookOpen className="w-4 h-4" />
+                  <span className="text-sm">Total</span>
+                </div>
+                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   <TrendingUp className="w-4 h-4" />
-                  <span className="text-sm">Complétion</span>
+                  <span className="text-sm">Inactifs</span>
                 </div>
-                <p className="text-2xl font-bold">{avgCompletion}%</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Star className="w-4 h-4" />
-                  <span className="text-sm">Satisfaction</span>
-                </div>
-                <p className="text-2xl font-bold">{avgRating}/5</p>
+                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.filter(c => !c.isActive).length}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   <DollarSign className="w-4 h-4" />
-                  <span className="text-sm">Revenus</span>
+                  <span className="text-sm">Payantes</span>
                 </div>
-                <p className="text-2xl font-bold">{(totalRevenue / 1000).toFixed(0)}K</p>
+                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.filter(c => c.isPaid).length}</p>
               </CardContent>
             </Card>
           </div>
@@ -637,13 +1174,16 @@ export function EspaceFormateur() {
                 <CardTitle className="text-base">Cours récents</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {courses.length === 0 && !coursesLoading && (
+                  <p className="text-sm text-muted-foreground text-center py-4">Aucune formation créée</p>
+                )}
                 {courses.slice(0, 3).map((course) => (
                   <div key={course.id} className="flex items-center justify-between p-2 bg-muted rounded">
                     <div>
                       <p className="font-medium text-sm">{course.title}</p>
-                      <p className="text-xs text-muted-foreground">{course.learners} apprenants</p>
+                      <p className="text-xs text-muted-foreground">{course.participants?.length ?? 0} apprenants</p>
                     </div>
-                    {getStatusBadge(course.status)}
+                    {getStatusBadge(courseStatus(course))}
                   </div>
                 ))}
               </CardContent>
@@ -682,54 +1222,103 @@ export function EspaceFormateur() {
 
         <TabsContent value="courses">
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            {/* Toolbar */}
+            <div className="flex justify-between items-center gap-2 flex-wrap">
               <Input placeholder="Rechercher un cours..." className="max-w-sm" />
               <Button onClick={() => { setCreationStep(1); setCreateOpen(true); }} disabled={!canCreateMore}>
                 <Plus className="w-4 h-4 mr-2" /> Nouvelle formation
               </Button>
             </div>
 
+            {/* Liste des formations */}
             <div className="space-y-3">
-              {courses.map((course) => (
-                <Card key={course.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold">{course.title}</h3>
-                          {getStatusBadge(course.status)}
-                        </div>
-                        {course.status === "published" && (
-                          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Users className="w-4 h-4" /> {course.learners} apprenants
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <TrendingUp className="w-4 h-4" /> {course.completion}% complétion
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Star className="w-4 h-4" /> {course.rating}/5
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <DollarSign className="w-4 h-4" /> {course.revenue.toLocaleString()} FCFA
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon"><Eye className="w-4 h-4" /></Button>
-                        <Button variant="ghost" size="icon"><Edit className="w-4 h-4" /></Button>
-                        <Button variant="ghost" size="icon"><Copy className="w-4 h-4" /></Button>
-                        {course.status === "draft" && (
-                          <Button size="sm">
-                            <Send className="w-4 h-4 mr-2" /> Soumettre
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+              {coursesLoading && (
+                <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+              )}
+              {!coursesLoading && courses.length === 0 && (
+                <Card className="rounded-sm">
+                  <CardContent className="py-12 text-center space-y-2">
+                    <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/30" />
+                    <p className="font-medium">Vous n'avez pas encore créé de formation.</p>
+                    <Button size="sm" className="mt-2 gap-2" onClick={() => { setCreationStep(1); setCreateOpen(true); }}>
+                      <Plus className="w-4 h-4" /> Créer ma première formation
+                    </Button>
                   </CardContent>
                 </Card>
-              ))}
+              )}
+              {courses.map((course) => {
+                const status = courseStatus(course);
+                const learners = course.participants?.length ?? 0;
+                const chapitresCount = course.chapitres?.length ?? 0;
+                const price = course.price ? parseFloat(course.price) : 0;
+                return (
+                  <Card key={course.id} className="rounded-sm">
+                    <CardContent className="p-0">
+                      {/* Ligne principale */}
+                      <div className="flex items-center justify-between p-4 gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-semibold truncate">{course.title}</h3>
+                            {getStatusBadge(status)}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5" /> {learners} apprenant{learners > 1 ? "s" : ""}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3.5 h-3.5" /> {chapitresCount} chapitre{chapitresCount > 1 ? "s" : ""}
+                            </span>
+                            {course.isPaid && price > 0 ? (
+                              <span className="flex items-center gap-1 text-primary font-medium">
+                                <DollarSign className="w-3.5 h-3.5" /> {price.toLocaleString()} FCFA
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-emerald-600">
+                                <Star className="w-3.5 h-3.5" /> Gratuit
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Actions principales */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" title="Voir le détail" onClick={() => openDetail(course)}>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Modifier la formation" onClick={() => openEdit(course)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteTarget(course)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Barre d'actions contenu */}
+                      <div className="border-t px-4 py-2 bg-muted/30 flex items-center gap-2 flex-wrap rounded-b-sm">
+                        <span className="text-xs text-muted-foreground mr-1">Ajouter :</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1.5 rounded-sm"
+                          onClick={() => openChapterDialog(course.id)}
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          Chapitre
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1.5 rounded-sm"
+                          onClick={() => openDevoirDialog(course.id)}
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          Devoir
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         </TabsContent>
@@ -761,6 +1350,1336 @@ export function EspaceFormateur() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Drawer Détail formation */}
+      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto p-0">
+          {detailLoading || !detailFormation ? (
+            <div className="p-6 space-y-4">
+              <Skeleton className="h-40 w-full rounded-sm" />
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-full" />
+            </div>
+          ) : (
+            <>
+              {/* Image */}
+              {detailFormation.image ? (
+                <div className="h-44 overflow-hidden flex-shrink-0">
+                  <img src={detailFormation.image} alt={detailFormation.title} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="h-44 bg-gradient-to-br from-primary/20 to-secondary/15 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-14 h-14 text-primary/20" />
+                </div>
+              )}
+
+              <div className="p-5 space-y-5">
+                <SheetHeader>
+                  <SheetTitle className="text-lg leading-snug">{detailFormation.title}</SheetTitle>
+                </SheetHeader>
+
+                {/* Badges statut */}
+                <div className="flex flex-wrap gap-2">
+                  <Badge className={detailFormation.isActive ? "bg-green-500" : ""} variant={detailFormation.isActive ? "default" : "secondary"}>
+                    {detailFormation.isActive ? "Publié" : "Brouillon"}
+                  </Badge>
+                  {detailFormation.isPaid ? (
+                    <Badge variant="outline" className="border-amber-500 text-amber-600">
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      Payante
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="border-emerald-500 text-emerald-600">Gratuite</Badge>
+                  )}
+                  {detailFormation.mode && (
+                    <Badge variant="outline">
+                      {detailFormation.mode === "a_son_rythme" ? <><Video className="w-3 h-3 mr-1" />À son rythme</> :
+                       detailFormation.mode === "webinaire"    ? <><PlayCircle className="w-3 h-3 mr-1" />Webinaire</> :
+                                                                  <><MapPin className="w-3 h-3 mr-1" />Présentiel</>}
+                    </Badge>
+                  )}
+                  {detailFormation.niveau && (
+                    <Badge variant="outline">
+                      {detailFormation.niveau === "beginner" ? "Débutant" :
+                       detailFormation.niveau === "intermediate" ? "Intermédiaire" : "Avancé"}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Description */}
+                {detailFormation.description && (
+                  <div>
+                    <h3 className="font-semibold text-sm mb-1">Description</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{detailFormation.description}</p>
+                  </div>
+                )}
+
+                {/* Infos clés */}
+                <div className="grid grid-cols-2 gap-3">
+                  {detailFormation.duration > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="w-4 h-4 flex-shrink-0" />
+                      <span>{detailFormation.duration}h de formation</span>
+                    </div>
+                  )}
+                  {detailFormation.date && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Calendar className="w-4 h-4 flex-shrink-0" />
+                      <span>{new Date(detailFormation.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span>
+                    </div>
+                  )}
+                  {detailFormation.category && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <BookOpen className="w-4 h-4 flex-shrink-0" />
+                      <span>{detailFormation.category}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="w-4 h-4 flex-shrink-0" />
+                    <span>{detailFormation.participants?.length ?? 0} participant{(detailFormation.participants?.length ?? 0) > 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+
+                {/* Prix */}
+                {detailFormation.isPaid && (detailFormation.price || detailFormation.price_member) && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-primary" />Tarification
+                      </h3>
+                      <div className="flex gap-4">
+                        {detailFormation.price && (
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Public : </span>
+                            <span className="font-semibold text-primary">{parseFloat(detailFormation.price).toLocaleString()} FCFA</span>
+                          </div>
+                        )}
+                        {detailFormation.price_member && (
+                          <div className="text-sm">
+                            <span className="text-muted-foreground">Membre : </span>
+                            <span className="font-semibold text-emerald-600">{parseFloat(detailFormation.price_member).toLocaleString()} FCFA</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Formateur */}
+                {detailFormation.formateur && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-primary" />Formateur
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-sm bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border">
+                          {detailFormation.formateur.photo ? (
+                            <img src={detailFormation.formateur.photo} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <GraduationCap className="w-5 h-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">{detailFormation.formateur.firstname} {detailFormation.formateur.lastname}</p>
+                          {detailFormation.formateur.titre && (
+                            <p className="text-xs text-muted-foreground">{detailFormation.formateur.titre}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {detailFormation.formateur.email && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Mail className="w-3 h-3" />{detailFormation.formateur.email}
+                              </span>
+                            )}
+                            {detailFormation.formateur.phone && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Phone className="w-3 h-3" />{detailFormation.formateur.phone}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Centre de formation */}
+                {detailFormation.centreFormation && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-primary" />Centre de formation
+                      </h3>
+                      <div className="text-sm space-y-0.5">
+                        <p className="font-medium">{detailFormation.centreFormation.nom}</p>
+                        <p className="text-muted-foreground">{detailFormation.centreFormation.adresse}, {detailFormation.centreFormation.ville}</p>
+                        {detailFormation.centreFormation.telephone && (
+                          <p className="text-muted-foreground flex items-center gap-1">
+                            <Phone className="w-3 h-3" />{detailFormation.centreFormation.telephone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Lien webinaire */}
+                {detailFormation.lien && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-1 flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-primary" />Lien de session
+                      </h3>
+                      <a href={detailFormation.lien} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-primary underline break-all">{detailFormation.lien}</a>
+                    </div>
+                  </>
+                )}
+
+                {/* Certification */}
+                {detailFormation.certification_delivrer_badge && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <Award className="w-4 h-4 text-primary" />
+                        Certification {detailFormation.certification_nom_badge ? `— ${detailFormation.certification_nom_badge}` : ""}
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detailFormation.certification_quiz_reussi && <Badge variant="secondary" className="text-xs">Quiz réussi</Badge>}
+                        {detailFormation.certification_progression_100 && <Badge variant="secondary" className="text-xs">100% progression</Badge>}
+                        {detailFormation.certification_devoir_valide && <Badge variant="secondary" className="text-xs">Devoir validé</Badge>}
+                        {detailFormation.certification_presence_live && <Badge variant="secondary" className="text-xs">Présence live</Badge>}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Chapitres — toujours visible, chargés via chapitresApi */}
+                <Separator />
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-primary" />
+                      Chapitres ({detailChapitres.length})
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 rounded-sm"
+                      onClick={() => openChapterDialog(detailFormation.id)}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Ajouter
+                    </Button>
+                  </div>
+                  {detailChapitres.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-sm">
+                      Aucun chapitre pour l'instant
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {detailChapitres.map((ch, i) => (
+                        <div key={ch.id} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-sm">
+                          <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-xs flex items-center justify-center font-medium flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium">{ch.titre}</p>
+                            {ch.lecons?.length > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                {ch.lecons.length} leçon{ch.lecons.length > 1 ? "s" : ""}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="w-7 h-7" title="Modifier" onClick={() => openEditChapitre(ch)}>
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteChapitreTarget(ch)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Devoirs — toujours visible, chargés séparément */}
+                <Separator />
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-sm flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-primary" />
+                      Devoirs ({detailDevoirs.length})
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1 rounded-sm"
+                      onClick={() => openDevoirDialog(detailFormation.id)}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Ajouter
+                    </Button>
+                  </div>
+                  {detailDevoirs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-sm">
+                      Aucun devoir pour l'instant
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {detailDevoirs.map((dv) => (
+                        <div key={dv.id} className="flex items-start gap-2 p-2.5 bg-muted rounded-sm">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{dv.titre}</p>
+                            {dv.description && (
+                              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{dv.description}</p>
+                            )}
+                            {dv.date_limite && (
+                              <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Limite : {new Date(dv.date_limite).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            )}
+                            {dv.chapitre_id && (
+                              <p className="text-xs text-muted-foreground/70 mt-0.5 flex items-center gap-1">
+                                <FileText className="w-3 h-3" />
+                                {detailFormation.chapitres?.find(c => c.id === dv.chapitre_id)?.titre ?? "Chapitre lié"}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="w-7 h-7" title="Modifier" onClick={() => openEditDevoir(dv)}>
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteDevoirTarget(dv)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Compétences */}
+                {detailFormation.competences?.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-primary" />Compétences acquises
+                      </h3>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detailFormation.competences.map((c, i) => (
+                          <Badge key={i} variant="secondary" className="text-xs rounded-sm">
+                            {typeof c === "string" ? c : (c as { label?: string }).label ?? ""}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Fichier principal */}
+                {detailFormation.fichier && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h3 className="font-semibold text-sm mb-1 flex items-center gap-2">
+                        <FileVideo className="w-4 h-4 text-primary" />Fichier principal
+                      </h3>
+                      <a href={detailFormation.fichier} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="rounded-sm gap-2 text-xs">
+                          <Eye className="w-3.5 h-3.5" /> Ouvrir le fichier
+                        </Button>
+                      </a>
+                    </div>
+                  </>
+                )}
+
+                {/* Date création */}
+                <Separator />
+                <p className="text-xs text-muted-foreground">
+                  Créée le {new Date(detailFormation.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                </p>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Dialog Confirmer suppression */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer la formation
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteTarget?.title}&nbsp;»</span> ?
+            Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteTarget(null)} disabled={deleteSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDelete} disabled={deleteSubmitting}>
+              {deleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {deleteSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier une formation */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Modifier la formation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Titre */}
+            <div className="space-y-2">
+              <Label>Titre <span className="text-destructive">*</span></Label>
+              <Input value={editForm.title} onChange={(e) => setEF("title", e.target.value)} />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={editForm.description} onChange={(e) => setEF("description", e.target.value)} rows={3} />
+            </div>
+
+            {/* Catégorie / Mode */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Catégorie</Label>
+                <Select value={editForm.category} onValueChange={(v) => setEF("category", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.length === 0 && <SelectItem value="_" disabled>Chargement…</SelectItem>}
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Mode</Label>
+                <Select value={editForm.mode} onValueChange={(v) => setEF("mode", v)}>
+                  <SelectTrigger><SelectValue placeholder="Mode" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="a_son_rythme">À son rythme</SelectItem>
+                    <SelectItem value="webinaire">Webinaire / Live</SelectItem>
+                    <SelectItem value="presentiel">Présentiel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Niveau / Durée */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Niveau</Label>
+                <Select value={editForm.niveau} onValueChange={(v) => setEF("niveau", v)}>
+                  <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="beginner">Débutant</SelectItem>
+                    <SelectItem value="intermediate">Intermédiaire</SelectItem>
+                    <SelectItem value="advanced">Avancé</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Durée (heures)</Label>
+                <Input type="number" value={editForm.duration} onChange={(e) => setEF("duration", e.target.value)} min={0} />
+              </div>
+            </div>
+
+            {/* Formateur / Module */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Formateur</Label>
+                <Select value={editForm.formateur_id} onValueChange={(v) => setEF("formateur_id", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un formateur" /></SelectTrigger>
+                  <SelectContent>
+                    {formateurs.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>{f.firstname} {f.lastname}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Module lié</Label>
+                <Select value={editForm.moduleId} onValueChange={(v) => setEF("moduleId", v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir un module" /></SelectTrigger>
+                  <SelectContent>
+                    {modules.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>{m.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Payant */}
+            <div className="flex items-center justify-between border rounded-sm px-3 py-2">
+              <Label>Payante</Label>
+              <Switch checked={editForm.isPaid} onCheckedChange={(v) => setEF("isPaid", v)} />
+            </div>
+
+            {/* Prix */}
+            {editForm.isPaid && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Prix public (FCFA)</Label>
+                  <Input type="number" value={editForm.price} onChange={(e) => setEF("price", e.target.value)} min={0} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Prix membre (FCFA)</Label>
+                  <Input type="number" value={editForm.price_member} onChange={(e) => setEF("price_member", e.target.value)} min={0} />
+                </div>
+              </div>
+            )}
+
+            {/* Image */}
+            <div className="space-y-2">
+              <Label>Nouvelle image de couverture (optionnel)</Label>
+              <div className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => editImageRef.current?.click()}>
+                {editForm.image ? (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <ImageIcon className="w-4 h-4 text-primary" />
+                    <span className="font-medium">{editForm.image.name}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Upload className="w-4 h-4" />
+                    <span>Cliquer pour changer l'image</span>
+                  </div>
+                )}
+              </div>
+              <input ref={editImageRef} type="file" accept="image/*" className="hidden"
+                onChange={(e) => setEF("image", e.target.files?.[0] ?? null)} />
+            </div>
+
+            {/* Fichier */}
+            <div className="space-y-2">
+              <Label>Nouveau fichier principal (optionnel)</Label>
+              <div className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => editFichierRef.current?.click()}>
+                {editForm.fichier ? (
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <FileVideo className="w-4 h-4 text-primary" />
+                    <span className="font-medium">{editForm.fichier.name}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Upload className="w-4 h-4" />
+                    <span>Cliquer pour changer le fichier</span>
+                  </div>
+                )}
+              </div>
+              <input ref={editFichierRef} type="file" accept="video/*,.pdf" className="hidden"
+                onChange={(e) => setEF("fichier", e.target.files?.[0] ?? null)} />
+            </div>
+
+            {editError && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{editError}</div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" className="rounded-sm" onClick={() => setEditOpen(false)} disabled={editSubmitting}>
+                Annuler
+              </Button>
+              <Button className="rounded-sm gap-2" onClick={handleEditSubmit}
+                disabled={editSubmitting || !editForm.title}>
+                {editSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+                {editSubmitting ? "Enregistrement…" : "Enregistrer"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier un devoir */}
+      <Dialog open={editDevoirOpen} onOpenChange={setEditDevoirOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              Modifier le devoir
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Chapitre */}
+            {editDevoirChapitres.length > 0 && (
+              <div className="space-y-2">
+                <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                <Select
+                  value={editDevoirChapitreId}
+                  onValueChange={(v) => { setEditDevoirChapitreId(v === "_none" ? "" : v); setEditDevoirLeconId(""); }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Choisir un chapitre" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Aucun chapitre</SelectItem>
+                    {editDevoirChapitres.map((ch) => (
+                      <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Leçon */}
+            {editDevoirChapitreId && editDevoirLecons.length > 0 && (
+              <div className="space-y-2">
+                <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                <Select value={editDevoirLeconId} onValueChange={(v) => setEditDevoirLeconId(v === "_none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Choisir une leçon" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Aucune leçon</SelectItem>
+                    {editDevoirLecons.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Titre */}
+            <div className="space-y-2">
+              <Label>Titre <span className="text-destructive">*</span></Label>
+              <Input value={editDevoirTitre} onChange={(e) => setEditDevoirTitre(e.target.value)} placeholder="Titre du devoir" />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea value={editDevoirDescription} onChange={(e) => setEditDevoirDescription(e.target.value)} placeholder="Description…" rows={2} className="resize-none" />
+            </div>
+
+            {/* Consignes */}
+            <div className="space-y-2">
+              <Label>Consignes</Label>
+              <Textarea value={editDevoirConsignes} onChange={(e) => setEditDevoirConsignes(e.target.value)} placeholder="Instructions pour les apprenants…" rows={3} className="resize-none" />
+            </div>
+
+            {/* Date limite */}
+            <div className="space-y-2">
+              <Label>Date limite</Label>
+              <Input type="datetime-local" value={editDevoirDateLimite} onChange={(e) => setEditDevoirDateLimite(e.target.value)} />
+            </div>
+
+            {editDevoirError && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />{editDevoirError}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setEditDevoirOpen(false)} disabled={editDevoirSubmitting}>
+              Annuler
+            </Button>
+            <Button className="rounded-sm gap-2" onClick={handleUpdateDevoir} disabled={editDevoirSubmitting || !editDevoirTitre.trim()}>
+              {editDevoirSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {editDevoirSubmitting ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmer suppression devoir */}
+      <Dialog open={!!deleteDevoirTarget} onOpenChange={(open) => { if (!open) setDeleteDevoirTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer le devoir
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteDevoirTarget?.titre}&nbsp;»</span> ?
+            Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteDevoirTarget(null)} disabled={deleteDevoirSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteDevoir} disabled={deleteDevoirSubmitting}>
+              {deleteDevoirSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {deleteDevoirSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Créer un devoir */}
+      <Dialog open={devoirOpen} onOpenChange={setDevoirOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              Créer un devoir
+            </DialogTitle>
+          </DialogHeader>
+
+          {devoirSuccess ? (
+            <div className="py-10 text-center space-y-4">
+              <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
+              <p className="font-semibold text-lg">Devoir créé avec succès !</p>
+              <p className="text-sm text-muted-foreground">Le devoir a bien été ajouté à la formation.</p>
+              <Button className="rounded-sm" onClick={() => { setDevoirOpen(false); setDevoirSuccess(false); }}>
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              {/* Formation */}
+              <div className="space-y-2">
+                <Label>Formation <span className="text-destructive">*</span></Label>
+                <Select value={devoirFormationId} onValueChange={handleDevoirFormationChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir une formation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Chapitre (optionnel) */}
+              {devoirFormationId && (
+                <div className="space-y-2">
+                  <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Select
+                    value={devoirChapitreId}
+                    onValueChange={(v) => { setDevoirChapitreId(v); setDevoirLeconId(""); }}
+                    disabled={devoirChapitresLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={devoirChapitresLoading ? "Chargement…" : "Choisir un chapitre"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Aucun chapitre</SelectItem>
+                      {devoirChapitres.map((ch) => (
+                        <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Leçon (optionnel, si chapitre sélectionné) */}
+              {devoirChapitreId && devoirChapitreId !== "_none" && devoirLecons.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Select value={devoirLeconId} onValueChange={setDevoirLeconId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choisir une leçon" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Aucune leçon</SelectItem>
+                      {devoirLecons.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Titre */}
+              <div className="space-y-2">
+                <Label>Titre <span className="text-destructive">*</span></Label>
+                <Input
+                  value={devoirTitre}
+                  onChange={(e) => setDevoirTitre(e.target.value)}
+                  placeholder="Ex: Devoir pratique sur NestJS"
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={devoirDescription}
+                  onChange={(e) => setDevoirDescription(e.target.value)}
+                  placeholder="Décrivez l'objectif du devoir…"
+                  rows={2}
+                  className="resize-none"
+                />
+              </div>
+
+              {/* Consignes */}
+              <div className="space-y-2">
+                <Label>Consignes</Label>
+                <Textarea
+                  value={devoirConsignes}
+                  onChange={(e) => setDevoirConsignes(e.target.value)}
+                  placeholder="Instructions détaillées pour les apprenants…"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+
+              {/* Date limite */}
+              <div className="space-y-2">
+                <Label>Date limite</Label>
+                <Input
+                  type="datetime-local"
+                  value={devoirDateLimite}
+                  onChange={(e) => setDevoirDateLimite(e.target.value)}
+                />
+              </div>
+
+              {devoirError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {devoirError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!devoirSuccess && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" className="rounded-sm" onClick={() => setDevoirOpen(false)} disabled={devoirSubmitting}>
+                Annuler
+              </Button>
+              <Button
+                className="rounded-sm gap-2"
+                onClick={handleCreateDevoir}
+                disabled={devoirSubmitting || !devoirFormationId || !devoirTitre.trim()}
+              >
+                {devoirSubmitting ? <span className="animate-spin">⏳</span> : <ClipboardList className="w-4 h-4" />}
+                {devoirSubmitting ? "Création en cours…" : "Créer le devoir"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier une leçon */}
+      <Dialog open={editLeconOpen} onOpenChange={setEditLeconOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Modifier la leçon
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Titre <span className="text-destructive">*</span></Label>
+              <Input
+                value={editLeconTitre}
+                onChange={(e) => setEditLeconTitre(e.target.value)}
+                placeholder="Titre de la leçon"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Type de contenu</Label>
+              <Select
+                value={editLeconType}
+                onValueChange={(v: "video" | "pdf" | "texte") => {
+                  setEditLeconType(v);
+                  setEditLeconFile(null);
+                  setEditLeconContenu("");
+                }}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Vidéo</SelectItem>
+                  <SelectItem value="pdf">PDF</SelectItem>
+                  <SelectItem value="texte">Texte</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editLeconType !== "texte" && (
+              <div className="space-y-2">
+                <Label>Nouveau fichier <span className="text-xs font-normal text-muted-foreground">(optionnel — laissez vide pour garder l'actuel)</span></Label>
+                <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-3 cursor-pointer hover:bg-muted/50 transition-colors text-sm text-muted-foreground">
+                  {editLeconFile ? (
+                    <span className="flex items-center gap-1.5 text-foreground font-medium">
+                      <FileVideo className="w-4 h-4 text-primary shrink-0" />
+                      <span className="truncate max-w-xs">{editLeconFile.name}</span>
+                      <span className="text-muted-foreground shrink-0">({(editLeconFile.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Upload className="w-4 h-4" />
+                      Cliquer pour choisir un fichier
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept={editLeconType === "video" ? "video/*" : ".pdf,application/pdf"}
+                    className="hidden"
+                    onChange={(e) => setEditLeconFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </div>
+            )}
+
+            {editLeconType === "texte" && (
+              <div className="space-y-2">
+                <Label>Contenu texte</Label>
+                <Textarea
+                  value={editLeconContenu}
+                  onChange={(e) => setEditLeconContenu(e.target.value)}
+                  placeholder="Contenu de la leçon…"
+                  rows={4}
+                  className="resize-none"
+                />
+              </div>
+            )}
+
+            {editLeconError && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />{editLeconError}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setEditLeconOpen(false)} disabled={editLeconSubmitting}>
+              Annuler
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={handleUpdateLecon}
+              disabled={editLeconSubmitting || !editLeconTitre.trim()}
+            >
+              {editLeconSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {editLeconSubmitting ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier un chapitre */}
+      <Dialog open={editChapitreOpen} onOpenChange={setEditChapitreOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-primary" />
+              Modifier le chapitre
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Titre */}
+            <div className="space-y-2">
+              <Label>Titre du chapitre <span className="text-destructive">*</span></Label>
+              <Input
+                value={editChapitreTitre}
+                onChange={(e) => setEditChapitreTitre(e.target.value)}
+                placeholder="Ex: Introduction à NestJS"
+              />
+            </div>
+
+            {/* Leçons existantes */}
+            {editChapitreTarget?.lecons && editChapitreTarget.lecons.length > 0 && (
+              <div className="space-y-2">
+                <Label>Leçons existantes</Label>
+                <div className="space-y-1.5">
+                  {editChapitreTarget.lecons.map((lecon) => {
+                    const markedForDelete = editChapitreIdsToDelete.includes(lecon.id);
+                    return (
+                      <div
+                        key={lecon.id}
+                        className={`flex items-center gap-2 p-2.5 rounded-sm border text-sm transition-colors ${
+                          markedForDelete ? "border-destructive/40 bg-destructive/5 opacity-60" : "bg-muted/30"
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className={`flex-1 truncate ${markedForDelete ? "line-through text-muted-foreground" : ""}`}>
+                          {lecon.titre}
+                        </span>
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm shrink-0">
+                          {lecon.type_contenu}
+                        </Badge>
+                        {!markedForDelete && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-6 h-6 shrink-0"
+                            onClick={() => openEditLecon(lecon)}
+                            title="Modifier la leçon"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          variant={markedForDelete ? "outline" : "ghost"}
+                          size="icon"
+                          className={`w-6 h-6 shrink-0 ${markedForDelete ? "text-foreground" : "text-destructive hover:text-destructive"}`}
+                          onClick={() => toggleLeconDelete(lecon.id)}
+                          title={markedForDelete ? "Annuler la suppression" : "Marquer pour suppression"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {editChapitreIdsToDelete.length > 0 && (
+                  <p className="text-xs text-destructive">
+                    {editChapitreIdsToDelete.length} leçon(s) seront supprimées à la sauvegarde
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Nouvelles leçons */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Ajouter des leçons <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                <Button variant="outline" size="sm" className="gap-1.5 rounded-sm h-7 text-xs" onClick={addNewLeconToEdit}>
+                  <Plus className="w-3.5 h-3.5" />
+                  Ajouter
+                </Button>
+              </div>
+
+              {editChapitreNewLecons.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3 border border-dashed rounded-sm">
+                  Cliquez sur « Ajouter » pour inclure de nouvelles leçons
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {editChapitreNewLecons.map((lecon, index) => (
+                    <div key={lecon.id} className="border rounded-sm p-3 space-y-3 bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">Nouvelle leçon {index + 1}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-6 h-6 text-destructive hover:text-destructive"
+                          onClick={() => removeNewLecon(lecon.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Titre</Label>
+                          <Input
+                            value={lecon.titre}
+                            onChange={(e) => updateNewLecon(lecon.id, { titre: e.target.value })}
+                            placeholder="Titre de la leçon"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Type de contenu</Label>
+                          <Select
+                            value={lecon.type_contenu}
+                            onValueChange={(v: "video" | "pdf" | "texte") =>
+                              updateNewLecon(lecon.id, { type_contenu: v, file: null, contenu: "" })
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="video">Vidéo</SelectItem>
+                              <SelectItem value="pdf">PDF</SelectItem>
+                              <SelectItem value="texte">Texte</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {lecon.type_contenu !== "texte" && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">
+                            Fichier {lecon.type_contenu === "video" ? "(MP4, MOV…)" : "(PDF)"}
+                          </Label>
+                          <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-2.5 cursor-pointer hover:bg-muted/50 transition-colors text-xs text-muted-foreground">
+                            {lecon.file ? (
+                              <span className="flex items-center gap-1.5 text-foreground font-medium">
+                                <FileVideo className="w-3.5 h-3.5 text-primary shrink-0" />
+                                <span className="truncate max-w-xs">{lecon.file.name}</span>
+                                <span className="text-muted-foreground shrink-0">
+                                  ({(lecon.file.size / 1024 / 1024).toFixed(1)} Mo)
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5">
+                                <Upload className="w-3.5 h-3.5" />
+                                Cliquer pour choisir un fichier
+                              </span>
+                            )}
+                            <input
+                              type="file"
+                              accept={lecon.type_contenu === "video" ? "video/*" : ".pdf,application/pdf"}
+                              className="hidden"
+                              onChange={(e) => updateNewLecon(lecon.id, { file: e.target.files?.[0] ?? null })}
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {lecon.type_contenu === "texte" && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Contenu texte</Label>
+                          <Textarea
+                            value={lecon.contenu}
+                            onChange={(e) => updateNewLecon(lecon.id, { contenu: e.target.value })}
+                            placeholder="Saisissez le contenu de la leçon…"
+                            rows={3}
+                            className="text-sm resize-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {editChapitreError && (
+              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />{editChapitreError}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setEditChapitreOpen(false)} disabled={editChapitreSubmitting}>
+              Annuler
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={handleUpdateChapitre}
+              disabled={editChapitreSubmitting || !editChapitreTitre.trim()}
+            >
+              {editChapitreSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {editChapitreSubmitting ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Confirmer suppression chapitre */}
+      <Dialog open={!!deleteChapitreTarget} onOpenChange={(open) => { if (!open) setDeleteChapitreTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer le chapitre
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteChapitreTarget?.titre}&nbsp;»</span> ?
+            Toutes les leçons associées seront également supprimées. Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteChapitreTarget(null)} disabled={deleteChapitreSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteChapitre} disabled={deleteChapitreSubmitting}>
+              {deleteChapitreSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+              {deleteChapitreSubmitting ? "Suppression…" : "Supprimer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Créer un chapitre */}
+      <Dialog open={chapterOpen} onOpenChange={setChapterOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-primary" />
+              Créer un chapitre
+            </DialogTitle>
+          </DialogHeader>
+
+          {chapterSuccess ? (
+            <div className="py-10 text-center space-y-4">
+              <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
+              <p className="font-semibold text-lg">Chapitre créé avec succès !</p>
+              <p className="text-sm text-muted-foreground">Le chapitre a bien été ajouté à la formation.</p>
+              <Button className="rounded-sm" onClick={() => { setChapterOpen(false); setChapterSuccess(false); }}>
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-5 py-2">
+              {/* Formation */}
+              <div className="space-y-2">
+                <Label>Formation <span className="text-destructive">*</span></Label>
+                <Select value={chapterFormationId} onValueChange={setChapterFormationId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir une formation" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.length === 0 && (
+                      <SelectItem value="_" disabled>Aucune formation créée</SelectItem>
+                    )}
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Titre du chapitre */}
+              <div className="space-y-2">
+                <Label>Titre du chapitre <span className="text-destructive">*</span></Label>
+                <Input
+                  value={chapterTitre}
+                  onChange={(e) => setChapterTitre(e.target.value)}
+                  placeholder="Ex: Introduction à NestJS"
+                />
+              </div>
+
+              {/* Leçons */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Leçons <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Button variant="outline" size="sm" className="gap-1.5 rounded-sm h-7 text-xs" onClick={addLecon}>
+                    <Plus className="w-3.5 h-3.5" />
+                    Ajouter une leçon
+                  </Button>
+                </div>
+
+                {chapterLecons.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4 border border-dashed rounded-sm">
+                    Aucune leçon — vous pourrez en ajouter après la création
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {chapterLecons.map((lecon, index) => (
+                      <div key={lecon.id} className="border rounded-sm p-3 space-y-3 bg-muted/20">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-muted-foreground">Leçon {index + 1}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-6 h-6 text-destructive hover:text-destructive"
+                            onClick={() => removeLecon(lecon.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Titre</Label>
+                            <Input
+                              value={lecon.titre}
+                              onChange={(e) => updateLecon(lecon.id, { titre: e.target.value })}
+                              placeholder="Titre de la leçon"
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Type de contenu</Label>
+                            <Select
+                              value={lecon.type_contenu}
+                              onValueChange={(v: "video" | "pdf" | "texte") =>
+                                updateLecon(lecon.id, { type_contenu: v, file: null, contenu: "" })
+                              }
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="video">Vidéo</SelectItem>
+                                <SelectItem value="pdf">PDF</SelectItem>
+                                <SelectItem value="texte">Texte</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {lecon.type_contenu !== "texte" && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">
+                              Fichier {lecon.type_contenu === "video" ? "(MP4, MOV…)" : "(PDF)"}
+                            </Label>
+                            <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-2.5 cursor-pointer hover:bg-muted/50 transition-colors text-xs text-muted-foreground">
+                              {lecon.file ? (
+                                <span className="flex items-center gap-1.5 text-foreground font-medium">
+                                  <FileVideo className="w-3.5 h-3.5 text-primary shrink-0" />
+                                  <span className="truncate max-w-xs">{lecon.file.name}</span>
+                                  <span className="text-muted-foreground shrink-0">
+                                    ({(lecon.file.size / 1024 / 1024).toFixed(1)} Mo)
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1.5">
+                                  <Upload className="w-3.5 h-3.5" />
+                                  Cliquer pour choisir un fichier
+                                </span>
+                              )}
+                              <input
+                                type="file"
+                                accept={lecon.type_contenu === "video" ? "video/*" : ".pdf,application/pdf"}
+                                className="hidden"
+                                onChange={(e) => updateLecon(lecon.id, { file: e.target.files?.[0] ?? null })}
+                              />
+                            </label>
+                          </div>
+                        )}
+
+                        {lecon.type_contenu === "texte" && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Contenu texte</Label>
+                            <Textarea
+                              value={lecon.contenu}
+                              onChange={(e) => updateLecon(lecon.id, { contenu: e.target.value })}
+                              placeholder="Saisissez le contenu de la leçon…"
+                              rows={3}
+                              className="text-sm resize-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {chapterError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {chapterError}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!chapterSuccess && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" className="rounded-sm" onClick={() => setChapterOpen(false)} disabled={chapterSubmitting}>
+                Annuler
+              </Button>
+              <Button
+                className="rounded-sm gap-2"
+                onClick={handleCreateChapter}
+                disabled={chapterSubmitting || !chapterFormationId || !chapterTitre.trim()}
+              >
+                {chapterSubmitting ? <span className="animate-spin">⏳</span> : <Layers className="w-4 h-4" />}
+                {chapterSubmitting ? "Création en cours…" : "Créer le chapitre"}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

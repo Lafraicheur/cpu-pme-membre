@@ -880,6 +880,7 @@ export interface FormationFormateur {
   photo: string | null;
   linkedin: string | null;
   website: string | null;
+  creator_user_id?: string;
 }
 
 export interface FormateurAvecFormations extends FormationFormateur {
@@ -905,6 +906,46 @@ export interface FormateurAvecFormations extends FormationFormateur {
 }
 
 export const formateursApi = {
+  getByCreator: async (creatorUserId: string): Promise<FormateurAvecFormations[]> => {
+    const res = await request<FormateurAvecFormations[] | { success: boolean; data: FormateurAvecFormations[] }>(
+      `/api/formation/formateurs?creatorUserId=${encodeURIComponent(creatorUserId)}`
+    );
+    const list = Array.isArray(res) ? res : ((res as { data: FormateurAvecFormations[] }).data ?? []);
+    return list.map((f) => ({
+      ...f,
+      photo: f.photo ? decodeHtml(f.photo) : null,
+      linkedin: f.linkedin ? decodeHtml(f.linkedin) : null,
+      website: f.website ? decodeHtml(f.website) : null,
+    }));
+  },
+
+  create: async (payload: {
+    firstname: string;
+    lastname: string;
+    email?: string;
+    phone?: string;
+    titre?: string;
+    bio?: string;
+    linkedin?: string;
+    website?: string;
+    photo?: File | null;
+  }): Promise<FormationFormateur> => {
+    const fd = new FormData();
+    fd.append("firstname", payload.firstname);
+    fd.append("lastname", payload.lastname);
+    if (payload.email)   fd.append("email",    payload.email);
+    if (payload.phone)   fd.append("phone",    payload.phone);
+    if (payload.titre)   fd.append("titre",    payload.titre);
+    if (payload.bio)     fd.append("bio",      payload.bio);
+    if (payload.linkedin !== undefined) fd.append("linkedin", payload.linkedin);
+    if (payload.website  !== undefined) fd.append("website",  payload.website);
+    if (payload.photo)   fd.append("photo",    payload.photo);
+    const res = await requestMultipart<{ success: boolean; data: FormationFormateur }>(
+      "/api/formation/formateurs", fd
+    );
+    return res.data;
+  },
+
   getAll: async (): Promise<FormateurAvecFormations[]> => {
     const res = await request<FormateurAvecFormations[] | { success: boolean; data: FormateurAvecFormations[] }>(
       "/api/formation/formateurs", { skipAuth: true }
@@ -969,17 +1010,41 @@ export interface FormationAPI {
   image: string | null;
   niveau: "beginner" | "intermediate" | "advanced" | null;
   formateur: FormationFormateur | null;
-  centreFormation: { id: string; nom: string; adresse: string; ville: string } | null;
+  centreFormation: { id: string; nom: string; adresse: string; ville: string; telephone?: string; email?: string } | null;
   chapitres: FormationChapitre[];
+  devoirs?: FormationDevoir[];
   participants: FormationParticipant[];
   competences: string[];
   certification_delivrer_badge: boolean;
   certification_nom_badge: string | null;
+  certification_quiz_reussi?: boolean;
+  certification_progression_100?: boolean;
+  certification_devoir_valide?: boolean;
+  certification_presence_live?: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export const formationsApi = {
+  getByCreator: async (creatorUserId: string): Promise<FormationAPI[]> => {
+    const res = await request<{ success: boolean; data: FormationAPI[] } | FormationAPI[]>(
+      `/api/formation/formations?creatorUserId=${encodeURIComponent(creatorUserId)}`
+    );
+    const list = Array.isArray(res) ? res : ((res as { data: FormationAPI[] }).data ?? []);
+    return list.map((f) => ({
+      ...f,
+      lien: f.lien ? decodeHtml(f.lien) : null,
+      fichier: f.fichier ? decodeHtml(f.fichier) : null,
+      image: f.image ? decodeHtml(f.image) : null,
+      formateur: f.formateur ? {
+        ...f.formateur,
+        linkedin: f.formateur.linkedin ? decodeHtml(f.formateur.linkedin) : null,
+        website: f.formateur.website ? decodeHtml(f.formateur.website) : null,
+        photo: f.formateur.photo ? decodeHtml(f.formateur.photo) : null,
+      } : null,
+    }));
+  },
+
   getAll: async (): Promise<FormationAPI[]> => {
     const res = await request<{ success: boolean; data: FormationAPI[] } | FormationAPI[]>(
       "/api/formation/formations", { skipAuth: true }
@@ -1071,6 +1136,44 @@ export const formationsApi = {
     if (payload.fichier) fd.append("fichier", payload.fichier);
     return requestMultipart<FormationAPI>("/api/formation/formations", fd);
   },
+
+  update: async (id: string, payload: {
+    title?: string;
+    description?: string;
+    category?: string;
+    mode?: string;
+    niveau?: string;
+    duration?: number;
+    isPaid?: boolean;
+    isActive?: boolean;
+    price?: number;
+    price_member?: number;
+    moduleId?: string;
+    formateur_id?: string;
+    image?: File | null;
+    fichier?: File | null;
+  }): Promise<FormationAPI> => {
+    const fd = new FormData();
+    if (payload.title)        fd.append("title",        payload.title);
+    if (payload.description)  fd.append("description",  payload.description);
+    if (payload.category)     fd.append("category",     payload.category);
+    if (payload.mode)         fd.append("mode",         payload.mode);
+    if (payload.niveau)       fd.append("niveau",       payload.niveau);
+    if (payload.duration != null)    fd.append("duration",    String(payload.duration));
+    if (payload.isPaid != null)      fd.append("isPaid",      String(payload.isPaid));
+    if (payload.isActive != null)    fd.append("isActive",    String(payload.isActive));
+    if (payload.price != null)       fd.append("price",       String(payload.price));
+    if (payload.price_member != null) fd.append("price_member", String(payload.price_member));
+    if (payload.moduleId)     fd.append("moduleId",     payload.moduleId);
+    if (payload.formateur_id) fd.append("formateur_id", payload.formateur_id);
+    if (payload.image)        fd.append("image",        payload.image);
+    if (payload.fichier)      fd.append("fichier",      payload.fichier);
+    return requestMultipart<FormationAPI>(`/api/formation/formations/${id}`, fd, "PATCH");
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/formations/${id}`, { method: "DELETE" });
+  },
 };
 
 export interface CentreFormation {
@@ -1101,7 +1204,22 @@ export interface FormationModule {
 export const formationModulesApi = {
   getAll: async (): Promise<FormationModule[]> => {
     const res = await request<{ success: boolean; data: FormationModule[] }>(
-      "/api/formation/modules", { skipAuth: true }
+      "/api/formation/modules"
+    );
+    return res.data;
+  },
+};
+
+export interface FormationCategorie {
+  id: string;
+  name: string;
+  ordre: number;
+}
+
+export const formationCategoriesApi = {
+  getAll: async (): Promise<FormationCategorie[]> => {
+    const res = await request<{ success: boolean; data: FormationCategorie[] }>(
+      "/api/formation/categories"
     );
     return res.data;
   },
@@ -1118,24 +1236,169 @@ export interface MonInscription {
 
 export const mesCoursApi = {
   getMesFormations: async (): Promise<MonInscription[]> => {
-    const res = await request<{ success: boolean; data: MonInscription[] }>(
+    const res = await request<{ success: boolean; data: (Omit<MonInscription, "formation"> & { formation: FormationAPI | null })[] }>(
       "/api/formation/participant/me/formations"
     );
-    return res.data.map((item) => ({
-      ...item,
-      formation: {
-        ...item.formation,
-        lien: item.formation.lien ? decodeHtml(item.formation.lien) : null,
-        fichier: item.formation.fichier ? decodeHtml(item.formation.fichier) : null,
-        image: item.formation.image ? decodeHtml(item.formation.image) : null,
-        formateur: {
-          ...item.formation.formateur,
-          linkedin: item.formation.formateur.linkedin ? decodeHtml(item.formation.formateur.linkedin) : null,
-          website: item.formation.formateur.website ? decodeHtml(item.formation.formateur.website) : null,
-          photo: item.formation.formateur.photo ? decodeHtml(item.formation.formateur.photo) : null,
+    return res.data
+      .filter((item) => item.formation !== null)
+      .map((item) => ({
+        ...item,
+        formation: {
+          ...item.formation!,
+          lien: item.formation!.lien ? decodeHtml(item.formation!.lien) : null,
+          fichier: item.formation!.fichier ? decodeHtml(item.formation!.fichier) : null,
+          image: item.formation!.image ? decodeHtml(item.formation!.image) : null,
+          formateur: item.formation!.formateur ? {
+            ...item.formation!.formateur,
+            linkedin: item.formation!.formateur.linkedin ? decodeHtml(item.formation!.formateur.linkedin) : null,
+            website: item.formation!.formateur.website ? decodeHtml(item.formation!.formateur.website) : null,
+            photo: item.formation!.formateur.photo ? decodeHtml(item.formation!.formateur.photo) : null,
+          } : null,
         },
-      },
-    }));
+      }));
+  },
+};
+
+export interface FormationDevoir {
+  id: string;
+  titre: string;
+  description: string | null;
+  consignes: string | null;
+  date_limite: string | null;
+  formation_id: string;
+  chapitre_id: string | null;
+  lecon_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const devoirsApi = {
+  getByFormation: async (formationId: string): Promise<FormationDevoir[]> => {
+    const res = await request<{ success: boolean; data: FormationDevoir[] } | FormationDevoir[]>(
+      `/api/formation/devoirs?formation_id=${encodeURIComponent(formationId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationDevoir[] }).data ?? []);
+  },
+
+  create: async (payload: {
+    titre: string;
+    description?: string;
+    consignes?: string;
+    date_limite?: string;
+    formation_id: string;
+    chapitre_id?: string;
+    lecon_id?: string;
+  }): Promise<FormationDevoir> => {
+    const res = await request<{ success: boolean; data: FormationDevoir } | FormationDevoir>(
+      "/api/formation/devoirs",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationDevoir }).data ?? (res as FormationDevoir);
+  },
+
+  update: async (id: string, payload: {
+    titre?: string;
+    description?: string;
+    consignes?: string;
+    date_limite?: string;
+    formation_id?: string;
+    chapitre_id?: string;
+    lecon_id?: string;
+  }): Promise<FormationDevoir> => {
+    const res = await request<{ success: boolean; data: FormationDevoir } | FormationDevoir>(
+      `/api/formation/devoirs/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return (res as { data: FormationDevoir }).data ?? (res as FormationDevoir);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/devoirs/${id}`, { method: "DELETE" });
+  },
+};
+
+export const chapitresApi = {
+  getByFormation: async (formationId: string): Promise<FormationChapitre[]> => {
+    const res = await request<{ success: boolean; data: FormationChapitre[] } | FormationChapitre[]>(
+      `/api/formation/chapitres?formation_id=${encodeURIComponent(formationId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationChapitre[] }).data ?? []);
+  },
+
+  create: async (payload: {
+    formation_id: string;
+    titre: string;
+    lecons?: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }>;
+    files?: { [fieldName: string]: File };
+  }): Promise<FormationChapitre> => {
+    const fd = new FormData();
+    fd.append("formation_id", payload.formation_id);
+    fd.append("titre", payload.titre);
+    if (payload.lecons?.length) {
+      fd.append("lecons", JSON.stringify(payload.lecons));
+    }
+    if (payload.files) {
+      for (const [key, file] of Object.entries(payload.files)) {
+        fd.append(key, file);
+      }
+    }
+    const res = await requestMultipart<{ success: boolean; data: FormationChapitre } | FormationChapitre>(
+      "/api/formation/chapitres", fd
+    );
+    return (res as { data: FormationChapitre }).data ?? (res as FormationChapitre);
+  },
+
+  update: async (id: string, payload: {
+    titre?: string;
+    formation_id?: string;
+    lecons?: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }>;
+    leconIdsToDelete?: string[];
+    files?: { [fieldName: string]: File };
+  }): Promise<FormationChapitre> => {
+    const fd = new FormData();
+    if (payload.titre) fd.append("titre", payload.titre);
+    if (payload.formation_id) fd.append("formation_id", payload.formation_id);
+    if (payload.lecons?.length) fd.append("lecons", JSON.stringify(payload.lecons));
+    if (payload.leconIdsToDelete?.length) fd.append("leconIdsToDelete", JSON.stringify(payload.leconIdsToDelete));
+    if (payload.files) {
+      for (const [key, file] of Object.entries(payload.files)) {
+        fd.append(key, file);
+      }
+    }
+    const res = await requestMultipart<{ success: boolean; data: FormationChapitre } | FormationChapitre>(
+      `/api/formation/chapitres/${id}`, fd, "PATCH"
+    );
+    return (res as { data: FormationChapitre }).data ?? (res as FormationChapitre);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/chapitres/${id}`, { method: "DELETE" });
+  },
+};
+
+export const leconsApi = {
+  update: async (
+    id: string,
+    payload: {
+      titre?: string;
+      type_contenu?: string;
+      chapitre_id?: string;
+      file?: File;
+    }
+  ): Promise<FormationLecon> => {
+    const fd = new FormData();
+    if (payload.titre) fd.append("titre", payload.titre);
+    if (payload.type_contenu) fd.append("type_contenu", payload.type_contenu);
+    if (payload.chapitre_id) fd.append("chapitre_id", payload.chapitre_id);
+    if (payload.file) fd.append("contenu", payload.file);
+    const res = await requestMultipart<{ success: boolean; data: FormationLecon } | FormationLecon>(
+      `/api/formation/chapitres/lecons/${id}`, fd, "PATCH"
+    );
+    return (res as { data: FormationLecon }).data ?? (res as FormationLecon);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/formation/chapitres/lecons/${id}`, { method: "DELETE" });
   },
 };
 

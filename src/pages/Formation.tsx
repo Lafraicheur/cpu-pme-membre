@@ -148,10 +148,7 @@ export default function Formation() {
                   <Users className="w-3.5 h-3.5" />
                   Mes apprenants
                 </TabsTrigger>
-                <TabsTrigger value="equipe" className="gap-1.5 text-xs sm:text-sm">
-                  <Building2 className="w-3.5 h-3.5" />
-                  Mon équipe
-                </TabsTrigger>
+                {/*   */}
               </TabsList>
               <TabsContent value="espace">
                 <EspaceFormateur />

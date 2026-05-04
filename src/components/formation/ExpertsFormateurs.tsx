@@ -1,19 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   BookOpen, Users, Search, MessageCircle, Award,
   Globe, AlertCircle, GraduationCap,
   ChevronLeft, ChevronRight, Mail, Phone, MapPin,
-  Calendar, Clock, Play, Video,
+  Calendar, Clock, Play, Video, Upload, CheckCircle, ImageIcon,
 } from "lucide-react";
 import { formateursApi, FormateurAvecFormations } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -290,7 +294,14 @@ function FormateurDrawer({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
+const FORM_INIT = {
+  firstname: "", lastname: "", email: "", phone: "",
+  titre: "", bio: "", linkedin: "", website: "",
+  photo: null as File | null,
+};
+
 export function ExpertsFormateurs() {
+  const { user } = useAuth();
   const [formateurs, setFormateurs] = useState<FormateurAvecFormations[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -299,6 +310,47 @@ export function ExpertsFormateurs() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedFormateur, setSelectedFormateur] = useState<FormateurAvecFormations | null>(null);
   const ITEMS_PER_PAGE = 12;
+
+  // Dialog "Devenir formateur"
+  const [devenirOpen, setDevenirOpen] = useState(false);
+  const [devenirForm, setDevenirForm] = useState({ ...FORM_INIT });
+  const [devenirSubmitting, setDevenirSubmitting] = useState(false);
+  const [devenirError, setDevenirError] = useState<string | null>(null);
+  const [devenirSuccess, setDevenirSuccess] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const setDF = (key: string, value: unknown) =>
+    setDevenirForm((p) => ({ ...p, [key]: value }));
+
+  const openDevenir = () => {
+    setDevenirForm({ ...FORM_INIT, email: user?.email ?? "" });
+    setDevenirError(null);
+    setDevenirSuccess(false);
+    setDevenirOpen(true);
+  };
+
+  const handleDevenirSubmit = async () => {
+    setDevenirSubmitting(true);
+    setDevenirError(null);
+    try {
+      await formateursApi.create({
+        firstname: devenirForm.firstname,
+        lastname:  devenirForm.lastname,
+        email:     devenirForm.email   || undefined,
+        phone:     devenirForm.phone   || undefined,
+        titre:     devenirForm.titre   || undefined,
+        bio:       devenirForm.bio     || undefined,
+        linkedin:  devenirForm.linkedin,
+        website:   devenirForm.website,
+        photo:     devenirForm.photo,
+      });
+      setDevenirSuccess(true);
+    } catch (e: unknown) {
+      setDevenirError(e instanceof Error ? e.message : "Erreur lors de la création");
+    } finally {
+      setDevenirSubmitting(false);
+    }
+  };
 
   const fetchFormateurs = () => {
     setLoading(true);
@@ -349,7 +401,7 @@ export function ExpertsFormateurs() {
               </div>
             </div>
             <div className="sm:ml-auto">
-              <Button variant="outline" size="sm" className="gap-2 rounded-sm">
+              <Button variant="outline" size="sm" className="gap-2 rounded-sm" onClick={openDevenir}>
                 <Award className="w-4 h-4" />
                 Devenir formateur
               </Button>
@@ -548,6 +600,118 @@ export function ExpertsFormateurs() {
         open={!!selectedFormateur}
         onClose={() => setSelectedFormateur(null)}
       />
+
+      {/* Dialog Devenir formateur */}
+      <Dialog open={devenirOpen} onOpenChange={setDevenirOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" />
+              Devenir formateur
+            </DialogTitle>
+          </DialogHeader>
+
+          {devenirSuccess ? (
+            <div className="py-8 text-center space-y-3">
+              <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
+              <p className="font-semibold text-lg">Profil créé avec succès !</p>
+              <p className="text-sm text-muted-foreground">Votre profil formateur est maintenant disponible.</p>
+              <Button onClick={() => { setDevenirOpen(false); fetchFormateurs(); }} className="rounded-sm">
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Photo */}
+              <div className="space-y-2">
+                <Label>Photo de profil</Label>
+                <div
+                  className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {devenirForm.photo ? (
+                    <div className="flex items-center justify-center gap-2 text-sm">
+                      <ImageIcon className="w-4 h-4 text-primary" />
+                      <span className="font-medium">{devenirForm.photo.name}</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Upload className="w-7 h-7 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Cliquer pour choisir une photo</p>
+                    </div>
+                  )}
+                </div>
+                <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => setDF("photo", e.target.files?.[0] ?? null)} />
+              </div>
+
+              {/* Nom / Prénom */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Prénom <span className="text-destructive">*</span></Label>
+                  <Input value={devenirForm.firstname} onChange={(e) => setDF("firstname", e.target.value)} placeholder="Prénom" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nom <span className="text-destructive">*</span></Label>
+                  <Input value={devenirForm.lastname} onChange={(e) => setDF("lastname", e.target.value)} placeholder="Nom" />
+                </div>
+              </div>
+
+              {/* Email / Téléphone */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={devenirForm.email} onChange={(e) => setDF("email", e.target.value)} placeholder="email@exemple.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Téléphone</Label>
+                  <Input value={devenirForm.phone} onChange={(e) => setDF("phone", e.target.value)} placeholder="07 XX XX XX XX" />
+                </div>
+              </div>
+
+              {/* Titre */}
+              <div className="space-y-2">
+                <Label>Titre / Spécialité</Label>
+                <Input value={devenirForm.titre} onChange={(e) => setDF("titre", e.target.value)} placeholder="Ex: Expert Finance PME" />
+              </div>
+
+              {/* Bio */}
+              <div className="space-y-2">
+                <Label>Biographie</Label>
+                <Textarea value={devenirForm.bio} onChange={(e) => setDF("bio", e.target.value)}
+                  placeholder="Décrivez votre expertise et votre parcours..." rows={3} />
+              </div>
+
+              {/* Liens */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>LinkedIn</Label>
+                  <Input value={devenirForm.linkedin} onChange={(e) => setDF("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Site web</Label>
+                  <Input value={devenirForm.website} onChange={(e) => setDF("website", e.target.value)} placeholder="https://monsite.com" />
+                </div>
+              </div>
+
+              {devenirError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{devenirError}</div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" className="rounded-sm" onClick={() => setDevenirOpen(false)} disabled={devenirSubmitting}>
+                  Annuler
+                </Button>
+                <Button className="rounded-sm gap-2" onClick={handleDevenirSubmit}
+                  disabled={devenirSubmitting || !devenirForm.firstname || !devenirForm.lastname}>
+                  {devenirSubmitting ? <span className="animate-spin">⏳</span> : <Award className="w-4 h-4" />}
+                  {devenirSubmitting ? "Envoi en cours..." : "Créer mon profil"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

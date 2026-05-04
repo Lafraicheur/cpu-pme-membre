@@ -174,7 +174,9 @@ export function MesCoursApprentissage({ onStartLearning }: Props) {
             const modeCfg = modeConfig[formation.mode] ?? modeConfig.a_son_rythme;
             const ModeIcon = modeCfg.icon;
             const progressValue = progression ?? 0;
-            const instructorName = `${formation.formateur.firstname} ${formation.formateur.lastname}`;
+            const instructorName = formation.formateur
+              ? `${formation.formateur.firstname} ${formation.formateur.lastname}`
+              : "Formateur non renseigné";
             const isCompleted = status === "completed";
 
             return (
@@ -220,7 +222,7 @@ export function MesCoursApprentissage({ onStartLearning }: Props) {
                   {/* Formateur */}
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border">
-                      {formation.formateur.photo ? (
+                      {formation.formateur?.photo ? (
                         <img src={formation.formateur.photo} alt={instructorName} className="w-full h-full object-cover" />
                       ) : (
                         <GraduationCap className="w-3 h-3" />
