@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   BookOpen, Search, Clock, Award, Play, Video, Calendar,
-  MapPin, Users, GraduationCap, X,
+  MapPin, Users, GraduationCap, X, ExternalLink,
 } from "lucide-react";
 import { formationsApi, type FormationAPI } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -42,6 +42,19 @@ function formatDate(dateStr: string): string {
 
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+const CATALOGUE_URL = "https://devformation.cpupme.ci/catalogue";
+
+function toFormationUrl(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  return `https://devformation.cpupme.ci/formations/${slug}`;
 }
 
 interface Formation {
@@ -229,13 +242,22 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-primary" />
             <h2 className="text-base font-semibold">Prochaines formations</h2>
+            {!loading && (
+              <span className="text-sm text-muted-foreground">
+                {upcoming.length} formation{upcoming.length > 1 ? "s" : ""}
+                {activeFiltersCount > 0 ? " filtrée" + (upcoming.length > 1 ? "s" : "") : ""}
+              </span>
+            )}
           </div>
-          {!loading && (
-            <span className="text-sm text-muted-foreground">
-              {upcoming.length} formation{upcoming.length > 1 ? "s" : ""}
-              {activeFiltersCount > 0 ? " filtrée" + (upcoming.length > 1 ? "s" : "") : ""}
-            </span>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 rounded-sm text-sm"
+            onClick={() => window.open(CATALOGUE_URL, "_blank")}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Voir toutes les formations
+          </Button>
         </div>
 
         {loading ? (
@@ -265,7 +287,7 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                 <Card
                   key={formation.id}
                   className="overflow-hidden relative h-52 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group border-0"
-                  onClick={() => onViewDetail(formation.id)}
+                  onClick={() => window.open(toFormationUrl(formation.title), "_blank")}
                 >
                   {formation.image ? (
                     <img
@@ -336,7 +358,7 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
                         size="sm"
                         variant="secondary"
                         className="h-6 px-2 text-[10px] gap-1 flex-shrink-0 bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-sm"
-                        onClick={(e) => { e.stopPropagation(); onViewDetail(formation.id); }}
+                        onClick={(e) => { e.stopPropagation(); window.open(toFormationUrl(formation.title), "_blank"); }}
                       >
                         <Play className="w-2.5 h-2.5" />
                         Voir
@@ -348,6 +370,8 @@ export function CatalogueFormations({ onViewDetail }: CatalogueProps) {
             })}
           </div>
         )}
+
+
       </div>
     </div>
   );

@@ -92,10 +92,10 @@ export default function Formation() {
               <Lock className="w-3.5 h-3.5" />
               Formateur
             </TabsTrigger>
-            <TabsTrigger value="parcours" className="gap-1.5 text-xs sm:text-sm">
+            {/* <TabsTrigger value="parcours" className="gap-1.5 text-xs sm:text-sm">
               <Target className="w-3.5 h-3.5" />
               Parcours
-            </TabsTrigger>
+            </TabsTrigger> */}
             
             
             

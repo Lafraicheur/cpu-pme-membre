@@ -146,7 +146,7 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [countdownActive, setCountdownActive] = useState(false);
 
-  const { sendOtp, login } = useAuth();
+  const { sendOtp, login, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
@@ -161,6 +161,18 @@ export default function Auth() {
       return false;
     }
   };
+
+  // Redirection automatique si déjà connecté
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (isAuthenticated) {
+      if (isSafeReturnUrl(returnUrl)) {
+        window.location.href = returnUrl;
+      } else {
+        navigate("/", { replace: true });
+      }
+    }
+  }, [isAuthenticated, isAuthLoading]);
 
   const { remaining, formatted } = useCountdown(OTP_EXPIRY_SECONDS, countdownActive);
   const isExpired = countdownActive && remaining === 0;

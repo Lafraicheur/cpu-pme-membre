@@ -156,6 +156,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Détection de déconnexion depuis un autre site (formaction-cpu, cpu-pme-events, etc.)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const tokenPresent = !!getCookie("cpu-access-token");
+      if (!tokenPresent && user) {
+        localStorage.removeItem("cpu-access-token");
+        localStorage.removeItem("cpu-refresh-token");
+        localStorage.removeItem("cpu-expires-in");
+        localStorage.removeItem("cpu-adhesion");
+        localStorage.removeItem("cpu-pme-user");
+        setUser(null);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [user]);
+
   const sendOtp = async (email: string) => {
     await authApi.sendOtp(email);
   };
@@ -173,10 +191,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (expires_in !== undefined) {
       localStorage.setItem("cpu-expires-in", String(expires_in));
+      setCookie("cpu-expires-in", String(expires_in));
     }
 
     if (adhesion) {
       localStorage.setItem("cpu-adhesion", JSON.stringify(adhesion));
+      setCookie("cpu-adhesion", JSON.stringify(adhesion));
     }
 
     const profile = adhesion ?? { email };
@@ -197,9 +217,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("cpu-expires-in");
       localStorage.removeItem("cpu-adhesion");
       localStorage.removeItem("cpu-pme-user");
+      // Efface tous les cookies partagés → déconnecte les autres sites
       removeCookie("cpu-access-token");
       removeCookie("cpu-refresh-token");
       removeCookie("cpu-pme-user");
+      removeCookie("cpu-adhesion");
+      removeCookie("cpu-expires-in");
       setUser(null);
     }
   };
