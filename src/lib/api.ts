@@ -983,14 +983,49 @@ export const formateursApi = {
   },
 };
 
+export interface ParticipantUserDetails {
+  id: string;
+  role: string;
+  name: string;
+  email: string;
+  phone: string;
+}
+
 export interface FormationParticipant {
   id: string;
   formation_id: string;
+  formation: FormationAPI | null;
   user_id: string;
+  user_details?: ParticipantUserDetails | null;
   status: string;
   progression: string;
+  grade: string | null;
+  registered_at: string;
+  confirmed_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  last_accessed_at: string | null;
   certificat_delivre: boolean;
+  certificat_delivre_at: string | null;
+  feedback: string | null;
+  created_at: string;
 }
+
+export const participantsApi = {
+  getByFormation: async (formationId: string): Promise<FormationParticipant[]> => {
+    const res = await request<{ success: boolean; data: FormationParticipant[] } | FormationParticipant[]>(
+      `/api/formation/participants/formation/${encodeURIComponent(formationId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationParticipant[] }).data ?? []);
+  },
+
+  getByUser: async (userId: string): Promise<FormationParticipant[]> => {
+    const res = await request<{ success: boolean; data: FormationParticipant[] } | FormationParticipant[]>(
+      `/api/formation/participants/user/${encodeURIComponent(userId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationParticipant[] }).data ?? []);
+  },
+};
 
 export interface FormationAPI {
   id: string;
@@ -1127,7 +1162,7 @@ export const formationsApi = {
     description?: string;
     category?: string;
     mode?: string;
-    niveau?: string;
+    niveau?: string | null;
     duration?: number;
     isPaid?: boolean;
     isActive?: boolean;
@@ -1153,7 +1188,7 @@ export const formationsApi = {
     if (payload.description) fd.append("description", payload.description);
     if (payload.category) fd.append("category", payload.category);
     if (payload.mode) fd.append("mode", payload.mode);
-    if (payload.niveau) fd.append("niveau", payload.niveau);
+    if (payload.niveau !== undefined) fd.append("niveau", payload.niveau ?? "");
     if (payload.duration != null) fd.append("duration", String(payload.duration));
     if (payload.isPaid != null) fd.append("isPaid", String(payload.isPaid));
     if (payload.isActive != null) fd.append("isActive", String(payload.isActive));
@@ -1261,6 +1296,28 @@ export const formationCategoriesApi = {
       "/api/formation/categories"
     );
     return res.data;
+  },
+};
+
+export interface SousFiliere {
+  id: string;
+  name: string;
+  filiere_id: string;
+  filiere: {
+    id: string;
+    name: string;
+    secteur_id: string;
+    isActive: boolean;
+  };
+  isActive: boolean;
+}
+
+export const sousFiliereApi = {
+  getAll: async (): Promise<SousFiliere[]> => {
+    const res = await request<{ success: boolean; data: SousFiliere[] }>(
+      "/api/sous-filieres"
+    );
+    return res.data.filter((s) => s.isActive).sort((a, b) => a.name.localeCompare(b.name, "fr"));
   },
 };
 
@@ -1515,13 +1572,21 @@ export const questionsApi = {
     return Array.isArray(res) ? res : ((res as { data: FormationQuestion[] }).data ?? []);
   },
 
+  getByDevoir: async (devoirId: string): Promise<FormationQuestion[]> => {
+    const res = await request<{ success: boolean; data: FormationQuestion[] } | FormationQuestion[]>(
+      `/api/formation/questions?devoir_id=${encodeURIComponent(devoirId)}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationQuestion[] }).data ?? []);
+  },
+
   create: async (payload: {
     texte: string;
     type: "single_choice" | "multiple_choice";
     options: string[];
     reponses_correctes: number[];
     points?: number;
-    quiz_id: string;
+    quiz_id?: string;
+    devoir_id?: string;
     ordre?: number;
   }): Promise<FormationQuestion> => {
     const res = await request<{ success: boolean; data: FormationQuestion } | FormationQuestion>(

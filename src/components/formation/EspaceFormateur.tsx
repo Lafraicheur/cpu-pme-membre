@@ -15,15 +15,18 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Trash2,
   Send, Calendar, CheckCircle, Clock, Eye, Upload,
   Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
   MapPin, Globe, Phone, Mail, Award, GraduationCap, Video,
   PlayCircle, FileText, AlertCircle, Layers, ClipboardList, HelpCircle, ListChecks, Pencil,
+  ChevronsUpDown, Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, formationModulesApi, formationCategoriesApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, type CentreFormation, type FormationModule, type FormationCategorie, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion } from "@/lib/api";
+import { formationsApi, centreFormationsApi, formationModulesApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, type CentreFormation, type FormationModule, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant } from "@/lib/api";
 
 interface LessonDraft {
   id: string;
@@ -47,6 +50,60 @@ function courseStatus(f: FormationAPI): "draft" | "submitted" | "published" | "r
   return "draft";
 }
 
+function CategoryCombobox({
+  value,
+  onChange,
+  items,
+  placeholder = "Choisir une catégorie",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  items: SousFiliere[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = items.find((c) => c.name === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">{selected ? selected.name : placeholder}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Rechercher une catégorie…" />
+          <CommandList>
+            <CommandEmpty>Aucune catégorie trouvée.</CommandEmpty>
+            <CommandGroup>
+              {items.map((c) => (
+                <CommandItem
+                  key={c.id}
+                  value={c.name}
+                  onSelect={(v) => {
+                    onChange(v === value ? "" : v);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={`mr-2 h-4 w-4 ${value === c.name ? "opacity-100" : "opacity-0"}`} />
+                  {c.name}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function EspaceFormateur() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -56,7 +113,7 @@ export function EspaceFormateur() {
   const [createOpen, setCreateOpen] = useState(false);
   const [centres, setCentres] = useState<CentreFormation[]>([]);
   const [modules, setModules] = useState<FormationModule[]>([]);
-  const [categories, setCategories] = useState<FormationCategorie[]>([]);
+  const [categories, setCategories] = useState<SousFiliere[]>([]);
   const [formateurs, setFormateurs] = useState<FormateurAvecFormations[]>([]);
 
   const fetchCourses = () => {
@@ -71,7 +128,7 @@ export function EspaceFormateur() {
   useEffect(() => {
     centreFormationsApi.getAll().then(setCentres).catch(() => {});
     formationModulesApi.getAll().then(setModules).catch(() => {});
-    formationCategoriesApi.getAll().then(setCategories).catch(() => {});
+    sousFiliereApi.getAll().then(setCategories).catch(() => {});
     if (user?.id) {
       formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
       fetchCourses();
@@ -103,7 +160,7 @@ export function EspaceFormateur() {
       description:  course.description ?? "",
       category:     course.category ?? "",
       mode:         course.mode ?? "",
-      niveau:       course.niveau ?? "",
+      niveau:       course.niveau ?? "_none_",
       duration:     course.duration ? String(course.duration) : "",
       moduleId:     "",
       formateur_id: course.formateur?.id ?? "",
@@ -130,7 +187,7 @@ export function EspaceFormateur() {
         description:  editForm.description  || undefined,
         category:     editForm.category     || undefined,
         mode:         editForm.mode         || undefined,
-        niveau:       editForm.niveau       || undefined,
+        niveau:       editForm.niveau === "_none_" ? null : (editForm.niveau || undefined),
         duration:     editForm.duration     ? Number(editForm.duration)     : undefined,
         isPaid:       editForm.isPaid,
         isActive:     editForm.isActive,
@@ -484,7 +541,59 @@ export function EspaceFormateur() {
     }
   };
 
+  // ── Chapitre list dialog ────────────────────────────────────────────────────
+  const [chapitreListOpen, setChapitreListOpen] = useState(false);
+  const [chapitreListFormationId, setChapitreListFormationId] = useState("");
+  const [chapitreListItems, setChapitreListItems] = useState<FormationChapitre[]>([]);
+  const [chapitreListLoading, setChapitreListLoading] = useState(false);
+
+  const openChapitreList = (formationId: string) => {
+    setChapitreListFormationId(formationId);
+    setChapitreListItems([]);
+    setChapitreListLoading(true);
+    setChapitreListOpen(true);
+    chapitresApi.getByFormation(formationId)
+      .then(setChapitreListItems)
+      .catch(() => {})
+      .finally(() => setChapitreListLoading(false));
+  };
+
+  // ── Devoir list dialog ──────────────────────────────────────────────────────
+  const [devoirListOpen, setDevoirListOpen] = useState(false);
+  const [devoirListFormationId, setDevoirListFormationId] = useState("");
+  const [devoirListItems, setDevoirListItems] = useState<FormationDevoir[]>([]);
+  const [devoirListLoading, setDevoirListLoading] = useState(false);
+
+  const openDevoirList = (formationId: string) => {
+    setDevoirListFormationId(formationId);
+    setDevoirListItems([]);
+    setDevoirListLoading(true);
+    setDevoirListOpen(true);
+    devoirsApi.getByFormation(formationId)
+      .then(setDevoirListItems)
+      .catch(() => {})
+      .finally(() => setDevoirListLoading(false));
+  };
+
+  // ── Participants dialog ─────────────────────────────────────────────────────
+  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const [participantsFormationTitle, setParticipantsFormationTitle] = useState("");
+  const [participantsItems, setParticipantsItems] = useState<FormationParticipant[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+
+  const openParticipants = (formationId: string, title: string) => {
+    setParticipantsFormationTitle(title);
+    setParticipantsItems([]);
+    setParticipantsLoading(true);
+    setParticipantsOpen(true);
+    participantsApi.getByFormation(formationId)
+      .then(setParticipantsItems)
+      .catch(() => {})
+      .finally(() => setParticipantsLoading(false));
+  };
+
   // ── Questions dialog ────────────────────────────────────────────────────────
+  const [questionContextType, setQuestionContextType] = useState<"quiz" | "devoir">("quiz");
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionQuizId, setQuestionQuizId] = useState("");
   const [questionQuizTitre, setQuestionQuizTitre] = useState("");
@@ -513,9 +622,10 @@ export function EspaceFormateur() {
   const [questionEditSubmitting, setQuestionEditSubmitting] = useState(false);
   const [questionEditError, setQuestionEditError] = useState<string | null>(null);
 
-  const openQuestionDialog = (quizId: string, quizTitre: string) => {
-    setQuestionQuizId(quizId);
-    setQuestionQuizTitre(quizTitre);
+  const openQuestionDialog = (id: string, titre: string, contextType: "quiz" | "devoir" = "quiz") => {
+    setQuestionContextType(contextType);
+    setQuestionQuizId(id);
+    setQuestionQuizTitre(titre);
     setQuestionTexte("");
     setQuestionType("single_choice");
     setQuestionOptions(["", ""]);
@@ -526,13 +636,14 @@ export function EspaceFormateur() {
     setQuestionOpen(true);
   };
 
-  const openQuestionList = (quizId: string, quizTitre: string) => {
-    setQuestionListQuizId(quizId);
-    setQuestionListQuizTitre(quizTitre);
+  const openQuestionList = (id: string, titre: string, contextType: "quiz" | "devoir" = "quiz") => {
+    setQuestionContextType(contextType);
+    setQuestionListQuizId(id);
+    setQuestionListQuizTitre(titre);
     setQuestionListItems([]);
     setQuestionListLoading(true);
     setQuestionListOpen(true);
-    questionsApi.getByQuiz(quizId)
+    (contextType === "devoir" ? questionsApi.getByDevoir(id) : questionsApi.getByQuiz(id))
       .then(setQuestionListItems)
       .catch(() => {})
       .finally(() => setQuestionListLoading(false));
@@ -570,7 +681,7 @@ export function EspaceFormateur() {
         options: questionOptions,
         reponses_correctes: questionReponsesCorrectes,
         points: questionPoints,
-        quiz_id: questionQuizId,
+        ...(questionContextType === "devoir" ? { devoir_id: questionQuizId } : { quiz_id: questionQuizId }),
         ordre: (questionListItems.length || 0) + 1,
       });
       setQuestionListItems((prev) => [...prev, created]);
@@ -858,7 +969,7 @@ export function EspaceFormateur() {
     description: "",
     category: "",
     mode: "",
-    niveau: "",
+    niveau: "_none_",
     duration: "",
     moduleId: "",
     formateur_id: "",
@@ -906,7 +1017,7 @@ export function EspaceFormateur() {
         description: form.description || undefined,
         category: form.category || undefined,
         mode: form.mode || undefined,
-        niveau: form.niveau || undefined,
+        niveau: form.niveau === "_none_" ? null : form.niveau,
         duration: form.duration ? Number(form.duration) : undefined,
         isPaid: form.isPaid,
         isActive: form.isActive,
@@ -973,15 +1084,11 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Catégorie</Label>
-                <Select value={form.category} onValueChange={(v) => setF("category", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.length === 0 && <SelectItem value="_" disabled>Chargement…</SelectItem>}
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategoryCombobox
+                  value={form.category}
+                  onChange={(v) => setF("category", v)}
+                  items={categories}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Mode</Label>
@@ -1002,6 +1109,8 @@ export function EspaceFormateur() {
                 <Select value={form.niveau} onValueChange={(v) => setF("niveau", v)}>
                   <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="_none_">Aucun niveau requis</SelectItem>
+                    <SelectItem value="all_levels">Tous les niveaux</SelectItem>
                     <SelectItem value="beginner">Débutant</SelectItem>
                     <SelectItem value="intermediate">Intermédiaire</SelectItem>
                     <SelectItem value="advanced">Avancé</SelectItem>
@@ -1562,28 +1671,19 @@ export function EspaceFormateur() {
                                 variant="outline"
                                 size="sm"
                                 className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openChapterDialog(course.id)}
+                                onClick={() => openChapitreList(course.id)}
                               >
                                 <Layers className="w-3.5 h-3.5" />
-                                Chapitre
+                                Chapitres
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openDevoirDialog(course.id)}
+                                onClick={() => openDevoirList(course.id)}
                               >
                                 <ClipboardList className="w-3.5 h-3.5" />
-                                Devoir
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openQuizDialog(course.id)}
-                              >
-                                <HelpCircle className="w-3.5 h-3.5" />
-                                Quiz
+                                Devoirs
                               </Button>
                               <Button
                                 variant="outline"
@@ -1592,7 +1692,16 @@ export function EspaceFormateur() {
                                 onClick={() => openQuizList(course.id)}
                               >
                                 <ListChecks className="w-3.5 h-3.5" />
-                                Voir quiz
+                                Quiz
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5 rounded-sm"
+                                onClick={() => openParticipants(course.id, course.title)}
+                              >
+                                <Users className="w-3.5 h-3.5" />
+                                Participants
                               </Button>
                             </div>
                           </CardContent>
@@ -2086,15 +2195,11 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Catégorie</Label>
-                <Select value={editForm.category} onValueChange={(v) => setEF("category", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.length === 0 && <SelectItem value="_" disabled>Chargement…</SelectItem>}
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategoryCombobox
+                  value={editForm.category}
+                  onChange={(v) => setEF("category", v)}
+                  items={categories}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Mode</Label>
@@ -2116,6 +2221,8 @@ export function EspaceFormateur() {
                 <Select value={editForm.niveau} onValueChange={(v) => setEF("niveau", v)}>
                   <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="_none_">Aucun niveau requis</SelectItem>
+                    <SelectItem value="all_levels">Tous les niveaux</SelectItem>
                     <SelectItem value="beginner">Débutant</SelectItem>
                     <SelectItem value="intermediate">Intermédiaire</SelectItem>
                     <SelectItem value="advanced">Avancé</SelectItem>
@@ -3252,6 +3359,218 @@ export function EspaceFormateur() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Participants */}
+      <Dialog open={participantsOpen} onOpenChange={setParticipantsOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" />
+              Participants — {participantsFormationTitle}
+            </DialogTitle>
+          </DialogHeader>
+
+          {participantsLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+          ) : participantsItems.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <Users className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Aucun participant pour cette formation.</p>
+            </div>
+          ) : (
+            <div className="space-y-1 py-2">
+              <p className="text-xs text-muted-foreground mb-3">{participantsItems.length} participant{participantsItems.length > 1 ? "s" : ""}</p>
+              <div className="divide-y border rounded-sm">
+                {participantsItems.map((p, i) => {
+                  const statusColors: Record<string, string> = {
+                    pending: "bg-amber-50 text-amber-700 border-amber-200",
+                    confirmed: "bg-blue-50 text-blue-700 border-blue-200",
+                    started: "bg-primary/10 text-primary border-primary/20",
+                    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  };
+                  const statusLabels: Record<string, string> = {
+                    pending: "En attente",
+                    confirmed: "Confirmé",
+                    started: "En cours",
+                    completed: "Terminé",
+                  };
+                  const progression = parseFloat(p.progression ?? "0");
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <span className="w-6 h-6 rounded-full bg-muted text-xs flex items-center justify-center font-medium flex-shrink-0 text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground truncate font-mono">{p.user_id}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full" style={{ width: `${progression}%` }} />
+                          </div>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">{progression}%</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Inscrit le {new Date(p.registered_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${statusColors[p.status] ?? "bg-muted text-muted-foreground"}`}>
+                          {statusLabels[p.status] ?? p.status}
+                        </span>
+                        {p.certificat_delivre && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-sm border bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1">
+                            <Award className="w-2.5 h-2.5" /> Certifié
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setParticipantsOpen(false)}>Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Liste des chapitres */}
+      <Dialog open={chapitreListOpen} onOpenChange={setChapitreListOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-primary" />
+              Chapitres de la formation
+            </DialogTitle>
+          </DialogHeader>
+
+          {chapitreListLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+          ) : chapitreListItems.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <Layers className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Aucun chapitre pour cette formation.</p>
+              <Button size="sm" className="gap-2 mt-2" onClick={() => { setChapitreListOpen(false); openChapterDialog(chapitreListFormationId); }}>
+                <Plus className="w-4 h-4" /> Créer un chapitre
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2 py-2">
+              {chapitreListItems.map((ch, i) => (
+                <div key={ch.id} className="flex items-center gap-3 p-3 border rounded-sm">
+                  <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-xs flex items-center justify-center font-medium flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{ch.titre}</p>
+                    {ch.lecons?.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {ch.lecons.length} leçon{ch.lecons.length > 1 ? "s" : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Modifier"
+                      onClick={() => { setChapitreListOpen(false); openEditChapitre(ch); }}
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      title="Supprimer"
+                      onClick={() => setDeleteChapitreTarget(ch)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setChapitreListOpen(false)}>Fermer</Button>
+            <Button className="rounded-sm gap-2" onClick={() => { setChapitreListOpen(false); openChapterDialog(chapitreListFormationId); }}>
+              <Plus className="w-4 h-4" /> Créer un chapitre
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Liste des devoirs */}
+      <Dialog open={devoirListOpen} onOpenChange={setDevoirListOpen}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+              Devoirs de la formation
+            </DialogTitle>
+          </DialogHeader>
+
+          {devoirListLoading ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+          ) : devoirListItems.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <ClipboardList className="w-10 h-10 mx-auto text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">Aucun devoir pour cette formation.</p>
+              <Button size="sm" className="gap-2 mt-2" onClick={() => { setDevoirListOpen(false); openDevoirDialog(devoirListFormationId); }}>
+                <Plus className="w-4 h-4" /> Créer un devoir
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              {devoirListItems.map((dv) => (
+                <div key={dv.id} className="flex items-start justify-between gap-3 p-3 border rounded-sm">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{dv.titre}</p>
+                    {dv.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{dv.description}</p>
+                    )}
+                    {dv.date_limite && (
+                      <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Limite : {new Date(dv.date_limite).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1 px-2"
+                      title="Questions"
+                      onClick={() => { setDevoirListOpen(false); openQuestionList(dv.id, dv.titre, "devoir"); }}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      Questions
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => { setDevoirListOpen(false); openEditDevoir(dv); }}>
+                      <Edit className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteDevoirTarget(dv)}>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-sm" onClick={() => setDevoirListOpen(false)}>Fermer</Button>
+            <Button className="rounded-sm gap-2" onClick={() => { setDevoirListOpen(false); openDevoirDialog(devoirListFormationId); }}>
+              <Plus className="w-4 h-4" /> Créer un devoir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog Confirmer suppression quiz */}
       <Dialog open={!!quizDeleteTarget} onOpenChange={(open) => { if (!open) setQuizDeleteTarget(null); }}>
         <DialogContent className="max-w-sm">
@@ -3292,7 +3611,7 @@ export function EspaceFormateur() {
           ) : questionListItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <HelpCircle className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucune question pour ce quiz.</p>
+              <p className="text-sm text-muted-foreground">Aucune question pour {questionContextType === "devoir" ? "ce devoir" : "ce quiz"}.</p>
             </div>
           ) : (
             <div className="space-y-3 py-2">
@@ -3332,7 +3651,7 @@ export function EspaceFormateur() {
 
           <DialogFooter>
             <Button variant="outline" className="rounded-sm" onClick={() => setQuestionListOpen(false)}>Fermer</Button>
-            <Button className="rounded-sm gap-2" onClick={() => { setQuestionListOpen(false); openQuestionDialog(questionListQuizId, questionListQuizTitre); }}>
+            <Button className="rounded-sm gap-2" onClick={() => { setQuestionListOpen(false); openQuestionDialog(questionListQuizId, questionListQuizTitre, questionContextType); }}>
               <Plus className="w-4 h-4" /> Ajouter une question
             </Button>
           </DialogFooter>
@@ -3345,7 +3664,7 @@ export function EspaceFormateur() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-primary" />
-              Ajouter une question — {questionQuizTitre}
+              Ajouter une question — {questionQuizTitre} {questionContextType === "devoir" ? "(Devoir)" : "(Quiz)"}
             </DialogTitle>
           </DialogHeader>
 
@@ -3357,7 +3676,7 @@ export function EspaceFormateur() {
                 <Button variant="outline" className="rounded-sm" onClick={() => { setQuestionSuccess(false); }}>
                   Ajouter une autre
                 </Button>
-                <Button className="rounded-sm" onClick={() => { setQuestionOpen(false); openQuestionList(questionQuizId, questionQuizTitre); }}>
+                <Button className="rounded-sm" onClick={() => { setQuestionOpen(false); openQuestionList(questionQuizId, questionQuizTitre, questionContextType); }}>
                   Voir les questions
                 </Button>
               </div>

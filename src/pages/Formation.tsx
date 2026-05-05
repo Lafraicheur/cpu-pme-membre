@@ -103,10 +103,10 @@ export default function Formation() {
               <ClipboardCheck className="w-3.5 h-3.5" />
               RAC
             </TabsTrigger>
-            <TabsTrigger value="alternance" className="gap-1.5 text-xs sm:text-sm">
+            {/* <TabsTrigger value="alternance" className="gap-1.5 text-xs sm:text-sm">
               <Building2 className="w-3.5 h-3.5" />
               Alternance
-            </TabsTrigger>
+            </TabsTrigger> */}
             {/* <TabsTrigger value="paiements" className="gap-1.5 text-xs sm:text-sm">
               <CreditCard className="w-3.5 h-3.5" />
               Paiements
@@ -140,14 +140,14 @@ export default function Formation() {
                   <Lock className="w-3.5 h-3.5" />
                   Espace formateur
                 </TabsTrigger>
-                <TabsTrigger value="certifications" className="gap-1.5 text-xs sm:text-sm">
+                {/* <TabsTrigger value="certifications" className="gap-1.5 text-xs sm:text-sm">
                   <Award className="w-3.5 h-3.5" />
                   Certificats
                 </TabsTrigger>
                 <TabsTrigger value="apprenants" className="gap-1.5 text-xs sm:text-sm">
                   <Users className="w-3.5 h-3.5" />
                   Mes apprenants
-                </TabsTrigger>
+                </TabsTrigger> */}
                 {/*   */}
               </TabsList>
               <TabsContent value="espace">

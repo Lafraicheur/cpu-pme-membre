@@ -12,6 +12,19 @@ import {
 import { mesCoursApi, MonInscription } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const FORMATION_BASE_URL = "https://devformation.cpupme.ci/formations";
+
+function toSlug(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -51,12 +64,12 @@ function CoursCardSkeleton() {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  onStartLearning: (formationId: string) => void;
+  onStartLearning?: (formationId: string) => void;
 }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export function MesCoursApprentissage({ onStartLearning }: Props) {
+export function MesCoursApprentissage(_props: Props) {
   const [inscriptions, setInscriptions] = useState<MonInscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -255,7 +268,7 @@ export function MesCoursApprentissage({ onStartLearning }: Props) {
                     className="w-full rounded-sm gap-2 mt-auto"
                     variant={isCompleted ? "outline" : "default"}
                     size="sm"
-                    onClick={() => onStartLearning(formation.id)}
+                    onClick={() => window.open(`${FORMATION_BASE_URL}/${toSlug(formation.title)}`, "_blank", "noopener,noreferrer")}
                   >
                     <PlayCircle className="w-4 h-4" />
                     {isCompleted ? "Revoir" : status === "started" ? "Continuer" : "Commencer"}
