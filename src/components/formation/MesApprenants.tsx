@@ -1,49 +1,126 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Users, Search, Plus, Mail, Upload, BookOpen, Award, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner";
+import { Users, Search, BookOpen, Award, CheckCircle2, Clock, Filter } from "lucide-react";
+import { participantsApi, type FormationParticipant } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 
-interface Learner {
-  id: string;
+// Un apprenant agrégé (une ligne du tableau)
+interface AggregatedLearner {
+  userId: string;
   name: string;
   email: string;
-  department: string;
-  status: "invited" | "active";
-  enrolledCourses: number;
-  completedCourses: number;
-  certificates: number;
-  lastActivity: string;
+  phone: string;
+  enrollments: FormationParticipant[];
+  completedCount: number;
+  certificatesCount: number;
+  avgProgression: number;
+  lastActivity: string | null;
+  hasActive: boolean;
 }
 
-const mockLearners: Learner[] = [
-  { id: "1", name: "Jean Kouassi", email: "j.kouassi@entreprise.ci", department: "Commercial", status: "active", enrolledCourses: 3, completedCourses: 2, certificates: 1, lastActivity: "2024-02-15" },
-  { id: "2", name: "Marie Bamba", email: "m.bamba@entreprise.ci", department: "Marketing", status: "active", enrolledCourses: 2, completedCourses: 2, certificates: 2, lastActivity: "2024-02-14" },
-  { id: "3", name: "Amadou Diallo", email: "a.diallo@entreprise.ci", department: "Finance", status: "active", enrolledCourses: 4, completedCourses: 1, certificates: 0, lastActivity: "2024-02-10" },
-  { id: "4", name: "Fatou Koné", email: "f.kone@entreprise.ci", department: "RH", status: "invited", enrolledCourses: 0, completedCourses: 0, certificates: 0, lastActivity: "-" },
-];
+function statusBadge(learner: AggregatedLearner) {
+  const hasCompleted = learner.completedCount > 0;
+  const hasActive = learner.enrollments.some(
+    (e) => e.status === "confirmed" || e.status === "started"
+  );
+  if (hasCompleted) return <Badge className="bg-green-100 text-green-700 border-green-200">Terminé</Badge>;
+  if (hasActive)    return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Actif</Badge>;
+  return <Badge className="bg-amber-100 text-amber-700 border-amber-200">En attente</Badge>;
+}
 
 export function MesApprenants() {
+  const { user } = useAuth();
+  const [allParticipants, setAllParticipants] = useState<FormationParticipant[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [showEnrollDialog, setShowEnrollDialog] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const filteredLearners = mockLearners.filter((l) =>
-    l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.email.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    participantsApi.getAll()
+      .then(setAllParticipants)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [user?.id]);
+
+  // Filtrer les participations aux formations créées par l'utilisateur courant
+  const myParticipants = allParticipants.filter(
+    (p) => p.formation?.creator_user_id === user?.id
   );
 
-  const handleInvite = () => {
-    toast.success("Invitation envoyée !");
-    setShowInviteDialog(false);
-  };
+  // Regrouper par apprenant (user_id)
+  const learnerMap = new Map<string, AggregatedLearner>();
+  for (const p of myParticipants) {
+    const uid = p.user_id;
+    if (!uid) continue;
+    const details = p.user_details;
+    if (!learnerMap.has(uid)) {
+      learnerMap.set(uid, {
+        userId: uid,
+        name:   details?.name  ?? "Inconnu",
+        email:  details?.email ?? "",
+        phone:  details?.phone ?? "",
+        enrollments: [],
+        completedCount: 0,
+        certificatesCount: 0,
+        avgProgression: 0,
+        lastActivity: null,
+        hasActive: false,
+      });
+    }
+    const learner = learnerMap.get(uid)!;
+    learner.enrollments.push(p);
+    if (p.status === "completed" || parseFloat(p.progression ?? "0") >= 100) learner.completedCount++;
+    if (p.certificat_delivre) learner.certificatesCount++;
+    const activity = p.last_accessed_at ?? p.registered_at;
+    if (!learner.lastActivity || activity > learner.lastActivity) learner.lastActivity = activity;
+    if (p.status === "confirmed" || p.status === "started") learner.hasActive = true;
+  }
+
+  // Calculer la progression moyenne
+  for (const learner of learnerMap.values()) {
+    const total = learner.enrollments.reduce((acc, e) => acc + parseFloat(e.progression ?? "0"), 0);
+    learner.avgProgression = learner.enrollments.length > 0 ? total / learner.enrollments.length : 0;
+  }
+
+  const learners = Array.from(learnerMap.values());
+
+  // Appliquer recherche + filtre statut
+  const filtered = learners.filter((l) => {
+    const matchSearch =
+      l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchSearch) return false;
+    if (statusFilter === "all") return true;
+    if (statusFilter === "active")  return l.enrollments.some((e) => e.status === "confirmed" || e.status === "started");
+    if (statusFilter === "pending") return l.enrollments.every((e) => e.status === "pending");
+    if (statusFilter === "completed") return l.completedCount > 0;
+    return true;
+  });
+
+  const totalEnrollments = learners.reduce((acc, l) => acc + l.enrollments.length, 0);
+  const totalCertificates = learners.reduce((acc, l) => acc + l.certificatesCount, 0);
+  const activeCount = learners.filter((l) => l.hasActive).length;
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+        </div>
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -52,146 +129,148 @@ export function MesApprenants() {
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-full bg-primary/10"><Users className="w-6 h-6 text-primary" /></div>
-            <div><p className="text-2xl font-bold">{mockLearners.length}</p><p className="text-sm text-muted-foreground">Apprenants</p></div>
+            <div>
+              <p className="text-2xl font-bold">{learners.length}</p>
+              <p className="text-sm text-muted-foreground">Apprenants</p>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-full bg-secondary/10"><CheckCircle2 className="w-6 h-6 text-secondary" /></div>
-            <div><p className="text-2xl font-bold">{mockLearners.filter(l => l.status === "active").length}</p><p className="text-sm text-muted-foreground">Actifs</p></div>
+            <div className="p-3 rounded-full bg-blue-500/10"><CheckCircle2 className="w-6 h-6 text-blue-500" /></div>
+            <div>
+              <p className="text-2xl font-bold">{activeCount}</p>
+              <p className="text-sm text-muted-foreground">Actifs</p>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-full bg-amber-500/10"><Award className="w-6 h-6 text-amber-500" /></div>
-            <div><p className="text-2xl font-bold">{mockLearners.reduce((acc, l) => acc + l.certificates, 0)}</p><p className="text-sm text-muted-foreground">Certificats</p></div>
+            <div>
+              <p className="text-2xl font-bold">{totalCertificates}</p>
+              <p className="text-sm text-muted-foreground">Certificats</p>
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-full bg-blue-500/10"><BookOpen className="w-6 h-6 text-blue-500" /></div>
-            <div><p className="text-2xl font-bold">{mockLearners.reduce((acc, l) => acc + l.enrolledCourses, 0)}</p><p className="text-sm text-muted-foreground">Inscriptions</p></div>
+            <div className="p-3 rounded-full bg-green-500/10"><BookOpen className="w-6 h-6 text-green-500" /></div>
+            <div>
+              <p className="text-2xl font-bold">{totalEnrollments}</p>
+              <p className="text-sm text-muted-foreground">Inscriptions</p>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Actions */}
+      {/* Barre de recherche + filtre */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input placeholder="Rechercher un apprenant..." className="pl-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <Input
+                placeholder="Rechercher un apprenant..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-            <Button variant="outline" className="gap-2"><Upload className="w-4 h-4" />Importer CSV</Button>
-            <Button onClick={() => setShowInviteDialog(true)} className="gap-2"><Plus className="w-4 h-4" />Inviter</Button>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px] gap-2">
+                <Filter className="w-4 h-4" />
+                <SelectValue placeholder="Statut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous</SelectItem>
+                <SelectItem value="active">Actifs</SelectItem>
+                <SelectItem value="pending">En attente</SelectItem>
+                <SelectItem value="completed">Terminés</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Table */}
+      {/* Tableau */}
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Apprenant</TableHead>
-                <TableHead>Département</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Formations</TableHead>
-                <TableHead>Certificats</TableHead>
-                <TableHead>Dernière activité</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLearners.map((learner) => (
-                <TableRow key={learner.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{learner.name}</p>
-                      <p className="text-sm text-muted-foreground">{learner.email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{learner.department}</TableCell>
-                  <TableCell>
-                    <Badge className={learner.status === "active" ? "bg-secondary/10 text-secondary" : "bg-amber-500/10 text-amber-600"}>
-                      {learner.status === "active" ? "Actif" : "Invité"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span>{learner.completedCourses}/{learner.enrolledCourses}</span>
-                      {learner.enrolledCourses > 0 && (
-                        <Progress value={(learner.completedCourses / learner.enrolledCourses) * 100} className="h-2 w-16" />
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline"><Award className="w-3 h-3 mr-1" />{learner.certificates}</Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {learner.lastActivity !== "-" ? new Date(learner.lastActivity).toLocaleDateString("fr-FR") : "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => setShowEnrollDialog(true)}>Inscrire</Button>
-                  </TableCell>
+          {filtered.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <Users className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">
+                {learners.length === 0
+                  ? "Aucun apprenant inscrit à vos formations"
+                  : "Aucun résultat pour cette recherche"}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Apprenant</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead>Formations</TableHead>
+                  <TableHead>Progression</TableHead>
+                  <TableHead>Certificats</TableHead>
+                  <TableHead>Dernière activité</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((learner) => (
+                  <TableRow key={learner.userId}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{learner.name}</p>
+                        <p className="text-xs text-muted-foreground">{learner.email}</p>
+                        {learner.phone && (
+                          <p className="text-xs text-muted-foreground">{learner.phone}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{statusBadge(learner)}</TableCell>
+                    <TableCell>
+                      <span className="text-sm font-medium">
+                        {learner.completedCount}/{learner.enrollments.length}
+                      </span>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {learner.enrollments.length === 1
+                          ? learner.enrollments[0].formation?.title ?? "—"
+                          : `${learner.enrollments.length} formations`}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2 min-w-[80px]">
+                        <Progress value={learner.avgProgression} className="h-2 w-16" />
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {Math.round(learner.avgProgression)}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        <Award className="w-3 h-3 mr-1" />
+                        {learner.certificatesCount}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {learner.lastActivity ? (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(learner.lastActivity).toLocaleDateString("fr-FR", {
+                            day: "2-digit", month: "short", year: "numeric",
+                          })}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
-
-      {/* Invite Dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Inviter un apprenant</DialogTitle>
-            <DialogDescription>Envoyez une invitation par email</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2"><Label>Nom complet</Label><Input placeholder="Jean Dupont" /></div>
-            <div className="space-y-2"><Label>Email</Label><Input type="email" placeholder="jean@entreprise.ci" /></div>
-            <div className="space-y-2">
-              <Label>Département</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="commercial">Commercial</SelectItem>
-                  <SelectItem value="marketing">Marketing</SelectItem>
-                  <SelectItem value="finance">Finance</SelectItem>
-                  <SelectItem value="rh">RH</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full gap-2" onClick={handleInvite}><Mail className="w-4 h-4" />Envoyer l'invitation</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Enroll Dialog */}
-      <Dialog open={showEnrollDialog} onOpenChange={setShowEnrollDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Inscrire à une formation</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Formation</Label>
-              <Select><SelectTrigger><SelectValue placeholder="Choisir une formation" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Transformation Digitale PME</SelectItem>
-                  <SelectItem value="2">Comptabilité SYSCOHADA</SelectItem>
-                  <SelectItem value="3">Marketing Digital</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full" onClick={() => { toast.success("Inscription effectuée !"); setShowEnrollDialog(false); }}>
-              Confirmer l'inscription
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

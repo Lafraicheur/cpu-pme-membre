@@ -143,11 +143,11 @@ export default function Formation() {
                 {/* <TabsTrigger value="certifications" className="gap-1.5 text-xs sm:text-sm">
                   <Award className="w-3.5 h-3.5" />
                   Certificats
-                </TabsTrigger>
+                </TabsTrigger> */}
                 <TabsTrigger value="apprenants" className="gap-1.5 text-xs sm:text-sm">
                   <Users className="w-3.5 h-3.5" />
                   Mes apprenants
-                </TabsTrigger> */}
+                </TabsTrigger>
                 {/*   */}
               </TabsList>
               <TabsContent value="espace">

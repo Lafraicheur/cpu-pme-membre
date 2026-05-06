@@ -162,7 +162,9 @@ export interface Payment {
   transactionId: string;
   payableType: string;
   payableId: string;
+  contextType: string | null;
   registrationId: string | null;
+  participantionId: string | null;
   payerUserId: string | null;
   amount: string;
   currency: string;
@@ -170,6 +172,19 @@ export interface Payment {
   checkoutUrl: string | null;
   paidAt: string | null;
   createdAt: string;
+  updatedAt: string;
+  providerResponse?: {
+    additional_infos?: {
+      participantDto?: {
+        formation_id?: string;
+        user_id?: string;
+        status?: string;
+      };
+      customer_email?: string;
+      customer_firstname?: string;
+      customer_lastname?: string;
+    };
+  } | null;
 }
 
 export const paymentsApi = {
@@ -179,6 +194,11 @@ export const paymentsApi = {
     );
     const list = Array.isArray(res) ? res : ((res as { data: Payment[] }).data ?? []);
     return list;
+  },
+
+  getAll: async (): Promise<Payment[]> => {
+    const res = await request<{ success: boolean; data: Payment[] } | Payment[]>("/api/payments");
+    return Array.isArray(res) ? res : ((res as { data: Payment[] }).data ?? []);
   },
 };
 
@@ -1012,6 +1032,13 @@ export interface FormationParticipant {
 }
 
 export const participantsApi = {
+  getAll: async (): Promise<FormationParticipant[]> => {
+    const res = await request<{ success: boolean; data: FormationParticipant[] } | FormationParticipant[]>(
+      "/api/formation/participants"
+    );
+    return Array.isArray(res) ? res : ((res as { data: FormationParticipant[] }).data ?? []);
+  },
+
   getByFormation: async (formationId: string): Promise<FormationParticipant[]> => {
     const res = await request<{ success: boolean; data: FormationParticipant[] } | FormationParticipant[]>(
       `/api/formation/participants/formation/${encodeURIComponent(formationId)}`
@@ -1056,6 +1083,8 @@ export interface FormationAPI {
   certification_progression_100?: boolean;
   certification_devoir_valide?: boolean;
   certification_presence_live?: boolean;
+  creator_user_id?: string | null;
+  creator_role?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1657,4 +1686,109 @@ export const authApi = {
     );
     return res?.data ?? (res as unknown as Record<string, unknown>);
   },
+};
+
+// ── RAC ──────────────────────────────────────────────────────────────────────
+
+export interface RacRequiredDocument {
+  id: string;
+  racMetierId: string;
+  label: string;
+  obligatoire: boolean;
+  formats: string[];
+  tailleMax: number;
+  ordre: number;
+}
+
+export interface RacMetier {
+  id: string;
+  nom: string;
+  description: string;
+  secteur: string;
+  niveau: string;
+  publication: boolean;
+  requiredDocuments: RacRequiredDocument[];
+}
+
+export interface RacDocumentJoint {
+  url: string;
+  name: string;
+  type: string;
+}
+
+export interface RacTimelineEvent {
+  id: string;
+  racId: string;
+  eventType: "depot" | "decision" | "revue_document" | "evaluation" | string;
+  label: string;
+  details: Record<string, unknown>;
+  createdBy: string | null;
+  created_at: string;
+}
+
+export interface RacDossier {
+  id: string;
+  racMetierId: string;
+  racMetier: Omit<RacMetier, "requiredDocuments">;
+  candidat: string;
+  email: string;
+  telephone: string;
+  dateDepot: string;
+  anneesExperience: number;
+  documentsJoints: RacDocumentJoint[];
+  statut: string;
+  commentaire: string | null;
+  decisionFinale: string | null;
+  pourcentageValidation: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const racApi = {
+  getMetiers: async (): Promise<RacMetier[]> => {
+    const res = await request<{ success: boolean; data: RacMetier[] }>(
+      "/api/formation/rac-metiers",
+      { skipAuth: true }
+    );
+    return res.data ?? [];
+  },
+
+  postuler: async (payload: {
+    racMetierId: string;
+    candidat: string;
+    email: string;
+    telephone: string;
+    dateDepot: string;
+    anneesExperience: number;
+    documentsJoints: RacDocumentJoint[];
+  }): Promise<unknown> => {
+    return request<unknown>("/api/formation/rac", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      skipAuth: true,
+    });
+  },
+
+  getTimeline: async (racId: string): Promise<RacTimelineEvent[]> => {
+    const res = await request<{ success: boolean; data: RacTimelineEvent[] }>(
+      `/api/formation/rac/${racId}/timeline`
+    );
+    return res.data ?? [];
+  },
+
+  getDossiers: async (email: string): Promise<RacDossier[]> => {
+    const res = await request<{ success: boolean; data: RacDossier[] }>(
+      "/api/formation/rac"
+    );
+    const all = res.data ?? [];
+    return all.filter((d) => d.email.toLowerCase() === email.toLowerCase());
+  },
+
+  fileToBase64: (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error(`Impossible de lire le fichier : ${file.name}`));
+      reader.readAsDataURL(file);
+    }),
 };

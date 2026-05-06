@@ -26,7 +26,7 @@ import {
   ChevronsUpDown, Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, formationModulesApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, type CentreFormation, type FormationModule, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant } from "@/lib/api";
+import { formationsApi, centreFormationsApi, formationModulesApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, paymentsApi, type CentreFormation, type FormationModule, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant, type Payment } from "@/lib/api";
 
 interface LessonDraft {
   id: string;
@@ -104,6 +104,12 @@ function CategoryCombobox({
   );
 }
 
+const DEVENIR_FORM_INIT = {
+  firstname: "", lastname: "", email: "", phone: "",
+  titre: "", bio: "", linkedin: "", website: "",
+  photo: null as File | null,
+};
+
 export function EspaceFormateur() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -135,6 +141,22 @@ export function EspaceFormateur() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+  // Payments
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsFetched, setPaymentsFetched] = useState(false);
+
+  const fetchPayments = () => {
+    setPaymentsLoading(true);
+    paymentsApi.getAll()
+      .then(setPayments)
+      .catch(() => {})
+      .finally(() => {
+        setPaymentsLoading(false);
+        setPaymentsFetched(true);
+      });
+  };
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -964,6 +986,47 @@ export function EspaceFormateur() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fichierInputRef = useRef<HTMLInputElement>(null);
 
+  // Dialog "Devenir formateur"
+  const [devenirOpen, setDevenirOpen] = useState(false);
+  const [devenirForm, setDevenirForm] = useState({ ...DEVENIR_FORM_INIT });
+  const [devenirSubmitting, setDevenirSubmitting] = useState(false);
+  const [devenirError, setDevenirError] = useState<string | null>(null);
+  const [devenirSuccess, setDevenirSuccess] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const setDF = (key: string, value: unknown) =>
+    setDevenirForm((p) => ({ ...p, [key]: value }));
+
+  const openDevenir = () => {
+    setDevenirForm({ ...DEVENIR_FORM_INIT, email: user?.email ?? "" });
+    setDevenirError(null);
+    setDevenirSuccess(false);
+    setDevenirOpen(true);
+  };
+
+  const handleDevenirSubmit = async () => {
+    setDevenirSubmitting(true);
+    setDevenirError(null);
+    try {
+      await formateursApi.create({
+        firstname: devenirForm.firstname,
+        lastname:  devenirForm.lastname,
+        email:     devenirForm.email   || undefined,
+        phone:     devenirForm.phone   || undefined,
+        titre:     devenirForm.titre   || undefined,
+        bio:       devenirForm.bio     || undefined,
+        linkedin:  devenirForm.linkedin,
+        website:   devenirForm.website,
+        photo:     devenirForm.photo,
+      });
+      setDevenirSuccess(true);
+    } catch (e: unknown) {
+      setDevenirError(e instanceof Error ? e.message : "Erreur lors de la création");
+    } finally {
+      setDevenirSubmitting(false);
+    }
+  };
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -1462,6 +1525,10 @@ export function EspaceFormateur() {
               {publishedCount}/{limits.courses} cours publiés
             </span>
           )}
+          <Button variant="outline" size="sm" className="gap-2 rounded-sm" onClick={openDevenir}>
+            <Award className="w-4 h-4" />
+            Devenir formateur
+          </Button>
         </div>
       </div>
 
@@ -1476,9 +1543,9 @@ export function EspaceFormateur() {
           {/* <TabsTrigger value="sessions" className="gap-2">
             <Calendar className="w-4 h-4" /> Sessions
           </TabsTrigger> */}
-          <TabsTrigger value="evaluations" className="gap-2">
+          {/* <TabsTrigger value="evaluations" className="gap-2">
             <MessageSquare className="w-4 h-4" /> Évaluations
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger value="revenue" className="gap-2">
             <DollarSign className="w-4 h-4" /> Revenus
           </TabsTrigger>
@@ -1774,12 +1841,13 @@ export function EspaceFormateur() {
         </TabsContent>
 
         <TabsContent value="revenue">
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              <DollarSign className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Suivi des revenus et reversements</p>
-            </CardContent>
-          </Card>
+          <RevenueTab
+            courses={courses}
+            payments={payments}
+            paymentsLoading={paymentsLoading}
+            paymentsFetched={paymentsFetched}
+            onLoad={fetchPayments}
+          />
         </TabsContent>
       </Tabs>
 
@@ -3921,6 +3989,118 @@ export function EspaceFormateur() {
         </DialogContent>
       </Dialog>
 
+      {/* Dialog Devenir formateur */}
+      <Dialog open={devenirOpen} onOpenChange={setDevenirOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" />
+              Devenir formateur
+            </DialogTitle>
+          </DialogHeader>
+
+          {devenirSuccess ? (
+            <div className="py-8 text-center space-y-3">
+              <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
+              <p className="font-semibold text-lg">Profil créé avec succès !</p>
+              <p className="text-sm text-muted-foreground">Votre profil formateur est maintenant disponible.</p>
+              <Button onClick={() => setDevenirOpen(false)} className="rounded-sm">
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Photo */}
+              <div className="space-y-2">
+                <Label>Photo de profil</Label>
+                <div
+                  className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  {devenirForm.photo ? (
+                    <div className="flex items-center justify-center gap-2 text-sm">
+                      <ImageIcon className="w-4 h-4 text-primary" />
+                      <span className="font-medium">{devenirForm.photo.name}</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Upload className="w-7 h-7 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Cliquer pour choisir une photo</p>
+                    </div>
+                  )}
+                </div>
+                <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => setDF("photo", e.target.files?.[0] ?? null)} />
+              </div>
+
+              {/* Nom / Prénom */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Prénom <span className="text-destructive">*</span></Label>
+                  <Input value={devenirForm.firstname} onChange={(e) => setDF("firstname", e.target.value)} placeholder="Prénom" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nom <span className="text-destructive">*</span></Label>
+                  <Input value={devenirForm.lastname} onChange={(e) => setDF("lastname", e.target.value)} placeholder="Nom" />
+                </div>
+              </div>
+
+              {/* Email / Téléphone */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={devenirForm.email} onChange={(e) => setDF("email", e.target.value)} placeholder="email@exemple.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Téléphone</Label>
+                  <Input value={devenirForm.phone} onChange={(e) => setDF("phone", e.target.value)} placeholder="07 XX XX XX XX" />
+                </div>
+              </div>
+
+              {/* Titre */}
+              <div className="space-y-2">
+                <Label>Titre / Spécialité</Label>
+                <Input value={devenirForm.titre} onChange={(e) => setDF("titre", e.target.value)} placeholder="Ex: Expert Finance PME" />
+              </div>
+
+              {/* Bio */}
+              <div className="space-y-2">
+                <Label>Biographie</Label>
+                <Textarea value={devenirForm.bio} onChange={(e) => setDF("bio", e.target.value)}
+                  placeholder="Décrivez votre expertise et votre parcours..." rows={3} />
+              </div>
+
+              {/* Liens */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>LinkedIn</Label>
+                  <Input value={devenirForm.linkedin} onChange={(e) => setDF("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Site web</Label>
+                  <Input value={devenirForm.website} onChange={(e) => setDF("website", e.target.value)} placeholder="https://monsite.com" />
+                </div>
+              </div>
+
+              {devenirError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{devenirError}</div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" className="rounded-sm" onClick={() => setDevenirOpen(false)} disabled={devenirSubmitting}>
+                  Annuler
+                </Button>
+                <Button className="rounded-sm gap-2" onClick={handleDevenirSubmit}
+                  disabled={devenirSubmitting || !devenirForm.firstname || !devenirForm.lastname}>
+                  {devenirSubmitting ? <span className="animate-spin">⏳</span> : <Award className="w-4 h-4" />}
+                  {devenirSubmitting ? "Envoi en cours..." : "Créer mon profil"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!questionDeleteTarget} onOpenChange={(open) => { if (!open) setQuestionDeleteTarget(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -3943,6 +4123,158 @@ export function EspaceFormateur() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ── Onglet Revenus ─────────────────────────────────────────────────────────
+
+function statusBadgeRevenue(status: string) {
+  if (status === "success") return <Badge className="bg-green-100 text-green-700 border-green-200">Succès</Badge>;
+  if (status === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">En attente</Badge>;
+  return <Badge className="bg-red-100 text-red-700 border-red-200">Annulé</Badge>;
+}
+
+function RevenueTab({
+  courses,
+  payments,
+  paymentsLoading,
+  paymentsFetched,
+  onLoad,
+}: {
+  courses: FormationAPI[];
+  payments: Payment[];
+  paymentsLoading: boolean;
+  paymentsFetched: boolean;
+  onLoad: () => void;
+}) {
+  useEffect(() => {
+    if (!paymentsFetched) onLoad();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ensemble des IDs de formations créées par l'utilisateur
+  const myFormationIds = new Set(courses.map((c) => c.id));
+
+  // Paiements liés à ces formations
+  const formationPayments = payments.filter((p) => {
+    if (p.contextType !== "formation_participation") return false;
+    const fId = p.providerResponse?.additional_infos?.participantDto?.formation_id;
+    return fId ? myFormationIds.has(fId) : false;
+  });
+
+  // KPIs
+  const successPayments = formationPayments.filter((p) => p.status === "success");
+  const totalRevenue = successPayments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
+  const pendingCount = formationPayments.filter((p) => p.status === "pending").length;
+  const cancelledCount = formationPayments.filter((p) => p.status === "cancelled").length;
+
+  // Map formation id → titre
+  const formationMap = new Map(courses.map((c) => [c.id, c.title]));
+
+  if (paymentsLoading) {
+    return (
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <DollarSign className="w-4 h-4" />
+              <span className="text-sm">Revenus totaux</span>
+            </div>
+            <p className="text-2xl font-bold">{totalRevenue.toLocaleString("fr-FR")} XOF</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <CheckCircle className="w-4 h-4" />
+              <span className="text-sm">Paiements réussis</span>
+            </div>
+            <p className="text-2xl font-bold">{successPayments.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Clock className="w-4 h-4" />
+              <span className="text-sm">En attente</span>
+            </div>
+            <p className="text-2xl font-bold">{pendingCount}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm">Annulés</span>
+            </div>
+            <p className="text-2xl font-bold">{cancelledCount}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Table des paiements */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Historique des paiements</CardTitle>
+          <CardDescription>Paiements reçus sur vos formations</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {formationPayments.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Aucun paiement enregistré pour vos formations</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="text-left pb-3 pr-4 font-medium">Formation</th>
+                    <th className="text-left pb-3 pr-4 font-medium">Apprenant</th>
+                    <th className="text-right pb-3 pr-4 font-medium">Montant</th>
+                    <th className="text-center pb-3 pr-4 font-medium">Statut</th>
+                    <th className="text-left pb-3 font-medium">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {formationPayments.map((p) => {
+                    const fId = p.providerResponse?.additional_infos?.participantDto?.formation_id ?? "";
+                    const formationTitle = formationMap.get(fId) ?? fId;
+                    const infos = p.providerResponse?.additional_infos;
+                    const nom = infos ? `${infos.customer_firstname ?? ""} ${infos.customer_lastname ?? ""}`.trim() : "—";
+                    const date = p.paidAt ?? p.createdAt;
+                    return (
+                      <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-3 pr-4">
+                          <span className="font-medium line-clamp-1 max-w-[180px] block">{formationTitle}</span>
+                        </td>
+                        <td className="py-3 pr-4 text-muted-foreground">{nom || "—"}</td>
+                        <td className="py-3 pr-4 text-right font-semibold">
+                          {parseFloat(p.amount).toLocaleString("fr-FR")} {p.currency}
+                        </td>
+                        <td className="py-3 pr-4 text-center">{statusBadgeRevenue(p.status)}</td>
+                        <td className="py-3 text-muted-foreground whitespace-nowrap">
+                          {new Date(date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
