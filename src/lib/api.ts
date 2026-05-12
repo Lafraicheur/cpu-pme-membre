@@ -157,6 +157,22 @@ export interface Registration {
   details: TicketDetail[];
 }
 
+export interface PaymentResourceDetails {
+  id: string;
+  event_id: string;
+  prenom: string;
+  nom: string;
+  email: string;
+  telephone: string | null;
+  entreprise: string | null;
+  total_price: number;
+  details: Array<{
+    ticket_type: { nom: string } | null;
+    quantite: number;
+    montantTotal: number;
+  }>;
+}
+
 export interface Payment {
   id: string;
   transactionId: string;
@@ -169,10 +185,13 @@ export interface Payment {
   amount: string;
   currency: string;
   status: "success" | "pending" | "cancelled";
+  paymentMethod?: string;
+  paymentProvider?: string;
   checkoutUrl: string | null;
   paidAt: string | null;
   createdAt: string;
   updatedAt: string;
+  resource_details?: PaymentResourceDetails | null;
   providerResponse?: {
     additional_infos?: {
       participantDto?: {
@@ -199,6 +218,13 @@ export const paymentsApi = {
   getAll: async (): Promise<Payment[]> => {
     const res = await request<{ success: boolean; data: Payment[] } | Payment[]>("/api/payments");
     return Array.isArray(res) ? res : ((res as { data: Payment[] }).data ?? []);
+  },
+
+  getEventPayments: async (): Promise<Payment[]> => {
+    const res = await request<{ success: boolean; data: Payment[] }>(
+      "/api/payments?contextType=evenement_registration&includeResourceDetails=true"
+    );
+    return (res as { data: Payment[] }).data ?? [];
   },
 };
 
@@ -487,6 +513,25 @@ export const evenementsApi = {
       lieu: e.lieu ? decodeHtml(e.lieu) : null,
       image_flayer: e.image_flayer ? decodeHtml(e.image_flayer) : null,
     }));
+  },
+
+  update: async (id: string, data: Partial<Omit<Evenement, "id" | "created_at" | "updated_at" | "deleted_at" | "creator" | "type_evenement">>): Promise<Evenement> => {
+    const res = await request<{ success: boolean; data: Evenement } | Evenement>(
+      `/api/evenements/${id}`,
+      { method: "PATCH", body: JSON.stringify(data) }
+    );
+    return (res as { data: Evenement }).data ?? (res as Evenement);
+  },
+
+  updateMultipart: async (id: string, fd: FormData): Promise<Evenement> => {
+    const res = await requestMultipart<{ success: boolean; data: Evenement } | Evenement>(
+      `/api/evenements/${id}`, fd, "PATCH"
+    );
+    return (res as { data: Evenement }).data ?? (res as Evenement);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/evenements/${id}`, { method: "DELETE" });
   },
 };
 

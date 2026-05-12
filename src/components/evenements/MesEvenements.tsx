@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { evenementsApi, ticketTypesApi, registrationsApi, type Evenement, type TicketType, type RegistrationVerif } from "@/lib/api";
+import { evenementsApi, ticketTypesApi, registrationsApi, paymentsApi, type Evenement, type TicketType, type RegistrationVerif, type Payment } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { EditEvenementModal } from "./EditEvenementModal";
+import {
   Calendar, MapPin, Clock, PlusCircle, CalendarX, Banknote, Users, Ticket,
   Search, CheckCircle2, XCircle, AlertCircle, Loader2, ScanLine, ShieldCheck,
-  Camera, Keyboard, X,
+  Camera, Keyboard, X, Pencil, Trash2, TrendingUp, CreditCard, ArrowUpRight,
 } from "lucide-react";
 
 function formatDate(iso: string) {
@@ -46,7 +51,14 @@ function TicketPriceRow({ ticket }: { ticket: TicketType }) {
 
 // ─── Mon événement card ──────────────────────────────────────────────────────
 
-function MonEvenementCard({ event, tickets }: { event: Evenement; tickets: TicketType[] }) {
+function MonEvenementCard({
+  event, tickets, onEdit, onDelete,
+}: {
+  event: Evenement;
+  tickets: TicketType[];
+  onEdit: (event: Evenement) => void;
+  onDelete: (event: Evenement) => void;
+}) {
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
   const typeNom = event.type_evenement?.nom ?? "Événement";
   const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
@@ -119,9 +131,17 @@ function MonEvenementCard({ event, tickets }: { event: Evenement; tickets: Ticke
             </div>
           )}
         </div>
-        <a href={eventUrl} target="_blank" rel="noopener noreferrer">
-          <Button variant="outline" size="sm" className="w-full h-8 text-xs">Voir l'événement</Button>
-        </a>
+        <div className="flex gap-2">
+          <a href={eventUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
+            <Button variant="outline" size="sm" className="w-full h-8 text-xs">Voir l'événement</Button>
+          </a>
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => onEdit(event)}>
+            <Pencil className="w-3.5 h-3.5" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDelete(event)}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -452,6 +472,149 @@ function VerifTicketTab() {
   );
 }
 
+// ─── Revenues tab ────────────────────────────────────────────────────────────
+
+function RevenuesTab({ eventIds, evenements }: { eventIds: Set<string>; evenements: Evenement[] }) {
+  const { data: payments = [], isLoading } = useQuery({
+    queryKey: ["payments", "event-registrations"],
+    queryFn: () => paymentsApi.getEventPayments(),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const myPayments = payments.filter(
+    (p) => p.status === "success" && p.resource_details && eventIds.has(p.resource_details.event_id)
+  );
+
+  const totalRevenue = myPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+  const eventMap = Object.fromEntries(evenements.map((e) => [e.id, e.titre]));
+
+  const revenueByEvent = myPayments.reduce<Record<string, number>>((acc, p) => {
+    const eid = p.resource_details!.event_id;
+    acc[eid] = (acc[eid] ?? 0) + parseFloat(p.amount);
+    return acc;
+  }, {});
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    wave: "Wave", om: "Orange Money", mtn: "MTN", moov: "Moov", bank: "Virement", merchant: "Paiement direct",
+  };
+  const getProvider = (p: Payment) =>
+    PROVIDER_LABELS[(p.providerResponse as { transaction_service_name?: string } | null | undefined)?.transaction_service_name?.toLowerCase() ?? ""] ??
+    p.paymentMethod ?? p.paymentProvider ?? "—";
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (myPayments.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+          <Banknote className="w-8 h-8 text-muted-foreground/40" />
+        </div>
+        <div className="space-y-1 max-w-xs">
+          <h3 className="font-semibold">Aucun revenu pour le moment</h3>
+          <p className="text-sm text-muted-foreground">Les paiements reçus sur vos événements apparaîtront ici.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Stats ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-border bg-card p-5 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <TrendingUp className="w-3.5 h-3.5" /> Revenus totaux
+          </div>
+          <p className="text-2xl font-bold">{totalRevenue.toLocaleString("fr-FR")} <span className="text-sm font-normal text-muted-foreground">FCFA</span></p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <CreditCard className="w-3.5 h-3.5" /> Transactions
+          </div>
+          <p className="text-2xl font-bold">{myPayments.length}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <Users className="w-3.5 h-3.5" /> Participants payants
+          </div>
+          <p className="text-2xl font-bold">
+            {new Set(myPayments.map((p) => p.resource_details!.email)).size}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Revenus par événement ── */}
+      {Object.keys(revenueByEvent).length > 1 && (
+        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+          <h3 className="text-sm font-semibold">Répartition par événement</h3>
+          <div className="space-y-2">
+            {Object.entries(revenueByEvent)
+              .sort(([, a], [, b]) => b - a)
+              .map(([eid, rev]) => {
+                const pct = Math.round((rev / totalRevenue) * 100);
+                return (
+                  <div key={eid} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground truncate max-w-[60%]">{eventMap[eid] ?? eid}</span>
+                      <span className="font-semibold">{rev.toLocaleString("fr-FR")} FCFA <span className="text-muted-foreground font-normal">({pct}%)</span></span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Liste des transactions ── */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="px-5 py-3.5 border-b bg-muted/30 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Transactions ({myPayments.length})</h3>
+        </div>
+        <div className="divide-y divide-border">
+          {myPayments
+            .sort((a, b) => new Date(b.paidAt ?? b.createdAt).getTime() - new Date(a.paidAt ?? a.createdAt).getTime())
+            .map((p) => {
+              const rd = p.resource_details!;
+              return (
+                <div key={p.id} className="px-5 py-3.5 flex items-center gap-4 hover:bg-muted/20 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                    <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{rd.prenom} {rd.nom}</p>
+                    <p className="text-xs text-muted-foreground truncate">{eventMap[rd.event_id] ?? rd.event_id}</p>
+                    {rd.details.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground/70 truncate">
+                        {rd.details.map((d) => `${d.ticket_type?.nom ?? "Billet"} ×${d.quantite}`).join(", ")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold text-emerald-600">+{parseFloat(p.amount).toLocaleString("fr-FR")} FCFA</p>
+                    <p className="text-xs text-muted-foreground">{getProvider(p)}</p>
+                    <p className="text-[11px] text-muted-foreground/70">{formatDate(p.paidAt ?? p.createdAt)}</p>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 interface MesEvenementsProps {
@@ -460,6 +623,11 @@ interface MesEvenementsProps {
 
 export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  const [editingEvent, setEditingEvent] = useState<Evenement | null>(null);
+  const [deletingEvent, setDeletingEvent] = useState<Evenement | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: evenements = [], isLoading: loadingEvents } = useQuery({
     queryKey: ["evenements", "by-creator", user?.id],
@@ -475,6 +643,16 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { mutate: confirmDelete, isPending: deleting } = useMutation({
+    mutationFn: (id: string) => evenementsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["evenements", "by-creator", user?.id] });
+      setDeletingEvent(null);
+      setDeleteError(null);
+    },
+    onError: (err: Error) => setDeleteError(err.message),
+  });
+
   const isLoading = loadingEvents || loadingTickets;
 
   const ticketsByEvent = allTickets.reduce<Record<string, TicketType[]>>((acc, t) => {
@@ -484,69 +662,127 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
   }, {});
 
   return (
-    <Tabs defaultValue="mes-evenements" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="mes-evenements" className="gap-2">
-          <Calendar className="w-4 h-4" /> Mes événements
-        </TabsTrigger>
-        <TabsTrigger value="verif-ticket" className="gap-2">
-          <ScanLine className="w-4 h-4" /> Vérif. ticket
-        </TabsTrigger>
-      </TabsList>
+    <>
+      <Tabs defaultValue="mes-evenements" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="mes-evenements" className="gap-2">
+            <Calendar className="w-4 h-4" /> Mes événements
+          </TabsTrigger>
+          <TabsTrigger value="revenues" className="gap-2">
+            <TrendingUp className="w-4 h-4" /> Revenues
+          </TabsTrigger>
+          <TabsTrigger value="verif-ticket" className="gap-2">
+            <ScanLine className="w-4 h-4" /> Vérif. ticket
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── Onglet : Mes événements ── */}
-      <TabsContent value="mes-evenements">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Mes événements
-                {!isLoading && evenements.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">({evenements.length})</span>
-                )}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-0.5">Les événements que vous avez créés</p>
-            </div>
-            <Button onClick={onCreateEvent} className="gap-2">
-              <PlusCircle className="w-4 h-4" /> Créer un événement
-            </Button>
-          </div>
-
-          {isLoading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <CardSkeleton /><CardSkeleton /><CardSkeleton />
-            </div>
-          )}
-
-          {!isLoading && evenements.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
-              <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center">
-                <CalendarX className="w-10 h-10 text-muted-foreground/40" />
+        {/* ── Onglet : Mes événements ── */}
+        <TabsContent value="mes-evenements">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Mes événements
+                  {!isLoading && evenements.length > 0 && (
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">({evenements.length})</span>
+                  )}
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">Les événements que vous avez créés</p>
               </div>
-              <div className="space-y-1.5 max-w-xs">
-                <h3 className="font-semibold text-lg">Aucun événement créé</h3>
-                <p className="text-sm text-muted-foreground">Vous n'avez pas encore créé d'événement. Commencez maintenant !</p>
-              </div>
-              <Button onClick={onCreateEvent} size="lg" className="gap-2 px-8 rounded-xl">
-                <PlusCircle className="w-5 h-5" /> Créer mon premier événement
+              <Button onClick={onCreateEvent} className="gap-2">
+                <PlusCircle className="w-4 h-4" /> Créer un événement
               </Button>
             </div>
-          )}
 
-          {!isLoading && evenements.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-              {evenements.map((e) => (
-                <MonEvenementCard key={e.id} event={e} tickets={ticketsByEvent[e.id] ?? []} />
-              ))}
+            {isLoading && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <CardSkeleton /><CardSkeleton /><CardSkeleton />
+              </div>
+            )}
+
+            {!isLoading && evenements.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
+                <div className="w-20 h-20 rounded-2xl bg-muted flex items-center justify-center">
+                  <CalendarX className="w-10 h-10 text-muted-foreground/40" />
+                </div>
+                <div className="space-y-1.5 max-w-xs">
+                  <h3 className="font-semibold text-lg">Aucun événement créé</h3>
+                  <p className="text-sm text-muted-foreground">Vous n'avez pas encore créé d'événement. Commencez maintenant !</p>
+                </div>
+                <Button onClick={onCreateEvent} size="lg" className="gap-2 px-8 rounded-xl">
+                  <PlusCircle className="w-5 h-5" /> Créer mon premier événement
+                </Button>
+              </div>
+            )}
+
+            {!isLoading && evenements.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+                {evenements.map((e) => (
+                  <MonEvenementCard
+                    key={e.id}
+                    event={e}
+                    tickets={ticketsByEvent[e.id] ?? []}
+                    onEdit={setEditingEvent}
+                    onDelete={(ev) => { setDeleteError(null); setDeletingEvent(ev); }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ── Onglet : Revenues ── */}
+        <TabsContent value="revenues">
+          <div className="space-y-2">
+            <div>
+              <h2 className="text-lg font-semibold">Revenues</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">Paiements reçus sur vos événements</p>
+            </div>
+            <RevenuesTab eventIds={new Set(evenements.map((e) => e.id))} evenements={evenements} />
+          </div>
+        </TabsContent>
+
+        {/* ── Onglet : Vérif. ticket ── */}
+        <TabsContent value="verif-ticket">
+          <VerifTicketTab />
+        </TabsContent>
+      </Tabs>
+
+      {/* ── Modale : Modifier un événement ── */}
+      <EditEvenementModal
+        event={editingEvent}
+        open={!!editingEvent}
+        onClose={() => setEditingEvent(null)}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["evenements", "by-creator", user?.id] })}
+      />
+
+      {/* ── Dialog : Confirmer la suppression ── */}
+      <AlertDialog open={!!deletingEvent} onOpenChange={(v) => !v && setDeletingEvent(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer l'événement ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action supprimera <span className="font-semibold text-foreground">« {deletingEvent?.titre} »</span> de façon permanente. Cette opération ne peut pas être annulée.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <div className="flex items-center gap-2 text-sm text-destructive p-3 border border-destructive/20 rounded-lg bg-destructive/5">
+              <AlertCircle className="w-4 h-4 shrink-0" /> {deleteError}
             </div>
           )}
-        </div>
-      </TabsContent>
-
-      {/* ── Onglet : Vérif. ticket ── */}
-      <TabsContent value="verif-ticket">
-        <VerifTicketTab />
-      </TabsContent>
-    </Tabs>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+              onClick={() => deletingEvent && confirmDelete(deletingEvent.id)}
+            >
+              {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

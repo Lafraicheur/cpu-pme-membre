@@ -60,7 +60,7 @@ import { cn } from "@/lib/utils";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Intervenant {
+export interface Intervenant {
   nom_complet: string;
   titre_fonction: string;
   entreprise_organisation: string;
@@ -68,33 +68,33 @@ interface Intervenant {
   imagePreview: string | null;
 }
 
-interface ObjectifRow {
+export interface ObjectifRow {
   texte: string;
 }
 
-interface ProgrammeRow {
+export interface ProgrammeRow {
   heure: string;
   activite: string;
 }
 
-interface TicketRow {
+export interface TicketRow {
   nom: string;
   prix: string;
   prix_membre: string;
   quantite_totale: string;
 }
 
-interface InfosPratiques {
+export interface InfosPratiques {
   parking: string;
   restauration: string;
   accessibilite: string;
 }
 
-const emptyObjectif = (): ObjectifRow => ({ texte: "" });
-const emptyProgrammeRow = (): ProgrammeRow => ({ heure: "", activite: "" });
-const emptyInfosPratiques = (): InfosPratiques => ({ parking: "", restauration: "", accessibilite: "" });
+export const emptyObjectif = (): ObjectifRow => ({ texte: "" });
+export const emptyProgrammeRow = (): ProgrammeRow => ({ heure: "", activite: "" });
+export const emptyInfosPratiques = (): InfosPratiques => ({ parking: "", restauration: "", accessibilite: "" });
 
-const emptyIntervenant = (): Intervenant => ({
+export const emptyIntervenant = (): Intervenant => ({
   nom_complet: "",
   titre_fonction: "",
   entreprise_organisation: "",
@@ -102,7 +102,7 @@ const emptyIntervenant = (): Intervenant => ({
   imagePreview: null,
 });
 
-const emptyTicket = (): TicketRow => ({
+export const emptyTicket = (): TicketRow => ({
   nom: "",
   prix: "0",
   prix_membre: "0",
@@ -169,7 +169,7 @@ function StepIndicator({ current }: { current: number }) {
 // Section card wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SectionCard({
+export function SectionCard({
   icon: Icon,
   title,
   color = "text-primary",
@@ -199,7 +199,7 @@ function SectionCard({
 // Option toggle row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function OptionRow({ label, description, checked, onCheckedChange }: {
+export function OptionRow({ label, description, checked, onCheckedChange }: {
   label: string;
   description?: string;
   checked: boolean;
