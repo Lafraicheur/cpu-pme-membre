@@ -39,7 +39,7 @@ const App = () => (
               <Route path="/subscription-selector" element={<SubscriptionSelector />} />
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              {/* <Route path="/abonnement" element={<Abonnement />} /> */}
+              <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/mon-entreprise" element={<MonEntreprise />} />
               <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/appels-offres" element={<AppelsOffres />} />

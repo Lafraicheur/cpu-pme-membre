@@ -2,6 +2,8 @@ import { useState } from "react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GraduationCap, BookOpen, Users, Award, Target, User, Lock, Building2, PlayCircle, ClipboardCheck } from "lucide-react";
+import { useSubscription } from "@/hooks/useSubscription";
+import { UpgradeSubscriptionModal } from "@/components/subscription/UpgradeSubscriptionModal";
 import { FormationOverview } from "@/components/formation/FormationOverview";
 import { CatalogueFormations } from "@/components/formation/CatalogueFormations";
 import { FormationDetail } from "@/components/formation/FormationDetail";
@@ -19,7 +21,11 @@ import { MesCoursApprentissage } from "@/components/formation/MesCoursApprentiss
 type ViewMode = "list" | "detail" | "learning";
 
 export default function Formation() {
+  const { canAccess } = useSubscription();
+  const canCreate = canAccess("formation.creator");
+
   const [activeTab, setActiveTab] = useState("apercu");
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedFormationId, setSelectedFormationId] = useState<string | null>(null);
 
@@ -88,10 +94,22 @@ export default function Formation() {
               <PlayCircle className="w-3.5 h-3.5" />
               Mes cours
             </TabsTrigger>
-            <TabsTrigger value="formateur" className="gap-1.5 text-xs sm:text-sm">
-              <Lock className="w-3.5 h-3.5" />
-              Formateur
-            </TabsTrigger>
+            {canCreate ? (
+              <TabsTrigger value="formateur" className="gap-1.5 text-xs sm:text-sm">
+                <Lock className="w-3.5 h-3.5" />
+                Formateur
+              </TabsTrigger>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium text-muted-foreground/60 ring-offset-background transition-all"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Formateur
+                <Lock className="w-3 h-3" />
+              </button>
+            )}
             {/* <TabsTrigger value="parcours" className="gap-1.5 text-xs sm:text-sm">
               <Target className="w-3.5 h-3.5" />
               Parcours
@@ -174,6 +192,12 @@ export default function Formation() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <UpgradeSubscriptionModal
+        open={showUpgradeModal}
+        onOpenChange={setShowUpgradeModal}
+        featureLabel="création de formation"
+      />
     </DashboardLayout>
   );
 }

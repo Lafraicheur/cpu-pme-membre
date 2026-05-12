@@ -202,6 +202,185 @@ export const paymentsApi = {
   },
 };
 
+// ── Types abonnements & paiements ClaPay ──────────────────────────
+
+export interface AbonnementAPI {
+  id: string;
+  typeMembreId: string;
+  typeMembre: { id: string; name: string; description: string };
+  plan: string;
+  libelle: string;
+  description: string;
+  tarifMensuel: string;
+  tarifAnnuel: string;
+  surDevis: boolean;
+  ordre: number;
+  isActive: boolean;
+}
+
+export interface CountryData {
+  flag: string;
+  flag_img: string;
+  name: string;
+  code: string;
+  currency: string;
+  language: string;
+  indicatif: string;
+  phone_length: number;
+}
+
+export interface OperatorData {
+  name: string;
+  codeoperator: string;
+  logo: string;
+  active: boolean;
+  otpstarter: { MERCHANT: boolean };
+  instruction: { MERCHANT: string | null };
+}
+
+export interface InitPaymentResponse {
+  payment_url: string;
+  payment_otp: string | null;
+  signature: string;
+  country: string;
+  currency: string;
+  available_operator?: string[];
+  authorized_operator?: string[];
+}
+
+export interface PaymentStatusResponse {
+  signature: string;
+  status: "SUCCESSFUL" | "PENDING" | "FAILED" | "CANCELLED" | string;
+  transaction_id?: string;
+  amount?: number;
+  currency?: string;
+  transaction_date?: string;
+  transaction_service_name?: string;
+  transaction_phone_number?: string;
+}
+
+export const abonnementsApi = {
+  getAll: async (): Promise<AbonnementAPI[]> => {
+    const res = await request<{ success: boolean; data: AbonnementAPI[] }>("/api/abonnements");
+    return res.data ?? [];
+  },
+};
+
+export const clapayApi = {
+  getCountries: async (): Promise<CountryData[]> => {
+    const res = await request<{ success: boolean; data: CountryData[] }>(
+      "/api/payments/countries/data",
+      { skipAuth: false }
+    );
+    return res.data ?? [];
+  },
+
+  getOperators: async (country: string): Promise<OperatorData[]> => {
+    const res = await request<{ success: boolean; data: OperatorData[] }>(
+      `/api/payments/operators/data?country=${encodeURIComponent(country)}`
+    );
+    return (res.data ?? []).filter((op) => op.active);
+  },
+
+  initSubscriptionPayment: async (payload: {
+    amount: number;
+    currency: string;
+    countryCode: string;
+    operatorsCode: string[];
+    returnUrl: string;
+    payerUserId: string;
+    adhesionPayload: {
+      name: string;
+      email: string;
+      phone: string;
+      typeMembreId: string;
+      abonnementId: string;
+    };
+    customerFirstname: string;
+    customerLastname: string;
+    customerPhone: string;
+  }): Promise<InitPaymentResponse> => {
+    const body = {
+      contextType: "adhesion",
+      paymentProvider: "clapay",
+      method: "MERCHANT",
+      tunnel: "CHECKOUTPAGE",
+      currency: payload.currency,
+      countryCode: payload.countryCode,
+      operatorsCode: payload.operatorsCode,
+      amount: payload.amount,
+      returnUrl: payload.returnUrl,
+      callbackUrl: "https://back.cpupme.ci/api/payments/webhook",
+      payerUserId: payload.payerUserId,
+      adhesionPayload: {
+        ...payload.adhesionPayload,
+        message: "Demande d'adhésion après paiement en ligne.",
+      },
+      additionalInfos: {
+        customer_email: payload.adhesionPayload.email,
+        customer_firstname: payload.customerFirstname,
+        customer_lastname: payload.customerLastname,
+        customer_phone: payload.customerPhone,
+      },
+    };
+    console.log("[Payment] Payload envoyé →", JSON.stringify(body, null, 2));
+    try {
+      const res = await request<{ success: boolean; data: InitPaymentResponse }>(
+        "/api/payments/init/payment/deposit/with-context",
+        { method: "POST", body: JSON.stringify(body) }
+      );
+      console.log("[Payment] Réponse →", res);
+      return res.data;
+    } catch (err) {
+      console.error("[Payment] Erreur complète →", err);
+      throw err;
+    }
+  },
+
+  checkPaymentStatus: async (signature: string): Promise<PaymentStatusResponse> => {
+    const raw = await request<
+      PaymentStatusResponse | { success: boolean; data: PaymentStatusResponse }
+    >("/api/payments/check/status/payment", {
+      method: "POST",
+      body: JSON.stringify({ signature }),
+    });
+    console.log("[checkPaymentStatus] réponse brute →", JSON.stringify(raw));
+    // Gérer les deux formats : { status, signature } ou { success, data: { status, signature } }
+    const result = "data" in raw && raw.data ? raw.data : (raw as PaymentStatusResponse);
+    return result;
+  },
+};
+
+export interface RegistrationVerif {
+  id: string;
+  user_id: string;
+  event_id: string;
+  est_valable: boolean;
+  prenom: string;
+  nom: string;
+  email: string;
+  telephone: string;
+  entreprise: string;
+  total_price: number | string;
+  date_commande: string;
+  statut_paiement: string;
+  evenement: {
+    id: string;
+    titre: string;
+    date_debut: string;
+    heure_debut: string;
+    lieu: string | null;
+    image_flayer: string | null;
+    format: string;
+  } | null;
+  details: Array<{
+    id: string;
+    quantite: number;
+    montantTotal: number;
+    ticket_type: { nom: string; prix: number; prix_membre: number } | null;
+  }>;
+}
+
 export const registrationsApi = {
   getByUser: async (userId: string): Promise<Registration[]> => {
     const res = await request<{ success: boolean; data: Registration[] } | Registration[]>(
@@ -209,6 +388,21 @@ export const registrationsApi = {
     );
     const list = Array.isArray(res) ? res : (res as { data: Registration[] }).data;
     return list.filter((r) => r.user_id === userId);
+  },
+
+  verifiTicket: async (registrationId: string): Promise<RegistrationVerif> => {
+    const res = await request<{ success: boolean; data: RegistrationVerif } | RegistrationVerif>(
+      `/api/registrations/verifi-ticket/${encodeURIComponent(registrationId)}`
+    );
+    return (res as { data: RegistrationVerif }).data ?? (res as RegistrationVerif);
+  },
+
+  validerAcces: async (registrationId: string): Promise<RegistrationVerif> => {
+    const res = await request<{ success: boolean; data: RegistrationVerif } | RegistrationVerif>(
+      `/api/registrations/valider-acces/${encodeURIComponent(registrationId)}`,
+      { method: "POST", skipAuth: true }
+    );
+    return (res as { data: RegistrationVerif }).data ?? (res as RegistrationVerif);
   },
 };
 
@@ -248,6 +442,24 @@ export const evenementsApi = {
   getAll: async (): Promise<Evenement[]> => {
     const res = await request<{ success: boolean; data: Evenement[] } | Evenement[]>(
       "/api/evenements", { skipAuth: true }
+    );
+    const list = Array.isArray(res) ? res : ((res as { data: Evenement[] }).data ?? []);
+    return list.map((e) => ({
+      ...e,
+      titre: e.titre ? decodeHtml(e.titre) : e.titre,
+      description: e.description ? decodeHtml(e.description) : e.description,
+      lieu: e.lieu ? decodeHtml(e.lieu) : e.lieu,
+      image_flayer: e.image_flayer
+        ? e.image_flayer.startsWith("http")
+          ? decodeHtml(e.image_flayer)
+          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+        : null,
+    }));
+  },
+
+  getByCreator: async (creatorUserId: string): Promise<Evenement[]> => {
+    const res = await request<{ success: boolean; data: Evenement[] } | Evenement[]>(
+      `/api/evenements?creatorUserId=${encodeURIComponent(creatorUserId)}`
     );
     const list = Array.isArray(res) ? res : ((res as { data: Evenement[] }).data ?? []);
     return list.map((e) => ({
@@ -411,7 +623,8 @@ export const typeEvenementsApi = {
   getAll: async (creatorUserId?: string): Promise<TypeEvenement[]> => {
     const query = creatorUserId ? `?creatorUserId=${encodeURIComponent(creatorUserId)}` : "";
     const res = await request<{ success: boolean; data: TypeEvenement[] } | TypeEvenement[]>(
-      `/api/type-evenements${query}`
+      `/api/type-evenements${query}`,
+      { skipAuth: true }
     );
     const list = Array.isArray(res) ? res : (res as { data: TypeEvenement[] }).data;
     return list.map((t) => ({
@@ -437,6 +650,16 @@ export const filieresApi = {
 };
 
 export const ticketTypesApi = {
+  getAll: async (params?: { event_id?: string; creatorUserId?: string }): Promise<TicketType[]> => {
+    const qs = new URLSearchParams();
+    if (params?.event_id) qs.set("event_id", params.event_id);
+    if (params?.creatorUserId) qs.set("creatorUserId", params.creatorUserId);
+    const res = await request<{ success: boolean; data: TicketType[] } | TicketType[]>(
+      `/api/ticket-types${qs.toString() ? "?" + qs.toString() : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: TicketType[] }).data ?? []);
+  },
+
   create: async (data: {
     event_id: string;
     nom: string;
@@ -512,7 +735,6 @@ export interface CreateEvenementJsonPayload {
   type_evenement_id?: string;
   region_id?: string | null;
   filiere_id?: string | null;
-  created_by?: string;
 }
 
 export const createEvenementApiJson = (payload: CreateEvenementJsonPayload): Promise<Evenement> =>

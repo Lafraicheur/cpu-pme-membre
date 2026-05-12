@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -224,13 +224,28 @@ function OptionRow({ label, description, checked, onCheckedChange }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { user } = useAuth();
   const { toast } = useToast();
 
-  const [typeEvenements, setTypeEvenements] = useState<TypeEvenement[]>([]);
-  const [regions, setRegions]               = useState<Region[]>([]);
-  const [filieres, setFilieres]             = useState<Filiere[]>([]);
-  const [publicCibles, setPublicCibles]     = useState<PublicCible[]>([]);
+  const { data: typeEvenements = [] } = useQuery({
+    queryKey: ["type-evenements"],
+    queryFn: () => typeEvenementsApi.getAll(),
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: regions = [] } = useQuery({
+    queryKey: ["regions"],
+    queryFn: regionsApi.getAll,
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: filieres = [] } = useQuery({
+    queryKey: ["filieres"],
+    queryFn: filieresApi.getAll,
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: publicCibles = [] } = useQuery({
+    queryKey: ["public-cibles"],
+    queryFn: publicCiblesApi.getAll,
+    staleTime: 10 * 60 * 1000,
+  });
 
   const [step, setStep] = useState(0);
 
@@ -280,19 +295,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const [loading, setLoading]   = useState(false);
   const [done, setDone]         = useState(false);
 
-  useEffect(() => {
-    Promise.allSettled([
-      typeEvenementsApi.getAll(),
-      regionsApi.getAll(),
-      filieresApi.getAll(),
-      publicCiblesApi.getAll(),
-    ]).then(([te, r, f, pc]) => {
-      if (te.status === "fulfilled") setTypeEvenements(te.value);
-      if (r.status  === "fulfilled") setRegions(r.value);
-      if (f.status  === "fulfilled") setFilieres(f.value);
-      if (pc.status === "fulfilled") setPublicCibles(pc.value);
-    });
-  }, []);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -412,7 +414,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
           });
         }
         fd.append("image_flayer", imageFile);
-        if (user?.id) fd.append("created_by", String(user.id));
         ev = await createEvenementApi(fd);
       } else {
         // JSON quand pas de fichier (token récupéré automatiquement via Authorization header)
@@ -451,7 +452,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
           cequiInclu:               validCequiInclu.length > 0 ? validCequiInclu : null,
           intervenants:             intervenantsData.length > 0 ? intervenantsData : null,
           image_flayer:             null,
-          created_by:               user?.id ? String(user.id) : undefined,
         });
       }
 
@@ -900,8 +900,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
               <OptionRow label="QR code check-in" description="Accès par scan QR" checked={qrCheckin} onCheckedChange={setQrCheckin} />
               <OptionRow label="Attestation" description="Délivrer une attestation" checked={attestation} onCheckedChange={setAttestation} />
               <OptionRow label="Partage photos" description="Autoriser le partage" checked={partagePhotos} onCheckedChange={setPartagePhotos} />
-              <OptionRow label="À la une" description="Mettre en avant sur la plateforme" checked={alaUne} onCheckedChange={setAlaUne} />
-              <OptionRow label="Événement actif" description="Publier immédiatement" checked={isActive} onCheckedChange={setIsActive} />
             </div>
           </SectionCard>
 

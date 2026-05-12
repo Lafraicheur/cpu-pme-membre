@@ -41,9 +41,35 @@ interface AuthContextType {
   canAddTeamMember: () => boolean;
   getTeamLimit: () => number;
   updateSubscriptionTier: (tier: SubscriptionTier) => void;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function normalizePlanText(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&#x2F;/gi, "/")
+    .replace(/&#x27;/gi, "'")
+    .toLowerCase()
+    .trim();
+}
+
+function mapLibelleToTier(libelle: string): SubscriptionTier | null {
+  const n = normalizePlanText(libelle);
+
+  if (n.includes("institutionnel")) return "INSTITUTIONNEL";
+  if (n.includes("fédération") || n.includes("federation")) return "FEDERATION";
+  if (n.includes("association") || n.includes("coopérative") || n.includes("cooperative") || n.includes("gie")) return "ORGANISATION";
+
+  const hasOr = /\bor\b/.test(n) || n.includes("gold");
+  const hasArgent = n.includes("argent") || n.includes("silver");
+  const hasEntreprise = n.includes("entreprise") || n.includes("startup") || n.includes("micro-entreprise");
+
+  if (hasOr) return hasEntreprise ? "ME_OR" : "MI_OR";
+  if (hasArgent) return hasEntreprise ? "ME_ARGENT" : "MI_ARGENT";
+  return hasEntreprise ? "ME_BASIC" : "MI_BASIC";
+}
 
 function mapPlanToTier(profile: Record<string, unknown>): SubscriptionTier {
   const defaultTier: SubscriptionTier = "ME_ARGENT";
@@ -52,21 +78,29 @@ function mapPlanToTier(profile: Record<string, unknown>): SubscriptionTier {
   if (profile.subscription_tier) return profile.subscription_tier as SubscriptionTier;
 
   const abonnement = profile.abonnement as Record<string, unknown> | undefined;
+  const libelle = abonnement?.libelle as string | undefined;
+
+  // Mapping prioritaire via le libellé (le champ `plan` de l'API peut être incorrect)
+  if (libelle) {
+    const tierFromLibelle = mapLibelleToTier(libelle);
+    if (tierFromLibelle) return tierFromLibelle;
+  }
+
+  // Fallback : plan + typeMembre
   const plan = (abonnement?.plan as string | undefined)?.toLowerCase();
-  const orgType = (profile.organisationType as string | undefined)?.toLowerCase();
+  const typeMembre = (profile.typeMembre as Record<string, unknown> | undefined);
+  const typeMembreName = (typeMembre?.name as string | undefined)?.toLowerCase() ?? "";
+  const isIndividuel = typeMembreName.includes("individuel");
 
-  // Types d'organisation collectifs
-  if (orgType === "federation") return "FEDERATION";
-  if (orgType === "institutionnel") return "INSTITUTIONNEL";
-  if (orgType === "organisation") return "ORGANISATION";
-
-  // Plans individuels / entreprises
   switch (plan) {
-    case "basic":   return "ME_BASIC";
+    case "cooperative": return "ORGANISATION";
+    case "federation":  return "FEDERATION";
+    case "institutional": return "INSTITUTIONNEL";
+    case "basic":   return isIndividuel ? "MI_BASIC" : "ME_BASIC";
     case "silver":
-    case "argent":  return "ME_ARGENT";
+    case "argent":  return isIndividuel ? "MI_ARGENT" : "ME_ARGENT";
     case "gold":
-    case "or":      return "ME_OR";
+    case "or":      return isIndividuel ? "MI_OR" : "ME_OR";
     default:        return defaultTier;
   }
 }
@@ -268,6 +302,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updatedUser);
   };
 
+  const refreshProfile = async () => {
+    const profile = await authApi.getProfile();
+    const mappedUser = mapProfileToUser(profile);
+    localStorage.setItem("cpu-pme-user", JSON.stringify(mappedUser));
+    setCookie("cpu-pme-user", JSON.stringify(mappedUser));
+    setUser(mappedUser);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -282,6 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canAddTeamMember,
         getTeamLimit,
         updateSubscriptionTier,
+        refreshProfile,
       }}
     >
       {children}

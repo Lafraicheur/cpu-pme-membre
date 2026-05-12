@@ -20,6 +20,7 @@ import {
   Settings,
   Lock,
   ArrowUpCircle,
+  CreditCard
 } from "lucide-react";
 import logo from "@/assets/logo-cpu-pme.png";
 import { cn } from "@/lib/utils";
@@ -218,6 +219,20 @@ export function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose
         >
           <Building2 size={20} className="flex-shrink-0" />
           {showLabels && <span className="text-sm font-medium">Mon Entreprise</span>}
+        </Link>
+        <Link
+          to="/abonnement"
+          onClick={handleNavClick}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
+            !showLabels && "justify-center px-2",
+            location.pathname === "/abonnement"
+              ? "bg-primary text-primary-foreground"
+              : "text-sidebar-foreground hover:bg-sidebar-accent"
+          )}
+        >
+          <CreditCard size={20} className="flex-shrink-0" />
+          {showLabels && <span className="text-sm font-medium">Abonnement</span>}
         </Link>
         <Link
           to="/parametres"

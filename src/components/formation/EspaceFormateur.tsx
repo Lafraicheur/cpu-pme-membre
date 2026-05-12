@@ -26,7 +26,7 @@ import {
   ChevronsUpDown, Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, formationModulesApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, paymentsApi, type CentreFormation, type FormationModule, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant, type Payment } from "@/lib/api";
+import { formationsApi, centreFormationsApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, paymentsApi, type CentreFormation, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant, type Payment } from "@/lib/api";
 
 interface LessonDraft {
   id: string;
@@ -118,7 +118,6 @@ export function EspaceFormateur() {
   const [creationStep, setCreationStep] = useState(1);
   const [createOpen, setCreateOpen] = useState(false);
   const [centres, setCentres] = useState<CentreFormation[]>([]);
-  const [modules, setModules] = useState<FormationModule[]>([]);
   const [categories, setCategories] = useState<SousFiliere[]>([]);
   const [formateurs, setFormateurs] = useState<FormateurAvecFormations[]>([]);
 
@@ -133,7 +132,6 @@ export function EspaceFormateur() {
 
   useEffect(() => {
     centreFormationsApi.getAll().then(setCentres).catch(() => {});
-    formationModulesApi.getAll().then(setModules).catch(() => {});
     sousFiliereApi.getAll().then(setCategories).catch(() => {});
     if (user?.id) {
       formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
@@ -166,7 +164,7 @@ export function EspaceFormateur() {
   const [editTarget, setEditTarget] = useState<FormationAPI | null>(null);
   const [editForm, setEditForm] = useState({
     title: "", description: "", category: "", mode: "", niveau: "",
-    duration: "", moduleId: "", formateur_id: "",
+    duration: "", moduleId: "", formateur_id: "", date: "",
     isPaid: false, isActive: false, price: "", price_member: "",
     image: null as File | null, fichier: null as File | null,
   });
@@ -186,6 +184,7 @@ export function EspaceFormateur() {
       duration:     course.duration ? String(course.duration) : "",
       moduleId:     "",
       formateur_id: course.formateur?.id ?? "",
+      date:         course.date ? course.date.slice(0, 16) : "",
       isPaid:       course.isPaid,
       isActive:     course.isActive,
       price:        course.price ? String(parseFloat(course.price)) : "",
@@ -1204,25 +1203,9 @@ export function EspaceFormateur() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Module lié</Label>
-                <Select value={form.moduleId} onValueChange={(v) => setF("moduleId", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un module" /></SelectTrigger>
-                  <SelectContent>
-                    {modules.length === 0 && (
-                      <SelectItem value="_" disabled>Chargement...</SelectItem>
-                    )}
-                    {modules.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Date & heure de la formation</Label>
+                <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
               </div>
-            </div>
-
-            {/* Date — visible pour tous les modes */}
-            <div className="space-y-2">
-              <Label>Date & heure de la formation</Label>
-              <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
             </div>
 
             {/* Champs conditionnels selon le mode */}
@@ -2317,15 +2300,8 @@ export function EspaceFormateur() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Module lié</Label>
-                <Select value={editForm.moduleId} onValueChange={(v) => setEF("moduleId", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un module" /></SelectTrigger>
-                  <SelectContent>
-                    {modules.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Date & heure de la formation</Label>
+                <Input type="datetime-local" value={editForm.date} onChange={(e) => setEF("date", e.target.value)} />
               </div>
             </div>
 

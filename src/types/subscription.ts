@@ -62,6 +62,9 @@ export type Feature =
   | 'export.pdf'
   | 'export.xlsx'
 
+  // Support
+  | 'support.priority'
+
   // API & Intégrations
   | 'api.access'
   | 'integrations.enabled';
