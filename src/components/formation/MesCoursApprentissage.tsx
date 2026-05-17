@@ -66,28 +66,12 @@ function CoursCardSkeleton() {
 // ── Bloc certificat dans la carte ─────────────────────────────────────────────
 
 function CertificatBloc({ cert }: { cert: FormationCertificat }) {
-  const [loading, setLoading] = useState(false);
-  const slug = cert.formation?.slug ?? null;
-
-  const handleDownload = async () => {
-    if (!slug) return;
-    setLoading(true);
-    try {
-      const data = await certificatsApi.generate(slug);
-      if (data.verifyUrl) window.open(data.verifyUrl, "_blank");
-    } catch (e) {
-      console.error("Erreur génération certificat", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const dateDelivrance = cert.dateDelivrance
     ? format(new Date(cert.dateDelivrance), "d MMM yyyy", { locale: fr })
     : null;
 
   return (
-    <div className="rounded-sm border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+    <div className="rounded-sm border border-emerald-200 bg-emerald-50/50 p-3 space-y-1">
       <div className="flex items-center gap-1.5">
         <Medal className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
         <span className="text-xs font-semibold text-emerald-700">
@@ -101,19 +85,124 @@ function CertificatBloc({ cert }: { cert: FormationCertificat }) {
           <p>Niveau : {cert.typeCertification.niveau}</p>
         )}
       </div>
-      {slug && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="w-full h-7 text-[11px] gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-          onClick={handleDownload}
-          disabled={loading}
-        >
-          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-          {loading ? "Génération..." : "Télécharger"}
-        </Button>
-      )}
     </div>
+  );
+}
+
+// ── Carte formation ───────────────────────────────────────────────────────────
+
+function CoursCard({ item, cert, progressValue }: {
+  item: MonInscription;
+  cert: FormationCertificat | undefined;
+  progressValue: number;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const { formation, status, registeredAt } = item;
+
+  const statusCfg = statusConfig[status] ?? statusConfig.pending;
+  const StatusIcon = statusCfg.icon;
+  const modeCfg = modeConfig[formation.mode] ?? modeConfig.a_son_rythme;
+  const ModeIcon = modeCfg.icon;
+  const isCompleted = status === "completed";
+  const instructorName = formation.formateur
+    ? `${formation.formateur.firstname} ${formation.formateur.lastname}`
+    : "Formateur non renseigné";
+
+  const handleDownloadCert = async () => {
+    if (!cert) return;
+    const slug = cert.formation?.slug ?? null;
+    if (!slug) return;
+    setDownloading(true);
+    try {
+      const data = await certificatsApi.generate(slug);
+      if (data.verifyUrl) window.open(data.verifyUrl, "_blank");
+    } catch (e) {
+      console.error("Erreur génération certificat", e);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Card className={cn("rounded-sm overflow-hidden flex flex-col hover:shadow-md transition-all", isCompleted && "opacity-80")}>
+      {formation.image ? (
+        <div className="h-28 overflow-hidden flex-shrink-0">
+          <img src={formation.image} alt={formation.title} className="w-full h-full object-cover" />
+        </div>
+      ) : (
+        <div className="h-28 bg-gradient-to-br from-primary/20 to-secondary/15 flex items-center justify-center flex-shrink-0">
+          <BookOpen className="w-10 h-10 text-primary/25" />
+        </div>
+      )}
+
+      <CardContent className="p-4 flex flex-col flex-1 gap-2.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant="outline" className={cn("text-[10px] h-4 px-1.5 border rounded-sm gap-1", statusCfg.color)}>
+            <StatusIcon className="w-2.5 h-2.5" />
+            {statusCfg.label}
+          </Badge>
+          <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm gap-1">
+            <ModeIcon className={cn("w-2.5 h-2.5", modeCfg.color)} />
+            {modeCfg.label}
+          </Badge>
+        </div>
+
+        <h3 className="font-semibold text-sm leading-snug line-clamp-2">{formation.title}</h3>
+        <p className="text-[11px] text-muted-foreground/70 truncate">{formation.category}</p>
+
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border">
+            {formation.formateur?.photo ? (
+              <img src={formation.formateur.photo} alt={instructorName} className="w-full h-full object-cover" />
+            ) : (
+              <GraduationCap className="w-3 h-3" />
+            )}
+          </div>
+          <span className="truncate">{instructorName}</span>
+          {formation.duration > 0 && (
+            <span className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+              <Clock className="w-3 h-3" />{formation.duration}h
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Progression</span>
+            <span className="font-medium">{progressValue}%</span>
+          </div>
+          <Progress value={progressValue} className="h-1.5 rounded-sm" />
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          Inscrit le {new Date(registeredAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+        </p>
+
+        {cert && <CertificatBloc cert={cert} />}
+
+        {cert ? (
+          <Button
+            className="w-full rounded-sm gap-2 mt-auto bg-emerald-600 hover:bg-emerald-700 text-white"
+            size="sm"
+            onClick={handleDownloadCert}
+            disabled={downloading || !cert.formation?.slug}
+          >
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {downloading ? "Génération..." : "Télécharger le certificat"}
+          </Button>
+        ) : (
+          <Button
+            className="w-full rounded-sm gap-2 mt-auto"
+            variant={isCompleted ? "outline" : "default"}
+            size="sm"
+            onClick={() => window.open(`${FORMATION_BASE_URL}/${toSlug(formation.title)}`, "_blank", "noopener,noreferrer")}
+          >
+            <PlayCircle className="w-4 h-4" />
+            {isCompleted ? "Revoir" : status === "started" ? "Continuer" : "Commencer"}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -255,110 +344,11 @@ export function MesCoursApprentissage(_props: Props) {
       {!loading && !error && filtered.length > 0 && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((item) => {
-            const { formation, status, progression, registeredAt } = item;
-            const statusCfg = statusConfig[status] ?? statusConfig.pending;
-            const StatusIcon = statusCfg.icon;
-            const modeCfg = modeConfig[formation.mode] ?? modeConfig.a_son_rythme;
-            const ModeIcon = modeCfg.icon;
-
-            // Progression réelle depuis l'API dédiée, fallback sur la valeur de l'inscription
-            const prog = progByFormationId.get(formation.id) ?? progByParticipantId.get(item.participantId);
-            const progressValue = prog?.progressPercent ?? progression ?? 0;
-
-            const instructorName = formation.formateur
-              ? `${formation.formateur.firstname} ${formation.formateur.lastname}`
-              : "Formateur non renseigné";
-            const isCompleted = status === "completed";
-
-            // Certificat associé via formationId ou participantId
-            const cert = certByFormationId.get(formation.id) ?? certByParticipantId.get(item.participantId);
-
+            const prog = progByFormationId.get(item.formation.id) ?? progByParticipantId.get(item.participantId);
+            const progressValue = prog?.progressPercent ?? item.progression ?? 0;
+            const cert = certByFormationId.get(item.formation.id) ?? certByParticipantId.get(item.participantId);
             return (
-              <Card
-                key={item.participantId}
-                className={cn(
-                  "rounded-sm overflow-hidden flex flex-col hover:shadow-md transition-all",
-                  isCompleted && "opacity-80"
-                )}
-              >
-                {/* Image */}
-                {formation.image ? (
-                  <div className="h-28 overflow-hidden flex-shrink-0">
-                    <img src={formation.image} alt={formation.title} className="w-full h-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="h-28 bg-gradient-to-br from-primary/20 to-secondary/15 flex items-center justify-center flex-shrink-0">
-                    <BookOpen className="w-10 h-10 text-primary/25" />
-                  </div>
-                )}
-
-                <CardContent className="p-4 flex flex-col flex-1 gap-2.5">
-                  {/* Badges */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Badge variant="outline" className={cn("text-[10px] h-4 px-1.5 border rounded-sm gap-1", statusCfg.color)}>
-                      <StatusIcon className="w-2.5 h-2.5" />
-                      {statusCfg.label}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm gap-1">
-                      <ModeIcon className={cn("w-2.5 h-2.5", modeCfg.color)} />
-                      {modeCfg.label}
-                    </Badge>
-                  </div>
-
-                  {/* Titre */}
-                  <h3 className="font-semibold text-sm leading-snug line-clamp-2">
-                    {formation.title}
-                  </h3>
-
-                  {/* Catégorie */}
-                  <p className="text-[11px] text-muted-foreground/70 truncate">{formation.category}</p>
-
-                  {/* Formateur */}
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border">
-                      {formation.formateur?.photo ? (
-                        <img src={formation.formateur.photo} alt={instructorName} className="w-full h-full object-cover" />
-                      ) : (
-                        <GraduationCap className="w-3 h-3" />
-                      )}
-                    </div>
-                    <span className="truncate">{instructorName}</span>
-                    {formation.duration > 0 && (
-                      <span className="flex items-center gap-0.5 ml-auto flex-shrink-0">
-                        <Clock className="w-3 h-3" />{formation.duration}h
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Progression */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Progression</span>
-                      <span className="font-medium">{progressValue}%</span>
-                    </div>
-                    <Progress value={progressValue} className="h-1.5 rounded-sm" />
-                  </div>
-
-                  {/* Date inscription */}
-                  <p className="text-[11px] text-muted-foreground">
-                    Inscrit le {new Date(registeredAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
-                  </p>
-
-                  {/* Certificat (si disponible) */}
-                  {cert && <CertificatBloc cert={cert} />}
-
-                  {/* CTA */}
-                  <Button
-                    className="w-full rounded-sm gap-2 mt-auto"
-                    variant={isCompleted ? "outline" : "default"}
-                    size="sm"
-                    onClick={() => window.open(`${FORMATION_BASE_URL}/${toSlug(formation.title)}`, "_blank", "noopener,noreferrer")}
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    {isCompleted ? "Revoir" : status === "started" ? "Continuer" : "Commencer"}
-                  </Button>
-                </CardContent>
-              </Card>
+              <CoursCard key={item.participantId} item={item} cert={cert} progressValue={progressValue} />
             );
           })}
         </div>
