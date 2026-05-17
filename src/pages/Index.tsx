@@ -33,11 +33,12 @@ function computeEndDate(startDate: string, period: "mensuel" | "annuel", endDate
 
 function computeTimeLeft(endDate: Date) {
   const diff = endDate.getTime() - Date.now();
-  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, expired: true };
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
   return {
     days:    Math.floor(diff / (1000 * 60 * 60 * 24)),
     hours:   Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
     minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((diff % (1000 * 60)) / 1000),
     expired: false,
   };
 }
@@ -63,7 +64,7 @@ function AbonnementKPICard({
   const [timeLeft, setTimeLeft] = useState(computeTimeLeft(endDate));
 
   useEffect(() => {
-    const id = setInterval(() => setTimeLeft(computeTimeLeft(endDate)), 60_000);
+    const id = setInterval(() => setTimeLeft(computeTimeLeft(endDate)), 1_000);
     return () => clearInterval(id);
   }, [endDate]);
 
@@ -105,6 +106,7 @@ function AbonnementKPICard({
             { val: timeLeft.days,    label: "j" },
             { val: timeLeft.hours,   label: "h" },
             { val: timeLeft.minutes, label: "m" },
+            { val: timeLeft.seconds, label: "s" },
           ].map(({ val, label }) => (
             <div key={label} className="text-center leading-none">
               <span className={`text-base font-bold tabular-nums ${textColor}`}>
