@@ -5,11 +5,17 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ActionCenter } from "@/components/dashboard/ActionCenter";
 import { HealthScore } from "@/components/dashboard/HealthScore";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   CheckCircle,
   CreditCard,
   Users,
   Activity,
+  Clock,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 const statutLabel: Record<string, string> = {
@@ -18,6 +24,136 @@ const statutLabel: Record<string, string> = {
   rejected: "Rejeté",
   active:   "Actif",
 };
+
+// ── Helpers décompte ──────────────────────────────────────────────────────────
+
+function computeEndDate(startDate: string, period: "mensuel" | "annuel", endDateFromApi?: string): Date {
+  if (endDateFromApi) return new Date(endDateFromApi);
+  const start = new Date(startDate);
+  const days = period === "annuel" ? 365 : 30;
+  return new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function computeTimeLeft(endDate: Date) {
+  const diff = endDate.getTime() - Date.now();
+  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, expired: true };
+  return {
+    days:    Math.floor(diff / (1000 * 60 * 60 * 24)),
+    hours:   Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+    minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+    expired: false,
+  };
+}
+
+// ── Widget décompte abonnement ─────────────────────────────────────────────────
+
+function SubscriptionCountdown({
+  startDate,
+  period,
+  endDateApi,
+  planLibelle,
+  onRenew,
+}: {
+  startDate: string;
+  period: "mensuel" | "annuel";
+  endDateApi?: string;
+  planLibelle: string;
+  onRenew: () => void;
+}) {
+  const endDate = computeEndDate(startDate, period, endDateApi);
+  const [timeLeft, setTimeLeft] = useState(computeTimeLeft(endDate));
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(computeTimeLeft(endDate)), 60_000);
+    return () => clearInterval(id);
+  }, [endDate]);
+
+  const totalDays = period === "annuel" ? 365 : 30;
+  const elapsed = totalDays - timeLeft.days;
+  const progressPercent = Math.max(0, Math.min(100, (elapsed / totalDays) * 100));
+
+  const isExpired = timeLeft.expired;
+  const isUrgent  = !isExpired && timeLeft.days <= 5;
+  const isWarning = !isExpired && !isUrgent && timeLeft.days <= 15;
+
+  const accentClass = isExpired || isUrgent
+    ? "border-red-200 bg-red-50/60 dark:bg-red-950/20"
+    : isWarning
+    ? "border-amber-200 bg-amber-50/60 dark:bg-amber-950/20"
+    : "border-primary/20 bg-primary/5";
+
+  const barColor = isExpired || isUrgent ? "bg-red-500" : isWarning ? "bg-amber-400" : "bg-primary";
+  const textColor = isExpired || isUrgent ? "text-red-600" : isWarning ? "text-amber-600" : "text-primary";
+
+  const endFmt = endDate.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+
+  return (
+    <Card className={`rounded-sm border ${accentClass} min-w-[220px]`}>
+      <CardContent className="p-4 space-y-3">
+        {/* En-tête */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <Clock className={`w-4 h-4 ${textColor}`} />
+            <span className="text-xs font-semibold text-foreground">Abonnement</span>
+          </div>
+          <Badge variant="outline" className="text-[10px] h-4 px-1.5 capitalize">
+            {period}
+          </Badge>
+        </div>
+
+        {/* Plan */}
+        <p className="text-[11px] text-muted-foreground truncate">{planLibelle}</p>
+
+        {/* Décompte */}
+        {isExpired ? (
+          <div className="flex items-center gap-1.5 text-red-600">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span className="text-sm font-semibold">Expiré</span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            {[
+              { val: timeLeft.days,    label: "j" },
+              { val: timeLeft.hours,   label: "h" },
+              { val: timeLeft.minutes, label: "m" },
+            ].map(({ val, label }) => (
+              <div key={label} className="text-center">
+                <div className={`text-xl font-bold tabular-nums leading-none ${textColor}`}>
+                  {String(val).padStart(2, "0")}
+                </div>
+                <div className="text-[10px] text-muted-foreground">{label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Barre de progression */}
+        <div className="space-y-1">
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${barColor}`}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Expire le {endFmt}
+          </p>
+        </div>
+
+        {/* CTA */}
+        <Button
+          size="sm"
+          variant={isExpired || isUrgent ? "destructive" : "outline"}
+          className="w-full h-7 text-xs gap-1.5"
+          onClick={onRenew}
+        >
+          <RefreshCw className="w-3 h-3" />
+          {isExpired ? "Renouveler maintenant" : "Renouveler"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 const Index = () => {
   const navigate = useNavigate();
@@ -79,6 +215,8 @@ const Index = () => {
   const secteur    = user?.filiereNom || user?.secteurPrincipal || "—";
   const region     = [user?.communeNom, user?.regionNom].filter(Boolean).join(", ") || "—";
 
+  const showCountdown = !!(user?.abonnementStartDate);
+
   // Sépare le préfixe "Bienvenue, " du nom pour colorer uniquement le nom
   const WELCOME_PREFIX = "Bienvenue, ";
   const isWelcomeMsg = displayed.startsWith(WELCOME_PREFIX);
@@ -89,22 +227,36 @@ const Index = () => {
   return (
     <DashboardLayout>
       {/* Welcome Section */}
-      <div className="mb-6 md:mb-8 opacity-0 animate-slide-up" style={{ animationFillMode: "forwards" }}>
-        <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-1 min-h-[2.25rem] flex items-center gap-0.5">
-          {isWelcomeMsg ? (
-            <>
-              <span className="text-foreground">{textPrefix}</span>
-              <span className="text-primary">{textName}</span>
-            </>
-          ) : (
-            <span className="text-foreground">{textOther}</span>
-          )}
-          <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
-        </h1>
-        <p className="text-base font-medium text-foreground/80">{entreprise}</p>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Voici un aperçu de votre activité et de vos tâches en attente.
-        </p>
+      <div className="mb-6 md:mb-8 opacity-0 animate-slide-up flex items-start justify-between gap-4" style={{ animationFillMode: "forwards" }}>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-1 min-h-[2.25rem] flex items-center gap-0.5">
+            {isWelcomeMsg ? (
+              <>
+                <span className="text-foreground">{textPrefix}</span>
+                <span className="text-primary">{textName}</span>
+              </>
+            ) : (
+              <span className="text-foreground">{textOther}</span>
+            )}
+            <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
+          </h1>
+          <p className="text-base font-medium text-foreground/80">{entreprise}</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Voici un aperçu de votre activité et de vos tâches en attente.
+          </p>
+        </div>
+
+        {showCountdown && (
+          <div className="shrink-0 hidden sm:block">
+            <SubscriptionCountdown
+              startDate={user!.abonnementStartDate!}
+              period={user!.abonnementPeriod ?? "mensuel"}
+              endDateApi={user!.abonnementEndDate}
+              planLibelle={plan}
+              onRenew={() => navigate("/parametres")}
+            />
+          </div>
+        )}
       </div>
 
       {/* KPI Cards */}

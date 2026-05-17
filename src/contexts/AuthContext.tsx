@@ -26,6 +26,9 @@ export interface User {
   nombreEmployes?: string;
   typeMembre?: string;
   interventionScope?: string;
+  abonnementStartDate?: string;
+  abonnementEndDate?: string;
+  abonnementPeriod?: "mensuel" | "annuel";
   subscription: Subscription;
 }
 
@@ -144,6 +147,23 @@ function mapProfileToUser(profile: Record<string, unknown>): User {
     nombreEmployes:    (profile.nombre_employee as string)   || undefined,
     typeMembre:        get<string>(typeMembreObj, "name")    || undefined,
     interventionScope: (profile.interventionScope as string) || undefined,
+    ...(() => {
+      const libelleNorm = ((abonnement?.libelle as string) || "").toLowerCase();
+      const periodeRaw  = ((abonnement?.periode as string) || (abonnement?.interval as string) || "").toLowerCase();
+      const isAnnuel    = periodeRaw.includes("annuel") || periodeRaw.includes("annual")
+                       || libelleNorm.includes("annuel") || libelleNorm.includes("/an");
+      return {
+        abonnementPeriod:    (isAnnuel ? "annuel" : "mensuel") as "mensuel" | "annuel",
+        abonnementStartDate: (abonnement?.created_at as string)
+                          || (abonnement?.startDate as string)
+                          || (profile.created_at as string)
+                          || undefined,
+        abonnementEndDate:   (abonnement?.dateExpiration as string)
+                          || (abonnement?.date_expiration as string)
+                          || (abonnement?.date_fin as string)
+                          || undefined,
+      };
+    })(),
     subscription: {
       tier,
       category: tierConfig.category || "individual",
