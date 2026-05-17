@@ -5,18 +5,15 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ActionCenter } from "@/components/dashboard/ActionCenter";
 import { HealthScore } from "@/components/dashboard/HealthScore";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   CheckCircle,
   CreditCard,
   Users,
   Activity,
-  Clock,
   AlertTriangle,
-  RefreshCw,
 } from "lucide-react";
+import { UpgradeSubscriptionModal } from "@/components/subscription/UpgradeSubscriptionModal";
+import { abonnementsApi, type AbonnementAPI } from "@/lib/api";
 
 const statutLabel: Record<string, string> = {
   approved: "Approuvé",
@@ -45,20 +42,22 @@ function computeTimeLeft(endDate: Date) {
   };
 }
 
-// ── Widget décompte abonnement ─────────────────────────────────────────────────
+// ── KPI Card Abonnement avec décompte ────────────────────────────────────────
 
-function SubscriptionCountdown({
+function AbonnementKPICard({
   startDate,
   period,
   endDateApi,
   planLibelle,
   onRenew,
+  onUpgrade,
 }: {
   startDate: string;
   period: "mensuel" | "annuel";
   endDateApi?: string;
   planLibelle: string;
   onRenew: () => void;
+  onUpgrade: () => void;
 }) {
   const endDate = computeEndDate(startDate, period, endDateApi);
   const [timeLeft, setTimeLeft] = useState(computeTimeLeft(endDate));
@@ -68,90 +67,73 @@ function SubscriptionCountdown({
     return () => clearInterval(id);
   }, [endDate]);
 
-  const totalDays = period === "annuel" ? 365 : 30;
-  const elapsed = totalDays - timeLeft.days;
-  const progressPercent = Math.max(0, Math.min(100, (elapsed / totalDays) * 100));
+  const totalDays   = period === "annuel" ? 365 : 30;
+  const elapsed     = totalDays - timeLeft.days;
+  const progress    = Math.max(0, Math.min(100, (elapsed / totalDays) * 100));
+  const isExpired   = timeLeft.expired;
+  const isUrgent    = !isExpired && timeLeft.days <= 5;
+  const isWarning   = !isExpired && !isUrgent && timeLeft.days <= 15;
 
-  const isExpired = timeLeft.expired;
-  const isUrgent  = !isExpired && timeLeft.days <= 5;
-  const isWarning = !isExpired && !isUrgent && timeLeft.days <= 15;
-
-  const accentClass = isExpired || isUrgent
-    ? "border-red-200 bg-red-50/60 dark:bg-red-950/20"
-    : isWarning
-    ? "border-amber-200 bg-amber-50/60 dark:bg-amber-950/20"
-    : "border-primary/20 bg-primary/5";
-
-  const barColor = isExpired || isUrgent ? "bg-red-500" : isWarning ? "bg-amber-400" : "bg-primary";
+  const barColor  = isExpired || isUrgent ? "bg-red-500"   : isWarning ? "bg-amber-400" : "bg-primary";
   const textColor = isExpired || isUrgent ? "text-red-600" : isWarning ? "text-amber-600" : "text-primary";
-
-  const endFmt = endDate.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const endFmt    = endDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 
   return (
-    <Card className={`rounded-sm border ${accentClass} min-w-[220px]`}>
-      <CardContent className="p-4 space-y-3">
-        {/* En-tête */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Clock className={`w-4 h-4 ${textColor}`} />
-            <span className="text-xs font-semibold text-foreground">Abonnement</span>
+    <div className="rounded-sm border p-2 sm:p-2.5 transition-all duration-300 bg-white flex flex-col h-full space-y-1.5">
+      {/* Icône + titre */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <div className="p-1.5 rounded-md bg-primary/20 text-primary">
+            <CreditCard size={16} />
           </div>
-          <Badge variant="outline" className="text-[10px] h-4 px-1.5 capitalize">
-            {period}
-          </Badge>
+          <p className="text-[15px] font-medium text-muted-foreground">Abonnement</p>
         </div>
+        <span className="text-[10px] border rounded px-1.5 py-0.5 text-muted-foreground capitalize">{period}</span>
+      </div>
 
-        {/* Plan */}
-        <p className="text-[11px] text-muted-foreground truncate">{planLibelle}</p>
+      {/* Plan */}
+      <p className="text-sm font-bold text-foreground leading-tight truncate">{planLibelle}</p>
 
-        {/* Décompte */}
-        {isExpired ? (
-          <div className="flex items-center gap-1.5 text-red-600">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span className="text-sm font-semibold">Expiré</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            {[
-              { val: timeLeft.days,    label: "j" },
-              { val: timeLeft.hours,   label: "h" },
-              { val: timeLeft.minutes, label: "m" },
-            ].map(({ val, label }) => (
-              <div key={label} className="text-center">
-                <div className={`text-xl font-bold tabular-nums leading-none ${textColor}`}>
-                  {String(val).padStart(2, "0")}
-                </div>
-                <div className="text-[10px] text-muted-foreground">{label}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Barre de progression */}
-        <div className="space-y-1">
-          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${barColor}`}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-muted-foreground">
-            Expire le {endFmt}
-          </p>
+      {/* Décompte */}
+      {isExpired ? (
+        <div className="flex items-center gap-1 text-red-600 text-xs font-semibold">
+          <AlertTriangle className="w-3.5 h-3.5" /> Expiré
         </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          {[
+            { val: timeLeft.days,    label: "j" },
+            { val: timeLeft.hours,   label: "h" },
+            { val: timeLeft.minutes, label: "m" },
+          ].map(({ val, label }) => (
+            <div key={label} className="text-center leading-none">
+              <span className={`text-base font-bold tabular-nums ${textColor}`}>
+                {String(val).padStart(2, "0")}
+              </span>
+              <span className="text-[10px] text-muted-foreground ml-0.5">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-        {/* CTA */}
-        <Button
-          size="sm"
-          variant={isExpired || isUrgent ? "destructive" : "outline"}
-          className="w-full h-7 text-xs gap-1.5"
-          onClick={onRenew}
-        >
-          <RefreshCw className="w-3 h-3" />
-          {isExpired ? "Renouveler maintenant" : "Renouveler"}
-        </Button>
-      </CardContent>
-    </Card>
+      {/* Barre + date */}
+      <div className="space-y-0.5">
+        <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${progress}%` }} />
+        </div>
+        <p className="text-[10px] text-muted-foreground">Expire le {endFmt}</p>
+      </div>
+
+      {/* Actions */}
+      <div className="mt-auto pt-1.5 border-t border-border/50 flex gap-1.5">
+        <button onClick={onRenew} className="px-2.5 py-1 text-xs font-medium text-primary rounded-sm border border-primary/20 hover:scale-105 transition-all">
+          Renouveler
+        </button>
+        <button onClick={onUpgrade} className="px-2.5 py-1 text-xs font-medium text-primary rounded-sm border border-primary/20 hover:scale-105 transition-all">
+          Upgrader
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -207,6 +189,31 @@ const Index = () => {
     return () => { if (tidRef.current) clearTimeout(tidRef.current); };
   }, [user?.name]);
 
+  // ── Paiement abonnement (hooks AVANT le return conditionnel) ─────────────
+  const [subModal, setSubModal] = useState(false);
+  const [renewPlan, setRenewPlan] = useState<AbonnementAPI | null | undefined>(undefined);
+
+  const handleRenew = async () => {
+    setRenewPlan(undefined);
+    try {
+      const plans = await abonnementsApi.getAll();
+      const currentLibelle = (user?.planLibelle ?? "").toLowerCase();
+      const found = plans.find((p) =>
+        p.libelle.replace(/&amp;/g, "&").replace(/&#x2F;/gi, "/").replace(/&#x27;/gi, "'")
+          .toLowerCase().includes(currentLibelle.split(" ").slice(0, 2).join(" "))
+      ) ?? null;
+      setRenewPlan(found);
+    } catch {
+      setRenewPlan(null);
+    }
+    setSubModal(true);
+  };
+
+  const handleUpgrade = () => {
+    setRenewPlan(null);
+    setSubModal(true);
+  };
+
   if (isLoading || !isAuthenticated) return null;
 
   const statut     = user?.statut ? (statutLabel[user.statut] ?? user.statut) : "Actif";
@@ -227,77 +234,78 @@ const Index = () => {
   return (
     <DashboardLayout>
       {/* Welcome Section */}
-      <div className="mb-6 md:mb-8 opacity-0 animate-slide-up flex items-start justify-between gap-4" style={{ animationFillMode: "forwards" }}>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-1 min-h-[2.25rem] flex items-center gap-0.5">
-            {isWelcomeMsg ? (
-              <>
-                <span className="text-foreground">{textPrefix}</span>
-                <span className="text-primary">{textName}</span>
-              </>
-            ) : (
-              <span className="text-foreground">{textOther}</span>
-            )}
-            <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
-          </h1>
-          <p className="text-base font-medium text-foreground/80">{entreprise}</p>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Voici un aperçu de votre activité et de vos tâches en attente.
-          </p>
-        </div>
-
-        {showCountdown && (
-          <div className="shrink-0 hidden sm:block">
-            <SubscriptionCountdown
-              startDate={user!.abonnementStartDate!}
-              period={user!.abonnementPeriod ?? "mensuel"}
-              endDateApi={user!.abonnementEndDate}
-              planLibelle={plan}
-              onRenew={() => navigate("/parametres")}
-            />
-          </div>
-        )}
+      <div className="mb-6 md:mb-8 opacity-0 animate-slide-up" style={{ animationFillMode: "forwards" }}>
+        <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-1 min-h-[2.25rem] flex items-center gap-0.5">
+          {isWelcomeMsg ? (
+            <>
+              <span className="text-foreground">{textPrefix}</span>
+              <span className="text-primary">{textName}</span>
+            </>
+          ) : (
+            <span className="text-foreground">{textOther}</span>
+          )}
+          <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
+        </h1>
+        <p className="text-base font-medium text-foreground/80">{entreprise}</p>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Voici un aperçu de votre activité et de vos tâches en attente.
+        </p>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
-        <div className="opacity-0 animate-slide-up stagger-1" style={{ animationFillMode: "forwards" }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8 items-stretch">
+        <div className="opacity-0 animate-slide-up stagger-1 h-full" style={{ animationFillMode: "forwards" }}>
           <KPICard
             title="Statut compte"
             value={statut}
             subtitle={user?.typeMembre || "Membre"}
             icon={CheckCircle}
             variant="success"
+            className="h-full"
             actions={[{ label: "Voir KYC" }, { label: "Support" }]}
           />
         </div>
-        <div className="opacity-0 animate-slide-up stagger-2" style={{ animationFillMode: "forwards" }}>
-          <KPICard
-            title="Abonnement"
-            value={plan}
-            subtitle={user?.nombreEmployes ? `${user.nombreEmployes} employés` : "Mon plan"}
-            icon={CreditCard}
-            variant="primary"
-            actions={[{ label: "Renouveler" }, { label: "Upgrader" }]}
-          />
+        <div className="opacity-0 animate-slide-up stagger-2 h-full" style={{ animationFillMode: "forwards" }}>
+          {showCountdown ? (
+            <AbonnementKPICard
+              startDate={user!.abonnementStartDate!}
+              period={user!.abonnementPeriod ?? "mensuel"}
+              endDateApi={user!.abonnementEndDate}
+              planLibelle={plan}
+              onRenew={handleRenew}
+              onUpgrade={handleUpgrade}
+            />
+          ) : (
+            <KPICard
+              title="Abonnement"
+              value={plan}
+              subtitle={user?.nombreEmployes ? `${user.nombreEmployes} employés` : "Mon plan"}
+              icon={CreditCard}
+              variant="primary"
+              className="h-full"
+              actions={[{ label: "Renouveler" }, { label: "Upgrader" }]}
+            />
+          )}
         </div>
-        <div className="opacity-0 animate-slide-up stagger-3" style={{ animationFillMode: "forwards" }}>
+        <div className="opacity-0 animate-slide-up stagger-3 h-full" style={{ animationFillMode: "forwards" }}>
           <KPICard
             title="Secteur & Filière"
             value={secteur}
             subtitle={user?.sousFiliereNom || region}
             icon={Users}
             variant="default"
+            className="h-full"
             actions={[{ label: "Mon entreprise", onClick: () => navigate("/mon-entreprise") }]}
           />
         </div>
-        <div className="opacity-0 animate-slide-up stagger-4" style={{ animationFillMode: "forwards" }}>
+        <div className="opacity-0 animate-slide-up stagger-4 h-full" style={{ animationFillMode: "forwards" }}>
           <KPICard
             title="Localisation"
             value={user?.communeNom || user?.regionNom || "—"}
             subtitle={user?.interventionScope === "national" ? "Portée nationale" : region}
             icon={Activity}
             variant="warning"
+            className="h-full"
             actions={[{ label: "Voir profil", onClick: () => navigate("/parametres") }]}
           />
         </div>
@@ -407,6 +415,12 @@ const Index = () => {
           />
         </div>
       </div> */}
+
+      <UpgradeSubscriptionModal
+        open={subModal}
+        onOpenChange={setSubModal}
+        initialPlan={renewPlan ?? null}
+      />
     </DashboardLayout>
   );
 };

@@ -79,7 +79,7 @@ export function KPICard({
     // </div>
     <div
       className={cn(
-        "rounded-sm border p-2 sm:p-2.5 transition-all duration-300 group bg-white",
+        "rounded-sm border p-2 sm:p-2.5 transition-all duration-300 group bg-white flex flex-col",
         className
       )}
     >
@@ -109,7 +109,7 @@ export function KPICard({
       </div>
 
       {actions && actions.length > 0 && (
-        <div className="mt-2.5 pt-2.5 border-t border-orange-50 border-border/50 flex flex-wrap gap-1.5">
+        <div className="mt-auto pt-2.5 border-t border-orange-50 border-border/50 flex flex-wrap gap-1.5">
           {actions.map((action, idx) => (
             <button
               key={idx}
