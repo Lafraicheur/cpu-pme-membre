@@ -22,7 +22,7 @@ import {
 import {
   PlusCircle, Trash2, CheckCircle, Loader2, ImageIcon, ChevronRight, ChevronLeft,
   UserCircle2, Calendar, MapPin, Tag, Settings2, Sparkles, Upload, Camera,
-  Globe,
+  Globe, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

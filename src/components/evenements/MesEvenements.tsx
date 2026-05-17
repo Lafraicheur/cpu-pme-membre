@@ -16,6 +16,7 @@ import {
   Calendar, MapPin, Clock, PlusCircle, CalendarX, Banknote, Users, Ticket,
   Search, CheckCircle2, XCircle, AlertCircle, Loader2, ScanLine, ShieldCheck,
   Camera, Keyboard, X, Pencil, Trash2, TrendingUp, CreditCard, ArrowUpRight,
+  Filter, Download,
 } from "lucide-react";
 
 function formatDate(iso: string) {
@@ -44,6 +45,59 @@ function TicketPriceRow({ ticket }: { ticket: TicketType }) {
           <Users className="w-3 h-3" /> Membre
         </div>
         <p className="text-sm font-bold text-primary">{formatPrice(ticket.prix_membre)}</p>
+      </div>
+    </div>
+  );
+}
+
+function TicketStockRow({ ticket }: { ticket: TicketType }) {
+  const vendu = ticket.quantite_totale - (ticket.quantite_restante ?? 0);
+  const pct = ticket.quantite_totale > 0 ? Math.round((vendu / ticket.quantite_totale) * 100) : 0;
+  const isFull = ticket.quantite_restante === 0;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Users className="w-3 h-3" />
+          <span><span className="font-semibold text-foreground">{vendu}</span> vendus</span>
+          <span className="text-muted-foreground/50">·</span>
+          <span className={isFull ? "text-red-500 font-medium" : ""}>{ticket.quantite_restante} restants</span>
+        </span>
+        <span className={`font-medium ${isFull ? "text-red-500" : pct >= 80 ? "text-amber-500" : "text-emerald-600"}`}>
+          {pct}%
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${isFull ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TicketStockSummary({ tickets }: { tickets: TicketType[] }) {
+  const totalVendu = tickets.reduce((s, t) => s + (t.quantite_totale - (t.quantite_restante ?? 0)), 0);
+  const totalRestant = tickets.reduce((s, t) => s + (t.quantite_restante ?? 0), 0);
+  const totalCapacite = tickets.reduce((s, t) => s + t.quantite_totale, 0);
+  const pct = totalCapacite > 0 ? Math.round((totalVendu / totalCapacite) * 100) : 0;
+
+  return (
+    <div className="rounded-lg bg-muted/40 px-3 py-2 space-y-1.5">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground flex items-center gap-1">
+          <Users className="w-3 h-3" />
+          <span className="font-semibold text-foreground">{totalVendu}</span> / {totalCapacite} vendus
+        </span>
+        <span className="text-muted-foreground">{totalRestant} restants · <span className="font-medium text-foreground">{pct}%</span></span>
+      </div>
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -114,17 +168,20 @@ function MonEvenementCard({
                 <Ticket className="w-3 h-3" /> {tickets[0].nom}
               </p>
               <TicketPriceRow ticket={tickets[0]} />
+              <TicketStockRow ticket={tickets[0]} />
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
                 <Ticket className="w-3 h-3" /> {tickets.length} types de billets
               </p>
+              <TicketStockSummary tickets={tickets} />
               <div className="space-y-2 max-h-40 overflow-y-auto pr-0.5">
                 {tickets.map((t) => (
                   <div key={t.id} className="space-y-1">
                     <p className="text-[10px] text-muted-foreground pl-0.5">{t.nom}</p>
                     <TicketPriceRow ticket={t} />
+                    <TicketStockRow ticket={t} />
                   </div>
                 ))}
               </div>
@@ -615,6 +672,286 @@ function RevenuesTab({ eventIds, evenements }: { eventIds: Set<string>; evenemen
   );
 }
 
+// ─── Mes participants tab ─────────────────────────────────────────────────────
+
+function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
+  const [selectedEventId, setSelectedEventId] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statutFilter, setStatutFilter] = useState<string>("all");
+  const [exporting, setExporting] = useState(false);
+
+  const eventIds = new Set(evenements.map((e) => e.id));
+  const eventMap = Object.fromEntries(evenements.map((e) => [e.id, e.titre]));
+
+  const { data: allRegistrations = [], isLoading } = useQuery({
+    queryKey: ["registrations", "all"],
+    queryFn: () => registrationsApi.getAll(),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const myRegistrations = allRegistrations.filter((r) => eventIds.has(r.event_id));
+
+  const sorted = [...myRegistrations].sort(
+    (a, b) => new Date(b.date_commande).getTime() - new Date(a.date_commande).getTime()
+  );
+
+  const filtered = sorted.filter((r) => {
+    if (selectedEventId !== "all" && r.event_id !== selectedEventId) return false;
+    if (statutFilter !== "all" && r.statut_paiement !== statutFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      return (
+        r.prenom?.toLowerCase().includes(q) ||
+        r.nom?.toLowerCase().includes(q) ||
+        r.email?.toLowerCase().includes(q) ||
+        (r.entreprise ?? "").toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const totalPaye = myRegistrations.filter((r) => r.statut_paiement === "paye").length;
+  const totalEnAttente = myRegistrations.filter((r) => r.statut_paiement === "en_attente").length;
+  const totalGratuits = myRegistrations.filter((r) => Number(r.total_price) === 0).length;
+
+  const handleExportPDF = async () => {
+    setExporting(true);
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
+
+      const doc = new jsPDF({ orientation: "landscape" });
+      const eventLabel =
+        selectedEventId === "all"
+          ? "Tous les événements"
+          : (eventMap[selectedEventId] ?? selectedEventId);
+
+      doc.setFontSize(14);
+      doc.text("Liste des participants", 14, 15);
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(`Événement : ${eventLabel}`, 14, 22);
+      doc.text(`Exporté le ${new Date().toLocaleDateString("fr-FR")}`, 14, 27);
+
+      const rows = filtered.map((r, i) => {
+        const isFree = Number(r.total_price) === 0;
+        const ticketNames = r.details
+          .map((d) => `${d.ticket_type?.nom ?? "Billet"} ×${d.quantite}`)
+          .join(", ") || "—";
+        return [
+          i + 1,
+          `${r.prenom} ${r.nom}`,
+          r.email,
+          r.telephone ?? "—",
+          r.entreprise ?? "—",
+          eventMap[r.event_id] ?? "—",
+          ticketNames,
+          isFree ? "Gratuit" : `${Number(r.total_price).toLocaleString("fr-FR")} FCFA`,
+          isFree ? "Gratuit" : r.statut_paiement === "paye" ? "Payé" : "En attente",
+          formatDate(r.date_commande),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: 32,
+        head: [["#", "Nom & Prénom", "Email", "Téléphone", "Entreprise", "Événement", "Billet(s)", "Prix", "Statut", "Date"]],
+        body: rows,
+        styles: { fontSize: 7.5, cellPadding: 2.5 },
+        headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 248, 252] },
+        columnStyles: { 0: { halign: "center", cellWidth: 8 }, 9: { cellWidth: 22 } },
+      });
+
+      const filename = `participants_${selectedEventId === "all" ? "tous" : selectedEventId.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(filename);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  if (evenements.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center">
+          <Users className="w-8 h-8 text-muted-foreground/40" />
+        </div>
+        <div className="space-y-1 max-w-xs">
+          <h3 className="font-semibold">Aucun événement créé</h3>
+          <p className="text-sm text-muted-foreground">Créez d'abord un événement pour voir vos participants.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-10 rounded-lg" />
+        {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <Users className="w-3.5 h-3.5" /> Total
+          </div>
+          <p className="text-2xl font-bold">{myRegistrations.length}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-emerald-600 uppercase tracking-wide">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Payés
+          </div>
+          <p className="text-2xl font-bold text-emerald-600">{totalPaye}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-600 uppercase tracking-wide">
+            <AlertCircle className="w-3.5 h-3.5" /> En attente
+          </div>
+          <p className="text-2xl font-bold text-amber-600">{totalEnAttente}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium text-blue-500 uppercase tracking-wide">
+            <Ticket className="w-3.5 h-3.5" /> Gratuits
+          </div>
+          <p className="text-2xl font-bold text-blue-500">{totalGratuits}</p>
+        </div>
+      </div>
+
+      {/* Filtres + Export */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            className="pl-9 text-sm"
+            placeholder="Rechercher un participant…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+          <select
+            className="text-sm border border-border rounded-md px-3 py-2 bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            value={selectedEventId}
+            onChange={(e) => setSelectedEventId(e.target.value)}
+          >
+            <option value="all">Tous les événements</option>
+            {evenements.map((e) => (
+              <option key={e.id} value={e.id}>{e.titre}</option>
+            ))}
+          </select>
+          <select
+            className="text-sm border border-border rounded-md px-3 py-2 bg-card text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            value={statutFilter}
+            onChange={(e) => setStatutFilter(e.target.value)}
+          >
+            <option value="all">Tous les statuts</option>
+            <option value="paye">Payé</option>
+            <option value="en_attente">En attente</option>
+          </select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPDF}
+            disabled={exporting || filtered.length === 0}
+            className="gap-2 shrink-0"
+          >
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            PDF
+          </Button>
+        </div>
+      </div>
+
+      {/* Tableau */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+          <Users className="w-10 h-10 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">Aucun participant trouvé.</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="px-5 py-3.5 border-b bg-muted/30 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              Participants ({filtered.length}
+              {filtered.length !== myRegistrations.length && ` / ${myRegistrations.length}`})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/20 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="px-4 py-3">#</th>
+                  <th className="px-4 py-3">Participant</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3">Entreprise</th>
+                  <th className="px-4 py-3">Événement</th>
+                  <th className="px-4 py-3">Billet(s)</th>
+                  <th className="px-4 py-3">Prix</th>
+                  <th className="px-4 py-3">Statut</th>
+                  <th className="px-4 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map((r, i) => {
+                  const isFree = Number(r.total_price) === 0;
+                  const isPaid = r.statut_paiement === "paye";
+                  const ticketNames = r.details
+                    .map((d) => `${d.ticket_type?.nom ?? "Billet"} ×${d.quantite}`)
+                    .join(", ");
+                  return (
+                    <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 text-muted-foreground text-xs">{i + 1}</td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium whitespace-nowrap">{r.prenom} {r.nom}</p>
+                        <p className="text-xs text-muted-foreground">{r.email}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {r.telephone ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {r.entreprise ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs max-w-[160px]">
+                        <span className="line-clamp-2">{eventMap[r.event_id] ?? "—"}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {ticketNames || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
+                        {isFree ? (
+                          <span className="text-blue-500">Gratuit</span>
+                        ) : (
+                          `${Number(r.total_price).toLocaleString("fr-FR")} FCFA`
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                          <Badge className={isPaid ? "bg-emerald-500 text-white text-[10px]" : "bg-amber-500 text-white text-[10px]"}>
+                            {isPaid ? "Payé" : "En attente"}
+                          </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(r.date_commande)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 interface MesEvenementsProps {
@@ -667,6 +1004,9 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
         <TabsList>
           <TabsTrigger value="mes-evenements" className="gap-2">
             <Calendar className="w-4 h-4" /> Mes événements
+          </TabsTrigger>
+          <TabsTrigger value="participants" className="gap-2">
+            <Users className="w-4 h-4" /> Mes participants
           </TabsTrigger>
           <TabsTrigger value="revenues" className="gap-2">
             <TrendingUp className="w-4 h-4" /> Revenues
@@ -728,6 +1068,17 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
                 ))}
               </div>
             )}
+          </div>
+        </TabsContent>
+
+        {/* ── Onglet : Mes participants ── */}
+        <TabsContent value="participants">
+          <div className="space-y-2">
+            <div>
+              <h2 className="text-lg font-semibold">Mes participants</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">Toutes les inscriptions à vos événements</p>
+            </div>
+            <MesParticipantsTab evenements={evenements} />
           </div>
         </TabsContent>
 

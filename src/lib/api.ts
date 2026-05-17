@@ -147,14 +147,18 @@ export interface Registration {
   id: string;
   user_id: string;
   event_id: string;
+  est_valable: boolean;
   prenom: string;
   nom: string;
   email: string;
-  entreprise: string;
-  total_price: string;
+  telephone: string | null;
+  entreprise: string | null;
+  total_price: number | string;
   date_commande: string;
   statut_paiement: string;
   details: TicketDetail[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PaymentResourceDetails {
@@ -416,6 +420,13 @@ export const registrationsApi = {
     return list.filter((r) => r.user_id === userId);
   },
 
+  getAll: async (): Promise<Registration[]> => {
+    const res = await request<{ success: boolean; data: Registration[] } | Registration[]>(
+      `/api/registrations`
+    );
+    return Array.isArray(res) ? res : (res as { data: Registration[] }).data ?? [];
+  },
+
   verifiTicket: async (registrationId: string): Promise<RegistrationVerif> => {
     const res = await request<{ success: boolean; data: RegistrationVerif } | RegistrationVerif>(
       `/api/registrations/verifi-ticket/${encodeURIComponent(registrationId)}`
@@ -568,6 +579,7 @@ export interface TicketType {
   prix: number;
   prix_membre: number;
   quantite_totale: number;
+  quantite_restante: number;
 }
 
 export interface PublicCible {
