@@ -7,10 +7,12 @@ import { Progress } from "@/components/ui/progress";
 import {
   PlayCircle, BookOpen, Clock, GraduationCap,
   AlertCircle, RefreshCw, Video, MapPin, Calendar,
-  CheckCircle2, Hourglass,
+  CheckCircle2, Hourglass, Medal, Download, Loader2,
 } from "lucide-react";
-import { mesCoursApi, MonInscription } from "@/lib/api";
+import { mesCoursApi, certificatsApi, MonInscription, FormationCertificat, MonProgression } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
 
 const FORMATION_BASE_URL = "https://devformation.cpupme.ci/formations";
 
@@ -28,17 +30,17 @@ function toSlug(title: string): string {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
-  pending:   { label: "En attente",  color: "bg-amber-50 text-amber-700 border-amber-200",   icon: Hourglass },
-  confirmed: { label: "Confirmé",    color: "bg-blue-50 text-blue-700 border-blue-200",       icon: CheckCircle2 },
-  started:   { label: "En cours",    color: "bg-primary/10 text-primary border-primary/20",   icon: PlayCircle },
+  pending:   { label: "En attente",  color: "bg-amber-50 text-amber-700 border-amber-200",      icon: Hourglass },
+  confirmed: { label: "Confirmé",    color: "bg-blue-50 text-blue-700 border-blue-200",          icon: CheckCircle2 },
+  started:   { label: "En cours",    color: "bg-primary/10 text-primary border-primary/20",      icon: PlayCircle },
   completed: { label: "Terminé",     color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2 },
 };
 
 const modeConfig: Record<string, { label: string; icon: typeof Video; color: string }> = {
-  a_son_rythme: { label: "À son rythme", icon: Video,     color: "text-blue-600" },
-  presentiel:   { label: "Présentiel",   icon: MapPin,    color: "text-green-600" },
-  webinaire:    { label: "Webinaire",    icon: Calendar,  color: "text-violet-600" },
-  live:         { label: "Webinaire",    icon: Calendar,  color: "text-violet-600" },
+  a_son_rythme: { label: "À son rythme", icon: Video,    color: "text-blue-600" },
+  presentiel:   { label: "Présentiel",   icon: MapPin,   color: "text-green-600" },
+  webinaire:    { label: "Webinaire",    icon: Calendar, color: "text-violet-600" },
+  live:         { label: "Webinaire",    icon: Calendar, color: "text-violet-600" },
 };
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -61,6 +63,60 @@ function CoursCardSkeleton() {
   );
 }
 
+// ── Bloc certificat dans la carte ─────────────────────────────────────────────
+
+function CertificatBloc({ cert }: { cert: FormationCertificat }) {
+  const [loading, setLoading] = useState(false);
+  const slug = cert.formation?.slug ?? null;
+
+  const handleDownload = async () => {
+    if (!slug) return;
+    setLoading(true);
+    try {
+      const data = await certificatsApi.generate(slug);
+      if (data.verifyUrl) window.open(data.verifyUrl, "_blank");
+    } catch (e) {
+      console.error("Erreur génération certificat", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const dateDelivrance = cert.dateDelivrance
+    ? format(new Date(cert.dateDelivrance), "d MMM yyyy", { locale: fr })
+    : null;
+
+  return (
+    <div className="rounded-sm border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+      <div className="flex items-center gap-1.5">
+        <Medal className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+        <span className="text-xs font-semibold text-emerald-700">
+          {cert.typeCertification?.nom ?? "Certificat délivré"}
+        </span>
+      </div>
+      <div className="space-y-0.5 text-[11px] text-emerald-700/80">
+        <p className="font-mono">{cert.code}</p>
+        {dateDelivrance && <p>Délivré le {dateDelivrance}</p>}
+        {cert.typeCertification?.niveau && (
+          <p>Niveau : {cert.typeCertification.niveau}</p>
+        )}
+      </div>
+      {slug && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full h-7 text-[11px] gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+          onClick={handleDownload}
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+          {loading ? "Génération..." : "Télécharger"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -71,20 +127,38 @@ interface Props {
 
 export function MesCoursApprentissage(_props: Props) {
   const [inscriptions, setInscriptions] = useState<MonInscription[]>([]);
+  const [certificats, setCertificats] = useState<FormationCertificat[]>([]);
+  const [progressions, setProgressions] = useState<MonProgression[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
-  const fetchMesCours = () => {
+  const fetchData = () => {
     setLoading(true);
     setError(null);
-    mesCoursApi.getMesFormations()
-      .then(setInscriptions)
+    Promise.all([
+      mesCoursApi.getMesFormations(),
+      certificatsApi.getAll(),
+      mesCoursApi.getMesProgressions(),
+    ])
+      .then(([cours, certs, progs]) => {
+        setInscriptions(cours);
+        setCertificats(certs);
+        setProgressions(progs);
+      })
       .catch(() => setError("Impossible de charger vos formations."))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchMesCours(); }, []);
+  useEffect(() => { fetchData(); }, []);
+
+  // Index des certificats par formationId et par participantId
+  const certByFormationId = new Map(certificats.map((c) => [c.formationId, c]));
+  const certByParticipantId = new Map(certificats.map((c) => [c.participantId, c]));
+
+  // Index des progressions par formationId et par participantId
+  const progByFormationId = new Map(progressions.map((p) => [p.formationId, p]));
+  const progByParticipantId = new Map(progressions.map((p) => [p.participantId, p]));
 
   const filtered = filterStatus === "all"
     ? inscriptions
@@ -102,16 +176,16 @@ export function MesCoursApprentissage(_props: Props) {
       {/* Header stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total", value: stats.total, color: "text-foreground" },
-          { label: "En cours", value: stats.enCours, color: "text-primary" },
-          { label: "Terminés", value: stats.termines, color: "text-emerald-600" },
+          { label: "Total",      value: stats.total,     color: "text-foreground" },
+          { label: "En cours",   value: stats.enCours,   color: "text-primary" },
+          { label: "Terminés",   value: stats.termines,  color: "text-emerald-600" },
           { label: "En attente", value: stats.enAttente, color: "text-amber-600" },
         ].map((s) => (
           <Card key={s.label} className="rounded-sm">
             <CardContent className="p-3 text-center">
-              <p className={cn("text-2xl font-bold", s.color)}>
+              <div className={cn("text-2xl font-bold", s.color)}>
                 {loading ? <Skeleton className="h-8 w-8 mx-auto rounded-sm" /> : s.value}
-              </p>
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
             </CardContent>
           </Card>
@@ -154,7 +228,7 @@ export function MesCoursApprentissage(_props: Props) {
           <CardContent className="py-14 text-center space-y-3">
             <AlertCircle className="w-10 h-10 mx-auto text-destructive/40" />
             <p className="text-sm text-muted-foreground">{error}</p>
-            <Button variant="outline" size="sm" className="gap-2 rounded-sm" onClick={fetchMesCours}>
+            <Button variant="outline" size="sm" className="gap-2 rounded-sm" onClick={fetchData}>
               <RefreshCw className="w-3.5 h-3.5" />
               Réessayer
             </Button>
@@ -186,11 +260,18 @@ export function MesCoursApprentissage(_props: Props) {
             const StatusIcon = statusCfg.icon;
             const modeCfg = modeConfig[formation.mode] ?? modeConfig.a_son_rythme;
             const ModeIcon = modeCfg.icon;
-            const progressValue = progression ?? 0;
+
+            // Progression réelle depuis l'API dédiée, fallback sur la valeur de l'inscription
+            const prog = progByFormationId.get(formation.id) ?? progByParticipantId.get(item.participantId);
+            const progressValue = prog?.progressPercent ?? progression ?? 0;
+
             const instructorName = formation.formateur
               ? `${formation.formateur.firstname} ${formation.formateur.lastname}`
               : "Formateur non renseigné";
             const isCompleted = status === "completed";
+
+            // Certificat associé via formationId ou participantId
+            const cert = certByFormationId.get(formation.id) ?? certByParticipantId.get(item.participantId);
 
             return (
               <Card
@@ -262,6 +343,9 @@ export function MesCoursApprentissage(_props: Props) {
                   <p className="text-[11px] text-muted-foreground">
                     Inscrit le {new Date(registeredAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                   </p>
+
+                  {/* Certificat (si disponible) */}
+                  {cert && <CertificatBloc cert={cert} />}
 
                   {/* CTA */}
                   <Button

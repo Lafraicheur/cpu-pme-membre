@@ -1,32 +1,118 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
-  BookOpen, Users, Star, TrendingUp, DollarSign, Plus, Edit, Trash2,
-  Send, Calendar, CheckCircle, Clock, Eye, Upload,
-  Lock, Crown, BarChart3, MessageSquare, ImageIcon, FileVideo,
-  MapPin, Globe, Phone, Mail, Award, GraduationCap, Video,
-  PlayCircle, FileText, AlertCircle, Layers, ClipboardList, HelpCircle, ListChecks, Pencil,
-  ChevronsUpDown, Check,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  BookOpen,
+  Users,
+  Star,
+  TrendingUp,
+  DollarSign,
+  Plus,
+  Edit,
+  Trash2,
+  Send,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Eye,
+  Upload,
+  Lock,
+  Crown,
+  BarChart3,
+  MessageSquare,
+  ImageIcon,
+  FileVideo,
+  MapPin,
+  Globe,
+  Phone,
+  Mail,
+  Award,
+  GraduationCap,
+  Video,
+  PlayCircle,
+  FileText,
+  AlertCircle,
+  Layers,
+  ClipboardList,
+  HelpCircle,
+  ListChecks,
+  Pencil,
+  ChevronsUpDown,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { formationsApi, centreFormationsApi, sousFiliereApi, formateursApi, chapitresApi, devoirsApi, quizApi, questionsApi, leconsApi, participantsApi, paymentsApi, type CentreFormation, type SousFiliere, type FormateurAvecFormations, type FormationAPI, type FormationChapitre, type FormationLecon, type FormationDevoir, type FormationQuiz, type FormationQuestion, type FormationParticipant, type Payment } from "@/lib/api";
+import {
+  formationsApi,
+  centreFormationsApi,
+  sousFiliereApi,
+  formateursApi,
+  chapitresApi,
+  devoirsApi,
+  quizApi,
+  questionsApi,
+  leconsApi,
+  participantsApi,
+  paymentsApi,
+  type CentreFormation,
+  type SousFiliere,
+  type FormateurAvecFormations,
+  type FormationAPI,
+  type FormationChapitre,
+  type FormationLecon,
+  type FormationDevoir,
+  type FormationQuiz,
+  type FormationQuestion,
+  type FormationParticipant,
+  type Payment,
+} from "@/lib/api";
 
 interface LessonDraft {
   id: string;
@@ -38,14 +124,19 @@ interface LessonDraft {
 
 type SubscriptionTier = "bronze" | "silver" | "gold" | "platine";
 
-const subscriptionLimits: Record<SubscriptionTier, { courses: number; canMonetize: boolean; canCertify: boolean }> = {
+const subscriptionLimits: Record<
+  SubscriptionTier,
+  { courses: number; canMonetize: boolean; canCertify: boolean }
+> = {
   bronze: { courses: 0, canMonetize: false, canCertify: false },
   silver: { courses: 1, canMonetize: false, canCertify: false },
   gold: { courses: 5, canMonetize: true, canCertify: true },
   platine: { courses: -1, canMonetize: true, canCertify: true },
 };
 
-function courseStatus(f: FormationAPI): "draft" | "submitted" | "published" | "rejected" {
+function courseStatus(
+  f: FormationAPI,
+): "draft" | "submitted" | "published" | "rejected" {
   if (f.isActive) return "published";
   return "draft";
 }
@@ -73,11 +164,16 @@ function CategoryCombobox({
           aria-expanded={open}
           className="w-full justify-between font-normal"
         >
-          <span className="truncate">{selected ? selected.name : placeholder}</span>
+          <span className="truncate">
+            {selected ? selected.name : placeholder}
+          </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
         <Command>
           <CommandInput placeholder="Rechercher une catégorie…" />
           <CommandList>
@@ -92,7 +188,9 @@ function CategoryCombobox({
                     setOpen(false);
                   }}
                 >
-                  <Check className={`mr-2 h-4 w-4 ${value === c.name ? "opacity-100" : "opacity-0"}`} />
+                  <Check
+                    className={`mr-2 h-4 w-4 ${value === c.name ? "opacity-100" : "opacity-0"}`}
+                  />
                   {c.name}
                 </CommandItem>
               ))}
@@ -105,8 +203,14 @@ function CategoryCombobox({
 }
 
 const DEVENIR_FORM_INIT = {
-  firstname: "", lastname: "", email: "", phone: "",
-  titre: "", bio: "", linkedin: "", website: "",
+  firstname: "",
+  lastname: "",
+  email: "",
+  phone: "",
+  titre: "",
+  bio: "",
+  linkedin: "",
+  website: "",
   photo: null as File | null,
 };
 
@@ -124,20 +228,30 @@ export function EspaceFormateur() {
   const fetchCourses = () => {
     if (!user?.id) return;
     setCoursesLoading(true);
-    formationsApi.getByCreator(user.id)
+    formationsApi
+      .getByCreator(user.id)
       .then(setCourses)
       .catch(() => {})
       .finally(() => setCoursesLoading(false));
   };
 
   useEffect(() => {
-    centreFormationsApi.getAll().then(setCentres).catch(() => {});
-    sousFiliereApi.getAll().then(setCategories).catch(() => {});
+    centreFormationsApi
+      .getAll()
+      .then(setCentres)
+      .catch(() => {});
+    sousFiliereApi
+      .getAll()
+      .then(setCategories)
+      .catch(() => {});
     if (user?.id) {
-      formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
+      formateursApi
+        .getByCreator(user.id)
+        .then(setFormateurs)
+        .catch(() => {});
       fetchCourses();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
   // Payments
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -146,7 +260,8 @@ export function EspaceFormateur() {
 
   const fetchPayments = () => {
     setPaymentsLoading(true);
-    paymentsApi.getAll()
+    paymentsApi
+      .getAll()
       .then(setPayments)
       .catch(() => {})
       .finally(() => {
@@ -163,10 +278,21 @@ export function EspaceFormateur() {
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<FormationAPI | null>(null);
   const [editForm, setEditForm] = useState({
-    title: "", description: "", category: "", mode: "", niveau: "",
-    duration: "", moduleId: "", formateur_id: "", date: "",
-    isPaid: false, isActive: false, price: "", price_member: "",
-    image: null as File | null, fichier: null as File | null,
+    title: "",
+    description: "",
+    category: "",
+    mode: "",
+    niveau: "",
+    duration: "",
+    moduleId: "",
+    formateur_id: "",
+    date: "",
+    isPaid: false,
+    isActive: false,
+    price: "",
+    price_member: "",
+    image: null as File | null,
+    fichier: null as File | null,
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -176,27 +302,30 @@ export function EspaceFormateur() {
   const openEdit = (course: FormationAPI) => {
     setEditTarget(course);
     setEditForm({
-      title:        course.title,
-      description:  course.description ?? "",
-      category:     course.category ?? "",
-      mode:         course.mode ?? "",
-      niveau:       course.niveau ?? "_none_",
-      duration:     course.duration ? String(course.duration) : "",
-      moduleId:     "",
+      title: course.title,
+      description: course.description ?? "",
+      category: course.category ?? "",
+      mode: course.mode ?? "",
+      niveau: course.niveau ?? "_none_",
+      duration: course.duration ? String(course.duration) : "",
+      moduleId: "",
       formateur_id: course.formateur?.id ?? "",
-      date:         course.date ? course.date.slice(0, 16) : "",
-      isPaid:       course.isPaid,
-      isActive:     course.isActive,
-      price:        course.price ? String(parseFloat(course.price)) : "",
-      price_member: course.price_member ? String(parseFloat(course.price_member)) : "",
-      image:        null,
-      fichier:      null,
+      date: course.date ? course.date.slice(0, 16) : "",
+      isPaid: course.isPaid,
+      isActive: course.isActive,
+      price: course.price ? String(parseFloat(course.price)) : "",
+      price_member: course.price_member
+        ? String(parseFloat(course.price_member))
+        : "",
+      image: null,
+      fichier: null,
     });
     setEditError(null);
     setEditOpen(true);
   };
 
-  const setEF = (key: string, value: unknown) => setEditForm((p) => ({ ...p, [key]: value }));
+  const setEF = (key: string, value: unknown) =>
+    setEditForm((p) => ({ ...p, [key]: value }));
 
   const handleEditSubmit = async () => {
     if (!editTarget) return;
@@ -204,25 +333,30 @@ export function EspaceFormateur() {
     setEditError(null);
     try {
       await formationsApi.update(editTarget.id, {
-        title:        editForm.title        || undefined,
-        description:  editForm.description  || undefined,
-        category:     editForm.category     || undefined,
-        mode:         editForm.mode         || undefined,
-        niveau:       editForm.niveau === "_none_" ? null : (editForm.niveau || undefined),
-        duration:     editForm.duration     ? Number(editForm.duration)     : undefined,
-        isPaid:       editForm.isPaid,
-        isActive:     editForm.isActive,
-        price:        editForm.price        ? Number(editForm.price)        : undefined,
-        price_member: editForm.price_member ? Number(editForm.price_member) : undefined,
-        moduleId:     editForm.moduleId     || undefined,
+        title: editForm.title || undefined,
+        description: editForm.description || undefined,
+        category: editForm.category || undefined,
+        mode: editForm.mode || undefined,
+        niveau:
+          editForm.niveau === "_none_" ? null : editForm.niveau || undefined,
+        duration: editForm.duration ? Number(editForm.duration) : undefined,
+        isPaid: editForm.isPaid,
+        isActive: editForm.isActive,
+        price: editForm.price ? Number(editForm.price) : undefined,
+        price_member: editForm.price_member
+          ? Number(editForm.price_member)
+          : undefined,
+        moduleId: editForm.moduleId || undefined,
         formateur_id: editForm.formateur_id || undefined,
-        image:        editForm.image,
-        fichier:      editForm.fichier,
+        image: editForm.image,
+        fichier: editForm.fichier,
       });
       setEditOpen(false);
       fetchCourses();
     } catch (e: unknown) {
-      setEditError(e instanceof Error ? e.message : "Erreur lors de la mise à jour");
+      setEditError(
+        e instanceof Error ? e.message : "Erreur lors de la mise à jour",
+      );
     } finally {
       setEditSubmitting(false);
     }
@@ -230,9 +364,13 @@ export function EspaceFormateur() {
 
   // Detail drawer
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailFormation, setDetailFormation] = useState<FormationAPI | null>(null);
+  const [detailFormation, setDetailFormation] = useState<FormationAPI | null>(
+    null,
+  );
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailChapitres, setDetailChapitres] = useState<FormationChapitre[]>([]);
+  const [detailChapitres, setDetailChapitres] = useState<FormationChapitre[]>(
+    [],
+  );
   const [detailDevoirs, setDetailDevoirs] = useState<FormationDevoir[]>([]);
 
   const openDetail = async (course: FormationAPI) => {
@@ -259,14 +397,16 @@ export function EspaceFormateur() {
 
   const reloadDetailChapitres = () => {
     if (!detailFormation) return;
-    chapitresApi.getByFormation(detailFormation.id)
+    chapitresApi
+      .getByFormation(detailFormation.id)
       .then(setDetailChapitres)
       .catch(() => {});
   };
 
   const reloadDetailDevoirs = () => {
     if (!detailFormation) return;
-    devoirsApi.getByFormation(detailFormation.id)
+    devoirsApi
+      .getByFormation(detailFormation.id)
       .then(setDetailDevoirs)
       .catch(() => {});
   };
@@ -310,17 +450,22 @@ export function EspaceFormateur() {
   };
 
   const addLecon = () => {
-    setChapterLecons((prev) => [...prev, {
-      id: crypto.randomUUID(),
-      titre: "",
-      type_contenu: "video",
-      file: null,
-      contenu: "",
-    }]);
+    setChapterLecons((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        titre: "",
+        type_contenu: "video",
+        file: null,
+        contenu: "",
+      },
+    ]);
   };
 
   const updateLecon = (id: string, updates: Partial<LessonDraft>) => {
-    setChapterLecons((prev) => prev.map((l) => l.id === id ? { ...l, ...updates } : l));
+    setChapterLecons((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, ...updates } : l)),
+    );
   };
 
   const removeLecon = (id: string) => {
@@ -332,13 +477,23 @@ export function EspaceFormateur() {
     setChapterSubmitting(true);
     setChapterError(null);
     try {
-      const leconsJson: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }> = [];
+      const leconsJson: Array<{
+        titre: string;
+        type_contenu: string;
+        fileField?: string;
+        contenu?: string;
+      }> = [];
       const files: { [key: string]: File } = {};
       let fileIndex = 0;
 
       for (const lecon of chapterLecons) {
         if (!lecon.titre.trim()) continue;
-        const entry: { titre: string; type_contenu: string; fileField?: string; contenu?: string } = {
+        const entry: {
+          titre: string;
+          type_contenu: string;
+          fileField?: string;
+          contenu?: string;
+        } = {
           titre: lecon.titre,
           type_contenu: lecon.type_contenu,
         };
@@ -361,7 +516,11 @@ export function EspaceFormateur() {
       setChapterSuccess(true);
       fetchCourses();
     } catch (e: unknown) {
-      setChapterError(e instanceof Error ? e.message : "Erreur lors de la création du chapitre");
+      setChapterError(
+        e instanceof Error
+          ? e.message
+          : "Erreur lors de la création du chapitre",
+      );
     } finally {
       setChapterSubmitting(false);
     }
@@ -376,7 +535,9 @@ export function EspaceFormateur() {
   const [devoirDescription, setDevoirDescription] = useState("");
   const [devoirConsignes, setDevoirConsignes] = useState("");
   const [devoirDateLimite, setDevoirDateLimite] = useState("");
-  const [devoirChapitres, setDevoirChapitres] = useState<FormationChapitre[]>([]);
+  const [devoirChapitres, setDevoirChapitres] = useState<FormationChapitre[]>(
+    [],
+  );
   const [devoirChapitresLoading, setDevoirChapitresLoading] = useState(false);
   const [devoirSubmitting, setDevoirSubmitting] = useState(false);
   const [devoirError, setDevoirError] = useState<string | null>(null);
@@ -394,7 +555,8 @@ export function EspaceFormateur() {
     setDevoirError(null);
     setDevoirSuccess(false);
     if (preselectedFormationId) {
-      formationsApi.getById(preselectedFormationId)
+      formationsApi
+        .getById(preselectedFormationId)
         .then((f) => setDevoirChapitres(f.chapitres ?? []))
         .catch(() => {});
     }
@@ -407,16 +569,16 @@ export function EspaceFormateur() {
     setDevoirLeconId("");
     setDevoirChapitres([]);
     setDevoirChapitresLoading(true);
-    formationsApi.getById(formationId)
+    formationsApi
+      .getById(formationId)
       .then((f) => setDevoirChapitres(f.chapitres ?? []))
       .catch(() => {})
       .finally(() => setDevoirChapitresLoading(false));
   };
 
-  const devoirLecons: FormationLecon[] =
-    devoirChapitreId
-      ? (devoirChapitres.find((c) => c.id === devoirChapitreId)?.lecons ?? [])
-      : [];
+  const devoirLecons: FormationLecon[] = devoirChapitreId
+    ? (devoirChapitres.find((c) => c.id === devoirChapitreId)?.lecons ?? [])
+    : [];
 
   const handleCreateDevoir = async () => {
     if (!devoirFormationId || !devoirTitre.trim()) return;
@@ -434,7 +596,9 @@ export function EspaceFormateur() {
       });
       setDevoirSuccess(true);
     } catch (e: unknown) {
-      setDevoirError(e instanceof Error ? e.message : "Erreur lors de la création du devoir");
+      setDevoirError(
+        e instanceof Error ? e.message : "Erreur lors de la création du devoir",
+      );
     } finally {
       setDevoirSubmitting(false);
     }
@@ -457,12 +621,15 @@ export function EspaceFormateur() {
   const [quizListFormationId, setQuizListFormationId] = useState("");
   const [quizListItems, setQuizListItems] = useState<FormationQuiz[]>([]);
   const [quizListLoading, setQuizListLoading] = useState(false);
-  const [quizEditTarget, setQuizEditTarget] = useState<FormationQuiz | null>(null);
+  const [quizEditTarget, setQuizEditTarget] = useState<FormationQuiz | null>(
+    null,
+  );
   const [quizEditTitre, setQuizEditTitre] = useState("");
   const [quizEditDescription, setQuizEditDescription] = useState("");
   const [quizEditSubmitting, setQuizEditSubmitting] = useState(false);
   const [quizEditError, setQuizEditError] = useState<string | null>(null);
-  const [quizDeleteTarget, setQuizDeleteTarget] = useState<FormationQuiz | null>(null);
+  const [quizDeleteTarget, setQuizDeleteTarget] =
+    useState<FormationQuiz | null>(null);
   const [quizDeleteSubmitting, setQuizDeleteSubmitting] = useState(false);
 
   const openQuizDialog = (preselectedFormationId?: string) => {
@@ -475,7 +642,8 @@ export function EspaceFormateur() {
     setQuizError(null);
     setQuizSuccess(false);
     if (preselectedFormationId) {
-      formationsApi.getById(preselectedFormationId)
+      formationsApi
+        .getById(preselectedFormationId)
         .then((f) => setQuizChapitres(f.chapitres ?? []))
         .catch(() => {});
     }
@@ -488,16 +656,16 @@ export function EspaceFormateur() {
     setQuizLeconId("");
     setQuizChapitres([]);
     setQuizChapitresLoading(true);
-    formationsApi.getById(formationId)
+    formationsApi
+      .getById(formationId)
       .then((f) => setQuizChapitres(f.chapitres ?? []))
       .catch(() => {})
       .finally(() => setQuizChapitresLoading(false));
   };
 
-  const quizLecons: FormationLecon[] =
-    quizChapitreId
-      ? (quizChapitres.find((c) => c.id === quizChapitreId)?.lecons ?? [])
-      : [];
+  const quizLecons: FormationLecon[] = quizChapitreId
+    ? (quizChapitres.find((c) => c.id === quizChapitreId)?.lecons ?? [])
+    : [];
 
   const handleCreateQuiz = async () => {
     if (!quizFormationId || !quizTitre.trim()) return;
@@ -508,12 +676,18 @@ export function EspaceFormateur() {
         titre: quizTitre,
         description: quizDescription || undefined,
         formation_id: quizFormationId,
-        chapitre_id: quizChapitreId && quizChapitreId !== "_none" ? quizChapitreId : undefined,
-        lecon_id: quizLeconId && quizLeconId !== "_none" ? quizLeconId : undefined,
+        chapitre_id:
+          quizChapitreId && quizChapitreId !== "_none"
+            ? quizChapitreId
+            : undefined,
+        lecon_id:
+          quizLeconId && quizLeconId !== "_none" ? quizLeconId : undefined,
       });
       setQuizSuccess(true);
     } catch (e: unknown) {
-      setQuizError(e instanceof Error ? e.message : "Erreur lors de la création du quiz");
+      setQuizError(
+        e instanceof Error ? e.message : "Erreur lors de la création du quiz",
+      );
     } finally {
       setQuizSubmitting(false);
     }
@@ -524,7 +698,8 @@ export function EspaceFormateur() {
     setQuizListItems([]);
     setQuizListLoading(true);
     setQuizListOpen(true);
-    quizApi.getByFormation(formationId)
+    quizApi
+      .getByFormation(formationId)
       .then(setQuizListItems)
       .catch(() => {})
       .finally(() => setQuizListLoading(false));
@@ -539,10 +714,14 @@ export function EspaceFormateur() {
         titre: quizEditTitre,
         description: quizEditDescription || undefined,
       });
-      setQuizListItems((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      setQuizListItems((prev) =>
+        prev.map((q) => (q.id === updated.id ? updated : q)),
+      );
       setQuizEditTarget(null);
     } catch (e: unknown) {
-      setQuizEditError(e instanceof Error ? e.message : "Erreur lors de la modification");
+      setQuizEditError(
+        e instanceof Error ? e.message : "Erreur lors de la modification",
+      );
     } finally {
       setQuizEditSubmitting(false);
     }
@@ -553,7 +732,9 @@ export function EspaceFormateur() {
     setQuizDeleteSubmitting(true);
     try {
       await quizApi.delete(quizDeleteTarget.id);
-      setQuizListItems((prev) => prev.filter((q) => q.id !== quizDeleteTarget.id));
+      setQuizListItems((prev) =>
+        prev.filter((q) => q.id !== quizDeleteTarget.id),
+      );
       setQuizDeleteTarget(null);
     } catch {
       // silent
@@ -565,7 +746,9 @@ export function EspaceFormateur() {
   // ── Chapitre list dialog ────────────────────────────────────────────────────
   const [chapitreListOpen, setChapitreListOpen] = useState(false);
   const [chapitreListFormationId, setChapitreListFormationId] = useState("");
-  const [chapitreListItems, setChapitreListItems] = useState<FormationChapitre[]>([]);
+  const [chapitreListItems, setChapitreListItems] = useState<
+    FormationChapitre[]
+  >([]);
   const [chapitreListLoading, setChapitreListLoading] = useState(false);
 
   const openChapitreList = (formationId: string) => {
@@ -573,7 +756,8 @@ export function EspaceFormateur() {
     setChapitreListItems([]);
     setChapitreListLoading(true);
     setChapitreListOpen(true);
-    chapitresApi.getByFormation(formationId)
+    chapitresApi
+      .getByFormation(formationId)
       .then(setChapitreListItems)
       .catch(() => {})
       .finally(() => setChapitreListLoading(false));
@@ -590,7 +774,8 @@ export function EspaceFormateur() {
     setDevoirListItems([]);
     setDevoirListLoading(true);
     setDevoirListOpen(true);
-    devoirsApi.getByFormation(formationId)
+    devoirsApi
+      .getByFormation(formationId)
       .then(setDevoirListItems)
       .catch(() => {})
       .finally(() => setDevoirListLoading(false));
@@ -598,8 +783,11 @@ export function EspaceFormateur() {
 
   // ── Participants dialog ─────────────────────────────────────────────────────
   const [participantsOpen, setParticipantsOpen] = useState(false);
-  const [participantsFormationTitle, setParticipantsFormationTitle] = useState("");
-  const [participantsItems, setParticipantsItems] = useState<FormationParticipant[]>([]);
+  const [participantsFormationTitle, setParticipantsFormationTitle] =
+    useState("");
+  const [participantsItems, setParticipantsItems] = useState<
+    FormationParticipant[]
+  >([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
 
   const openParticipants = (formationId: string, title: string) => {
@@ -607,21 +795,28 @@ export function EspaceFormateur() {
     setParticipantsItems([]);
     setParticipantsLoading(true);
     setParticipantsOpen(true);
-    participantsApi.getByFormation(formationId)
+    participantsApi
+      .getByFormation(formationId)
       .then(setParticipantsItems)
       .catch(() => {})
       .finally(() => setParticipantsLoading(false));
   };
 
   // ── Questions dialog ────────────────────────────────────────────────────────
-  const [questionContextType, setQuestionContextType] = useState<"quiz" | "devoir">("quiz");
+  const [questionContextType, setQuestionContextType] = useState<
+    "quiz" | "devoir"
+  >("quiz");
   const [questionOpen, setQuestionOpen] = useState(false);
   const [questionQuizId, setQuestionQuizId] = useState("");
   const [questionQuizTitre, setQuestionQuizTitre] = useState("");
   const [questionTexte, setQuestionTexte] = useState("");
-  const [questionType, setQuestionType] = useState<"single_choice" | "multiple_choice">("single_choice");
+  const [questionType, setQuestionType] = useState<
+    "single_choice" | "multiple_choice"
+  >("single_choice");
   const [questionOptions, setQuestionOptions] = useState<string[]>(["", ""]);
-  const [questionReponsesCorrectes, setQuestionReponsesCorrectes] = useState<number[]>([]);
+  const [questionReponsesCorrectes, setQuestionReponsesCorrectes] = useState<
+    number[]
+  >([]);
   const [questionPoints, setQuestionPoints] = useState(1);
   const [questionSubmitting, setQuestionSubmitting] = useState(false);
   const [questionError, setQuestionError] = useState<string | null>(null);
@@ -630,20 +825,34 @@ export function EspaceFormateur() {
   const [questionListOpen, setQuestionListOpen] = useState(false);
   const [questionListQuizId, setQuestionListQuizId] = useState("");
   const [questionListQuizTitre, setQuestionListQuizTitre] = useState("");
-  const [questionListItems, setQuestionListItems] = useState<FormationQuestion[]>([]);
+  const [questionListItems, setQuestionListItems] = useState<
+    FormationQuestion[]
+  >([]);
   const [questionListLoading, setQuestionListLoading] = useState(false);
-  const [questionDeleteTarget, setQuestionDeleteTarget] = useState<FormationQuestion | null>(null);
-  const [questionDeleteSubmitting, setQuestionDeleteSubmitting] = useState(false);
-  const [questionEditTarget, setQuestionEditTarget] = useState<FormationQuestion | null>(null);
+  const [questionDeleteTarget, setQuestionDeleteTarget] =
+    useState<FormationQuestion | null>(null);
+  const [questionDeleteSubmitting, setQuestionDeleteSubmitting] =
+    useState(false);
+  const [questionEditTarget, setQuestionEditTarget] =
+    useState<FormationQuestion | null>(null);
   const [questionEditTexte, setQuestionEditTexte] = useState("");
-  const [questionEditType, setQuestionEditType] = useState<"single_choice" | "multiple_choice">("single_choice");
+  const [questionEditType, setQuestionEditType] = useState<
+    "single_choice" | "multiple_choice"
+  >("single_choice");
   const [questionEditOptions, setQuestionEditOptions] = useState<string[]>([]);
-  const [questionEditReponsesCorrectes, setQuestionEditReponsesCorrectes] = useState<number[]>([]);
+  const [questionEditReponsesCorrectes, setQuestionEditReponsesCorrectes] =
+    useState<number[]>([]);
   const [questionEditPoints, setQuestionEditPoints] = useState(1);
   const [questionEditSubmitting, setQuestionEditSubmitting] = useState(false);
-  const [questionEditError, setQuestionEditError] = useState<string | null>(null);
+  const [questionEditError, setQuestionEditError] = useState<string | null>(
+    null,
+  );
 
-  const openQuestionDialog = (id: string, titre: string, contextType: "quiz" | "devoir" = "quiz") => {
+  const openQuestionDialog = (
+    id: string,
+    titre: string,
+    contextType: "quiz" | "devoir" = "quiz",
+  ) => {
     setQuestionContextType(contextType);
     setQuestionQuizId(id);
     setQuestionQuizTitre(titre);
@@ -657,14 +866,21 @@ export function EspaceFormateur() {
     setQuestionOpen(true);
   };
 
-  const openQuestionList = (id: string, titre: string, contextType: "quiz" | "devoir" = "quiz") => {
+  const openQuestionList = (
+    id: string,
+    titre: string,
+    contextType: "quiz" | "devoir" = "quiz",
+  ) => {
     setQuestionContextType(contextType);
     setQuestionListQuizId(id);
     setQuestionListQuizTitre(titre);
     setQuestionListItems([]);
     setQuestionListLoading(true);
     setQuestionListOpen(true);
-    (contextType === "devoir" ? questionsApi.getByDevoir(id) : questionsApi.getByQuiz(id))
+    (contextType === "devoir"
+      ? questionsApi.getByDevoir(id)
+      : questionsApi.getByQuiz(id)
+    )
       .then(setQuestionListItems)
       .catch(() => {})
       .finally(() => setQuestionListLoading(false));
@@ -674,7 +890,9 @@ export function EspaceFormateur() {
   const removeQuestionOption = (idx: number) => {
     setQuestionOptions((prev) => prev.filter((_, i) => i !== idx));
     setQuestionReponsesCorrectes((prev) => {
-      const updated = prev.filter((r) => r !== idx).map((r) => (r > idx ? r - 1 : r));
+      const updated = prev
+        .filter((r) => r !== idx)
+        .map((r) => (r > idx ? r - 1 : r));
       return updated;
     });
   };
@@ -686,13 +904,19 @@ export function EspaceFormateur() {
       setQuestionReponsesCorrectes([idx]);
     } else {
       setQuestionReponsesCorrectes((prev) =>
-        prev.includes(idx) ? prev.filter((r) => r !== idx) : [...prev, idx]
+        prev.includes(idx) ? prev.filter((r) => r !== idx) : [...prev, idx],
       );
     }
   };
 
   const handleCreateQuestion = async () => {
-    if (!questionQuizId || !questionTexte.trim() || questionOptions.some((o) => !o.trim()) || questionReponsesCorrectes.length === 0) return;
+    if (
+      !questionQuizId ||
+      !questionTexte.trim() ||
+      questionOptions.some((o) => !o.trim()) ||
+      questionReponsesCorrectes.length === 0
+    )
+      return;
     setQuestionSubmitting(true);
     setQuestionError(null);
     try {
@@ -702,13 +926,17 @@ export function EspaceFormateur() {
         options: questionOptions,
         reponses_correctes: questionReponsesCorrectes,
         points: questionPoints,
-        ...(questionContextType === "devoir" ? { devoir_id: questionQuizId } : { quiz_id: questionQuizId }),
+        ...(questionContextType === "devoir"
+          ? { devoir_id: questionQuizId }
+          : { quiz_id: questionQuizId }),
         ordre: (questionListItems.length || 0) + 1,
       });
       setQuestionListItems((prev) => [...prev, created]);
       setQuestionSuccess(true);
     } catch (e: unknown) {
-      setQuestionError(e instanceof Error ? e.message : "Erreur lors de la création");
+      setQuestionError(
+        e instanceof Error ? e.message : "Erreur lors de la création",
+      );
     } finally {
       setQuestionSubmitting(false);
     }
@@ -719,7 +947,9 @@ export function EspaceFormateur() {
     setQuestionDeleteSubmitting(true);
     try {
       await questionsApi.delete(questionDeleteTarget.id);
-      setQuestionListItems((prev) => prev.filter((q) => q.id !== questionDeleteTarget.id));
+      setQuestionListItems((prev) =>
+        prev.filter((q) => q.id !== questionDeleteTarget.id),
+      );
       setQuestionDeleteTarget(null);
     } catch {
       // silent
@@ -739,7 +969,13 @@ export function EspaceFormateur() {
   };
 
   const handleQuestionEditSave = async () => {
-    if (!questionEditTarget || !questionEditTexte.trim() || questionEditOptions.some((o) => !o.trim()) || questionEditReponsesCorrectes.length === 0) return;
+    if (
+      !questionEditTarget ||
+      !questionEditTexte.trim() ||
+      questionEditOptions.some((o) => !o.trim()) ||
+      questionEditReponsesCorrectes.length === 0
+    )
+      return;
     setQuestionEditSubmitting(true);
     setQuestionEditError(null);
     try {
@@ -750,10 +986,14 @@ export function EspaceFormateur() {
         reponses_correctes: questionEditReponsesCorrectes,
         points: questionEditPoints,
       });
-      setQuestionListItems((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      setQuestionListItems((prev) =>
+        prev.map((q) => (q.id === updated.id ? updated : q)),
+      );
       setQuestionEditTarget(null);
     } catch (e: unknown) {
-      setQuestionEditError(e instanceof Error ? e.message : "Erreur lors de la modification");
+      setQuestionEditError(
+        e instanceof Error ? e.message : "Erreur lors de la modification",
+      );
     } finally {
       setQuestionEditSubmitting(false);
     }
@@ -761,11 +1001,16 @@ export function EspaceFormateur() {
 
   // ── Edit chapitre dialog ───────────────────────────────────────────────────
   const [editChapitreOpen, setEditChapitreOpen] = useState(false);
-  const [editChapitreTarget, setEditChapitreTarget] = useState<FormationChapitre | null>(null);
+  const [editChapitreTarget, setEditChapitreTarget] =
+    useState<FormationChapitre | null>(null);
   const [editChapitreTitre, setEditChapitreTitre] = useState("");
-  const [editChapitreNewLecons, setEditChapitreNewLecons] = useState<LessonDraft[]>([]);
+  const [editChapitreNewLecons, setEditChapitreNewLecons] = useState<
+    LessonDraft[]
+  >([]);
   const [editChapitreSubmitting, setEditChapitreSubmitting] = useState(false);
-  const [editChapitreError, setEditChapitreError] = useState<string | null>(null);
+  const [editChapitreError, setEditChapitreError] = useState<string | null>(
+    null,
+  );
 
   const openEditChapitre = (ch: FormationChapitre) => {
     setEditChapitreTarget(ch);
@@ -776,13 +1021,22 @@ export function EspaceFormateur() {
   };
 
   const addNewLeconToEdit = () => {
-    setEditChapitreNewLecons((prev) => [...prev, {
-      id: crypto.randomUUID(), titre: "", type_contenu: "video", file: null, contenu: "",
-    }]);
+    setEditChapitreNewLecons((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        titre: "",
+        type_contenu: "video",
+        file: null,
+        contenu: "",
+      },
+    ]);
   };
 
   const updateNewLecon = (id: string, updates: Partial<LessonDraft>) => {
-    setEditChapitreNewLecons((prev) => prev.map((l) => l.id === id ? { ...l, ...updates } : l));
+    setEditChapitreNewLecons((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, ...updates } : l)),
+    );
   };
 
   const removeNewLecon = (id: string) => {
@@ -794,13 +1048,24 @@ export function EspaceFormateur() {
     setEditChapitreSubmitting(true);
     setEditChapitreError(null);
     try {
-      const leconsJson: Array<{ titre: string; type_contenu: string; fileField?: string; contenu?: string }> = [];
+      const leconsJson: Array<{
+        titre: string;
+        type_contenu: string;
+        fileField?: string;
+        contenu?: string;
+      }> = [];
       const files: { [key: string]: File } = {};
       let fileIndex = 0;
       for (const lecon of editChapitreNewLecons) {
         if (!lecon.titre.trim()) continue;
-        const entry: { titre: string; type_contenu: string; fileField?: string; contenu?: string } = {
-          titre: lecon.titre, type_contenu: lecon.type_contenu,
+        const entry: {
+          titre: string;
+          type_contenu: string;
+          fileField?: string;
+          contenu?: string;
+        } = {
+          titre: lecon.titre,
+          type_contenu: lecon.type_contenu,
         };
         if (lecon.type_contenu !== "texte" && lecon.file) {
           const fieldName = `leconFile_${fileIndex++}`;
@@ -819,15 +1084,21 @@ export function EspaceFormateur() {
       setEditChapitreOpen(false);
       reloadDetailChapitres();
     } catch (e: unknown) {
-      setEditChapitreError(e instanceof Error ? e.message : "Erreur lors de la mise à jour du chapitre");
+      setEditChapitreError(
+        e instanceof Error
+          ? e.message
+          : "Erreur lors de la mise à jour du chapitre",
+      );
     } finally {
       setEditChapitreSubmitting(false);
     }
   };
 
   // ── Delete chapitre ────────────────────────────────────────────────────────
-  const [deleteChapitreTarget, setDeleteChapitreTarget] = useState<FormationChapitre | null>(null);
-  const [deleteChapitreSubmitting, setDeleteChapitreSubmitting] = useState(false);
+  const [deleteChapitreTarget, setDeleteChapitreTarget] =
+    useState<FormationChapitre | null>(null);
+  const [deleteChapitreSubmitting, setDeleteChapitreSubmitting] =
+    useState(false);
 
   const handleDeleteChapitre = async () => {
     if (!deleteChapitreTarget) return;
@@ -845,15 +1116,20 @@ export function EspaceFormateur() {
 
   // ── Edit leçon dialog ─────────────────────────────────────────────────────
   const [editLeconOpen, setEditLeconOpen] = useState(false);
-  const [editLeconTarget, setEditLeconTarget] = useState<FormationLecon | null>(null);
+  const [editLeconTarget, setEditLeconTarget] = useState<FormationLecon | null>(
+    null,
+  );
   const [editLeconTitre, setEditLeconTitre] = useState("");
-  const [editLeconType, setEditLeconType] = useState<"video" | "pdf" | "texte">("video");
+  const [editLeconType, setEditLeconType] = useState<"video" | "pdf" | "texte">(
+    "video",
+  );
   const [editLeconContenu, setEditLeconContenu] = useState("");
   const [editLeconFile, setEditLeconFile] = useState<File | null>(null);
   const [editLeconSubmitting, setEditLeconSubmitting] = useState(false);
   const [editLeconError, setEditLeconError] = useState<string | null>(null);
 
-  const [deleteLeconTarget, setDeleteLeconTarget] = useState<FormationLecon | null>(null);
+  const [deleteLeconTarget, setDeleteLeconTarget] =
+    useState<FormationLecon | null>(null);
   const [deleteLeconSubmitting, setDeleteLeconSubmitting] = useState(false);
 
   const handleDeleteLecon = async () => {
@@ -866,7 +1142,14 @@ export function EspaceFormateur() {
       // met aussi à jour la cible du dialog edit chapitre si ouvert
       if (editChapitreTarget) {
         setEditChapitreTarget((prev) =>
-          prev ? { ...prev, lecons: prev.lecons.filter((l) => l.id !== deleteLeconTarget.id) } : prev
+          prev
+            ? {
+                ...prev,
+                lecons: prev.lecons.filter(
+                  (l) => l.id !== deleteLeconTarget.id,
+                ),
+              }
+            : prev,
         );
       }
     } catch {
@@ -879,7 +1162,9 @@ export function EspaceFormateur() {
   const openEditLecon = (lecon: FormationLecon) => {
     setEditLeconTarget(lecon);
     setEditLeconTitre(lecon.titre);
-    setEditLeconType((lecon.type_contenu as "video" | "pdf" | "texte") ?? "video");
+    setEditLeconType(
+      (lecon.type_contenu as "video" | "pdf" | "texte") ?? "video",
+    );
     setEditLeconContenu(lecon.type_contenu === "texte" ? lecon.contenu : "");
     setEditLeconFile(null);
     setEditLeconError(null);
@@ -895,12 +1180,19 @@ export function EspaceFormateur() {
         titre: editLeconTitre,
         type_contenu: editLeconType,
         chapitre_id: editLeconTarget.chapitre_id,
-        file: editLeconType !== "texte" && editLeconFile ? editLeconFile : undefined,
+        file:
+          editLeconType !== "texte" && editLeconFile
+            ? editLeconFile
+            : undefined,
       });
       setEditLeconOpen(false);
       reloadDetailChapitres();
     } catch (e: unknown) {
-      setEditLeconError(e instanceof Error ? e.message : "Erreur lors de la mise à jour de la leçon");
+      setEditLeconError(
+        e instanceof Error
+          ? e.message
+          : "Erreur lors de la mise à jour de la leçon",
+      );
     } finally {
       setEditLeconSubmitting(false);
     }
@@ -908,14 +1200,17 @@ export function EspaceFormateur() {
 
   // ── Edit devoir dialog ─────────────────────────────────────────────────────
   const [editDevoirOpen, setEditDevoirOpen] = useState(false);
-  const [editDevoirTarget, setEditDevoirTarget] = useState<FormationDevoir | null>(null);
+  const [editDevoirTarget, setEditDevoirTarget] =
+    useState<FormationDevoir | null>(null);
   const [editDevoirTitre, setEditDevoirTitre] = useState("");
   const [editDevoirDescription, setEditDevoirDescription] = useState("");
   const [editDevoirConsignes, setEditDevoirConsignes] = useState("");
   const [editDevoirDateLimite, setEditDevoirDateLimite] = useState("");
   const [editDevoirChapitreId, setEditDevoirChapitreId] = useState("");
   const [editDevoirLeconId, setEditDevoirLeconId] = useState("");
-  const [editDevoirChapitres, setEditDevoirChapitres] = useState<FormationChapitre[]>([]);
+  const [editDevoirChapitres, setEditDevoirChapitres] = useState<
+    FormationChapitre[]
+  >([]);
   const [editDevoirSubmitting, setEditDevoirSubmitting] = useState(false);
   const [editDevoirError, setEditDevoirError] = useState<string | null>(null);
 
@@ -924,23 +1219,26 @@ export function EspaceFormateur() {
     setEditDevoirTitre(devoir.titre);
     setEditDevoirDescription(devoir.description ?? "");
     setEditDevoirConsignes(devoir.consignes ?? "");
-    setEditDevoirDateLimite(devoir.date_limite ? devoir.date_limite.slice(0, 16) : "");
+    setEditDevoirDateLimite(
+      devoir.date_limite ? devoir.date_limite.slice(0, 16) : "",
+    );
     setEditDevoirChapitreId(devoir.chapitre_id ?? "");
     setEditDevoirLeconId(devoir.lecon_id ?? "");
     setEditDevoirChapitres([]);
     setEditDevoirError(null);
     if (devoir.formation_id) {
-      formationsApi.getById(devoir.formation_id)
+      formationsApi
+        .getById(devoir.formation_id)
         .then((f) => setEditDevoirChapitres(f.chapitres ?? []))
         .catch(() => {});
     }
     setEditDevoirOpen(true);
   };
 
-  const editDevoirLecons: FormationLecon[] =
-    editDevoirChapitreId
-      ? (editDevoirChapitres.find((c) => c.id === editDevoirChapitreId)?.lecons ?? [])
-      : [];
+  const editDevoirLecons: FormationLecon[] = editDevoirChapitreId
+    ? (editDevoirChapitres.find((c) => c.id === editDevoirChapitreId)?.lecons ??
+      [])
+    : [];
 
   const handleUpdateDevoir = async () => {
     if (!editDevoirTarget || !editDevoirTitre.trim()) return;
@@ -958,14 +1256,19 @@ export function EspaceFormateur() {
       setEditDevoirOpen(false);
       reloadDetailDevoirs();
     } catch (e: unknown) {
-      setEditDevoirError(e instanceof Error ? e.message : "Erreur lors de la mise à jour du devoir");
+      setEditDevoirError(
+        e instanceof Error
+          ? e.message
+          : "Erreur lors de la mise à jour du devoir",
+      );
     } finally {
       setEditDevoirSubmitting(false);
     }
   };
 
   // ── Delete devoir ──────────────────────────────────────────────────────────
-  const [deleteDevoirTarget, setDeleteDevoirTarget] = useState<FormationDevoir | null>(null);
+  const [deleteDevoirTarget, setDeleteDevoirTarget] =
+    useState<FormationDevoir | null>(null);
   const [deleteDevoirSubmitting, setDeleteDevoirSubmitting] = useState(false);
 
   const handleDeleteDevoir = async () => {
@@ -1009,18 +1312,20 @@ export function EspaceFormateur() {
     try {
       await formateursApi.create({
         firstname: devenirForm.firstname,
-        lastname:  devenirForm.lastname,
-        email:     devenirForm.email   || undefined,
-        phone:     devenirForm.phone   || undefined,
-        titre:     devenirForm.titre   || undefined,
-        bio:       devenirForm.bio     || undefined,
-        linkedin:  devenirForm.linkedin,
-        website:   devenirForm.website,
-        photo:     devenirForm.photo,
+        lastname: devenirForm.lastname,
+        email: devenirForm.email || undefined,
+        phone: devenirForm.phone || undefined,
+        titre: devenirForm.titre || undefined,
+        bio: devenirForm.bio || undefined,
+        linkedin: devenirForm.linkedin || undefined,
+        website: devenirForm.website || undefined,
+        photo: devenirForm.photo,
       });
       setDevenirSuccess(true);
     } catch (e: unknown) {
-      setDevenirError(e instanceof Error ? e.message : "Erreur lors de la création");
+      setDevenirError(
+        e instanceof Error ? e.message : "Erreur lors de la création",
+      );
     } finally {
       setDevenirSubmitting(false);
     }
@@ -1052,21 +1357,38 @@ export function EspaceFormateur() {
     fichier: null as File | null,
   });
 
-  const setF = (key: string, value: unknown) => setForm((p) => ({ ...p, [key]: value }));
-  
+  const setF = (key: string, value: unknown) =>
+    setForm((p) => ({ ...p, [key]: value }));
+
   const subscriptionTier: SubscriptionTier = "gold";
+  const subscriptionLabel =
+    user?.planLibelle ?? user?.subscription?.tier ?? subscriptionTier;
   const limits = subscriptionLimits[subscriptionTier];
-  const publishedCount = courses.filter(c => c.isActive).length;
-  const canCreateMore = limits.courses === -1 || publishedCount < limits.courses;
+  const publishedCount = courses.filter((c) => c.isActive).length;
+  const canCreateMore =
+    limits.courses === -1 || publishedCount < limits.courses;
 
-  const totalLearners = courses.reduce((acc, c) => acc + (c.participants?.length ?? 0), 0);
+  const totalLearners = courses.reduce(
+    (acc, c) => acc + (c.participants?.length ?? 0),
+    0,
+  );
 
-  const getStatusBadge = (status: "draft" | "submitted" | "published" | "rejected") => {
+  const getStatusBadge = (
+    status: "draft" | "submitted" | "published" | "rejected",
+  ) => {
     switch (status) {
-      case "draft": return <Badge variant="secondary">Brouillon</Badge>;
-      case "submitted": return <Badge variant="outline" className="border-amber-500 text-amber-500">En validation</Badge>;
-      case "published": return <Badge className="bg-green-500">Publié</Badge>;
-      case "rejected": return <Badge variant="destructive">Rejeté</Badge>;
+      case "draft":
+        return <Badge variant="secondary">Brouillon</Badge>;
+      case "submitted":
+        return (
+          <Badge variant="outline" className="border-amber-500 text-amber-500">
+            En validation
+          </Badge>
+        );
+      case "published":
+        return <Badge className="bg-green-500">Publié</Badge>;
+      case "rejected":
+        return <Badge variant="destructive">Rejeté</Badge>;
     }
   };
 
@@ -1102,7 +1424,9 @@ export function EspaceFormateur() {
       setSubmitSuccess(true);
       fetchCourses();
     } catch (e: unknown) {
-      setSubmitError(e instanceof Error ? e.message : "Erreur lors de la création");
+      setSubmitError(
+        e instanceof Error ? e.message : "Erreur lors de la création",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1116,8 +1440,11 @@ export function EspaceFormateur() {
           <div
             key={step}
             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-              step === creationStep ? "bg-primary text-primary-foreground" :
-              step < creationStep ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+              step === creationStep
+                ? "bg-primary text-primary-foreground"
+                : step < creationStep
+                  ? "bg-green-500 text-white"
+                  : "bg-muted text-muted-foreground"
             }`}
           >
             {step < creationStep ? <CheckCircle className="w-4 h-4" /> : step}
@@ -1130,17 +1457,30 @@ export function EspaceFormateur() {
         <Card>
           <CardHeader>
             <CardTitle>Étape 1 : Informations générales</CardTitle>
-            <CardDescription>Renseignez les informations de base de votre formation</CardDescription>
+            <CardDescription>
+              Renseignez les informations de base de votre formation
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Titre <span className="text-destructive">*</span></Label>
-              <Input value={form.title} onChange={(e) => setF("title", e.target.value)} placeholder="Ex: Maîtriser les marchés publics" />
+              <Label>
+                Titre <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={form.title}
+                onChange={(e) => setF("title", e.target.value)}
+                placeholder="Ex: Maîtriser les marchés publics"
+              />
             </div>
 
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea value={form.description} onChange={(e) => setF("description", e.target.value)} placeholder="Décrivez ce que les apprenants vont apprendre..." rows={3} />
+              <Textarea
+                value={form.description}
+                onChange={(e) => setF("description", e.target.value)}
+                placeholder="Décrivez ce que les apprenants vont apprendre..."
+                rows={3}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1154,10 +1494,17 @@ export function EspaceFormateur() {
               </div>
               <div className="space-y-2">
                 <Label>Mode</Label>
-                <Select value={form.mode} onValueChange={(v) => setF("mode", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir le mode" /></SelectTrigger>
+                <Select
+                  value={form.mode}
+                  onValueChange={(v) => setF("mode", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir le mode" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="a_son_rythme">À son rythme (vidéo)</SelectItem>
+                    <SelectItem value="a_son_rythme">
+                      À son rythme (vidéo)
+                    </SelectItem>
                     <SelectItem value="webinaire">Webinaire / Live</SelectItem>
                     <SelectItem value="presentiel">Présentiel</SelectItem>
                   </SelectContent>
@@ -1168,8 +1515,13 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Niveau</Label>
-                <Select value={form.niveau} onValueChange={(v) => setF("niveau", v)}>
-                  <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
+                <Select
+                  value={form.niveau}
+                  onValueChange={(v) => setF("niveau", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Niveau" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none_">Aucun niveau requis</SelectItem>
                     <SelectItem value="all_levels">Tous les niveaux</SelectItem>
@@ -1181,18 +1533,31 @@ export function EspaceFormateur() {
               </div>
               <div className="space-y-2">
                 <Label>Durée (heures)</Label>
-                <Input type="number" value={form.duration} onChange={(e) => setF("duration", e.target.value)} placeholder="Ex: 10" min={0} />
+                <Input
+                  type="number"
+                  value={form.duration}
+                  onChange={(e) => setF("duration", e.target.value)}
+                  placeholder="Ex: 10"
+                  min={0}
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Formateur</Label>
-                <Select value={form.formateur_id} onValueChange={(v) => setF("formateur_id", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un formateur" /></SelectTrigger>
+                <Select
+                  value={form.formateur_id}
+                  onValueChange={(v) => setF("formateur_id", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un formateur" />
+                  </SelectTrigger>
                   <SelectContent>
                     {formateurs.length === 0 && (
-                      <SelectItem value="_" disabled>Aucun formateur trouvé</SelectItem>
+                      <SelectItem value="_" disabled>
+                        Aucun formateur trouvé
+                      </SelectItem>
                     )}
                     {formateurs.map((f) => (
                       <SelectItem key={f.id} value={f.id}>
@@ -1204,7 +1569,11 @@ export function EspaceFormateur() {
               </div>
               <div className="space-y-2">
                 <Label>Date & heure de la formation</Label>
-                <Input type="datetime-local" value={form.date} onChange={(e) => setF("date", e.target.value)} />
+                <Input
+                  type="datetime-local"
+                  value={form.date}
+                  onChange={(e) => setF("date", e.target.value)}
+                />
               </div>
             </div>
 
@@ -1212,17 +1581,28 @@ export function EspaceFormateur() {
             {form.mode === "webinaire" && (
               <div className="space-y-2">
                 <Label>Lien du webinaire</Label>
-                <Input value={form.lien} onChange={(e) => setF("lien", e.target.value)} placeholder="https://zoom.us/..." />
+                <Input
+                  value={form.lien}
+                  onChange={(e) => setF("lien", e.target.value)}
+                  placeholder="https://zoom.us/..."
+                />
               </div>
             )}
             {form.mode === "presentiel" && (
               <div className="space-y-2">
                 <Label>Centre de formation</Label>
-                <Select value={form.centreFormationId} onValueChange={(v) => setF("centreFormationId", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un centre" /></SelectTrigger>
+                <Select
+                  value={form.centreFormationId}
+                  onValueChange={(v) => setF("centreFormationId", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un centre" />
+                  </SelectTrigger>
                   <SelectContent>
                     {centres.length === 0 && (
-                      <SelectItem value="_" disabled>Chargement...</SelectItem>
+                      <SelectItem value="_" disabled>
+                        Chargement...
+                      </SelectItem>
                     )}
                     {centres.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -1242,7 +1622,9 @@ export function EspaceFormateur() {
         <Card>
           <CardHeader>
             <CardTitle>Étape 2 : Médias</CardTitle>
-            <CardDescription>Image de couverture et fichier vidéo/document principal</CardDescription>
+            <CardDescription>
+              Image de couverture et fichier vidéo/document principal
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Image */}
@@ -1256,18 +1638,29 @@ export function EspaceFormateur() {
                   <div className="flex items-center justify-center gap-2 text-sm">
                     <ImageIcon className="w-5 h-5 text-primary" />
                     <span className="font-medium">{form.image.name}</span>
-                    <span className="text-muted-foreground">({(form.image.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                    <span className="text-muted-foreground">
+                      ({(form.image.size / 1024 / 1024).toFixed(1)} Mo)
+                    </span>
                   </div>
                 ) : (
                   <>
                     <Upload className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm font-medium">Cliquer pour choisir une image</p>
-                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP</p>
+                    <p className="text-sm font-medium">
+                      Cliquer pour choisir une image
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      JPG, PNG, WebP
+                    </p>
                   </>
                 )}
               </div>
-              <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => setF("image", e.target.files?.[0] ?? null)} />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setF("image", e.target.files?.[0] ?? null)}
+              />
             </div>
 
             {/* Fichier vidéo/document */}
@@ -1281,18 +1674,29 @@ export function EspaceFormateur() {
                   <div className="flex items-center justify-center gap-2 text-sm">
                     <FileVideo className="w-5 h-5 text-primary" />
                     <span className="font-medium">{form.fichier.name}</span>
-                    <span className="text-muted-foreground">({(form.fichier.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                    <span className="text-muted-foreground">
+                      ({(form.fichier.size / 1024 / 1024).toFixed(1)} Mo)
+                    </span>
                   </div>
                 ) : (
                   <>
                     <Upload className="w-10 h-10 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm font-medium">Cliquer pour choisir un fichier</p>
-                    <p className="text-xs text-muted-foreground mt-1">MP4, MOV, PDF — max 500 Mo</p>
+                    <p className="text-sm font-medium">
+                      Cliquer pour choisir un fichier
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      MP4, MOV, PDF — max 500 Mo
+                    </p>
                   </>
                 )}
               </div>
-              <input ref={fichierInputRef} type="file" accept="video/*,.pdf" className="hidden"
-                onChange={(e) => setF("fichier", e.target.files?.[0] ?? null)} />
+              <input
+                ref={fichierInputRef}
+                type="file"
+                accept="video/*,.pdf"
+                className="hidden"
+                onChange={(e) => setF("fichier", e.target.files?.[0] ?? null)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -1303,16 +1707,22 @@ export function EspaceFormateur() {
         <Card>
           <CardHeader>
             <CardTitle>Étape 3 : Certification</CardTitle>
-            <CardDescription>Définissez les critères d'obtention du certificat</CardDescription>
+            <CardDescription>
+              Définissez les critères d'obtention du certificat
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!limits.canCertify ? (
               <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-sm border border-amber-200">
                 <div className="flex items-center gap-2 text-amber-600 mb-2">
                   <Lock className="w-5 h-5" />
-                  <span className="font-medium">Fonctionnalité réservée Or+</span>
+                  <span className="font-medium">
+                    Fonctionnalité réservée Or+
+                  </span>
                 </div>
-                <p className="text-sm text-muted-foreground">Passez au plan Or pour proposer des certifications.</p>
+                <p className="text-sm text-muted-foreground">
+                  Passez au plan Or pour proposer des certifications.
+                </p>
                 <Button variant="outline" size="sm" className="mt-2">
                   <Crown className="w-4 h-4 mr-2" /> Voir les plans
                 </Button>
@@ -1322,29 +1732,60 @@ export function EspaceFormateur() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Délivrer un badge / certificat</Label>
-                    <p className="text-sm text-muted-foreground">Activez pour proposer une certification</p>
+                    <p className="text-sm text-muted-foreground">
+                      Activez pour proposer une certification
+                    </p>
                   </div>
-                  <Switch checked={form.certification_delivrer_badge} onCheckedChange={(v) => setF("certification_delivrer_badge", v)} />
+                  <Switch
+                    checked={form.certification_delivrer_badge}
+                    onCheckedChange={(v) =>
+                      setF("certification_delivrer_badge", v)
+                    }
+                  />
                 </div>
 
                 {form.certification_delivrer_badge && (
                   <>
                     <div className="space-y-2">
                       <Label>Nom du badge</Label>
-                      <Input value={form.certification_nom_badge} onChange={(e) => setF("certification_nom_badge", e.target.value)} placeholder="Ex: Prêt AO" />
+                      <Input
+                        value={form.certification_nom_badge}
+                        onChange={(e) =>
+                          setF("certification_nom_badge", e.target.value)
+                        }
+                        placeholder="Ex: Prêt AO"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Critères de réussite</Label>
                       <div className="grid grid-cols-2 gap-3">
                         {[
-                          { key: "certification_quiz_reussi", label: "Quiz réussi (min 70%)" },
-                          { key: "certification_devoir_valide", label: "Devoir validé" },
-                          { key: "certification_progression_100", label: "100% progression" },
-                          { key: "certification_presence_live", label: "Présence live" },
+                          {
+                            key: "certification_quiz_reussi",
+                            label: "Quiz réussi (min 70%)",
+                          },
+                          {
+                            key: "certification_devoir_valide",
+                            label: "Devoir validé",
+                          },
+                          {
+                            key: "certification_progression_100",
+                            label: "100% progression",
+                          },
+                          {
+                            key: "certification_presence_live",
+                            label: "Présence live",
+                          },
                         ].map(({ key, label }) => (
                           <div key={key} className="flex items-center gap-2">
-                            <Switch checked={(form as Record<string, unknown>)[key] as boolean}
-                              onCheckedChange={(v) => setF(key, v)} />
+                            <Switch
+                              checked={
+                                (form as Record<string, unknown>)[
+                                  key
+                                ] as boolean
+                              }
+                              onCheckedChange={(v) => setF(key, v)}
+                            />
                             <span className="text-sm">{label}</span>
                           </div>
                         ))}
@@ -1363,7 +1804,9 @@ export function EspaceFormateur() {
         <Card>
           <CardHeader>
             <CardTitle>Étape 4 : Tarification</CardTitle>
-            <CardDescription>Définissez le prix et la visibilité de votre formation</CardDescription>
+            <CardDescription>
+              Définissez le prix et la visibilité de votre formation
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!limits.canMonetize ? (
@@ -1372,7 +1815,10 @@ export function EspaceFormateur() {
                   <Lock className="w-5 h-5" />
                   <span className="font-medium">Monétisation réservée Or+</span>
                 </div>
-                <p className="text-sm text-muted-foreground">Votre formation sera gratuite. Passez au plan Or pour la monétiser.</p>
+                <p className="text-sm text-muted-foreground">
+                  Votre formation sera gratuite. Passez au plan Or pour la
+                  monétiser.
+                </p>
                 <Button variant="outline" size="sm" className="mt-2 rounded-sm">
                   <Crown className="w-4 h-4 mr-2" /> Voir les plans
                 </Button>
@@ -1382,9 +1828,14 @@ export function EspaceFormateur() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label>Formation payante</Label>
-                    <p className="text-sm text-muted-foreground">Désactivez pour rendre la formation gratuite</p>
+                    <p className="text-sm text-muted-foreground">
+                      Désactivez pour rendre la formation gratuite
+                    </p>
                   </div>
-                  <Switch checked={form.isPaid} onCheckedChange={(v) => setF("isPaid", v)} />
+                  <Switch
+                    checked={form.isPaid}
+                    onCheckedChange={(v) => setF("isPaid", v)}
+                  />
                 </div>
 
                 {form.isPaid && (
@@ -1392,16 +1843,30 @@ export function EspaceFormateur() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Prix public (FCFA)</Label>
-                        <Input type="number" value={form.price} onChange={(e) => setF("price", e.target.value)} placeholder="25000" min={0} />
+                        <Input
+                          type="number"
+                          value={form.price}
+                          onChange={(e) => setF("price", e.target.value)}
+                          placeholder="25000"
+                          min={0}
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label>Prix membre (FCFA)</Label>
-                        <Input type="number" value={form.price_member} onChange={(e) => setF("price_member", e.target.value)} placeholder="20000" min={0} />
+                        <Input
+                          type="number"
+                          value={form.price_member}
+                          onChange={(e) => setF("price_member", e.target.value)}
+                          placeholder="20000"
+                          min={0}
+                        />
                       </div>
                     </div>
                     <div className="p-3 bg-muted rounded-sm text-sm">
                       <p className="font-medium mb-1">Commission CPU Academy</p>
-                      <p className="text-muted-foreground">20% sur chaque vente. Vous recevez 80% du prix.</p>
+                      <p className="text-muted-foreground">
+                        20% sur chaque vente. Vous recevez 80% du prix.
+                      </p>
                     </div>
                   </>
                 )}
@@ -1416,15 +1881,28 @@ export function EspaceFormateur() {
         <Card>
           <CardHeader>
             <CardTitle>Étape 5 : Récapitulatif</CardTitle>
-            <CardDescription>Vérifiez les informations avant de soumettre</CardDescription>
+            <CardDescription>
+              Vérifiez les informations avant de soumettre
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {submitSuccess ? (
               <div className="py-6 text-center space-y-3">
                 <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
-                <p className="font-semibold text-lg">Formation créée avec succès !</p>
-                <p className="text-sm text-muted-foreground">Elle sera examinée par notre équipe sous 48h.</p>
-                <Button onClick={() => { setCreateOpen(false); setSubmitSuccess(false); setCreationStep(1); }} className="rounded-sm">
+                <p className="font-semibold text-lg">
+                  Formation créée avec succès !
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Elle sera examinée par notre équipe sous 48h.
+                </p>
+                <Button
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setSubmitSuccess(false);
+                    setCreationStep(1);
+                  }}
+                  className="rounded-sm"
+                >
                   Fermer
                 </Button>
               </div>
@@ -1435,25 +1913,44 @@ export function EspaceFormateur() {
                   { label: "Catégorie", value: form.category || "—" },
                   { label: "Mode", value: form.mode || "—" },
                   { label: "Niveau", value: form.niveau || "—" },
-                  { label: "Durée", value: form.duration ? `${form.duration}h` : "—" },
+                  {
+                    label: "Durée",
+                    value: form.duration ? `${form.duration}h` : "—",
+                  },
                   { label: "Image", value: form.image?.name || "—" },
                   { label: "Fichier", value: form.fichier?.name || "—" },
-                  { label: "Certification", value: form.certification_delivrer_badge ? `Oui — ${form.certification_nom_badge || "sans nom"}` : "Non" },
-                  { label: "Prix", value: form.isPaid ? `${form.price} FCFA (membre: ${form.price_member} FCFA)` : "Gratuit" },
+                  {
+                    label: "Certification",
+                    value: form.certification_delivrer_badge
+                      ? `Oui — ${form.certification_nom_badge || "sans nom"}`
+                      : "Non",
+                  },
+                  {
+                    label: "Prix",
+                    value: form.isPaid
+                      ? `${form.price} FCFA (membre: ${form.price_member} FCFA)`
+                      : "Gratuit",
+                  },
                 ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between text-sm py-1.5 border-b last:border-0">
+                  <div
+                    key={label}
+                    className="flex justify-between text-sm py-1.5 border-b last:border-0"
+                  >
                     <span className="text-muted-foreground">{label}</span>
                     <span className="font-medium">{value}</span>
                   </div>
                 ))}
 
                 {submitError && (
-                  <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{submitError}</div>
+                  <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">
+                    {submitError}
+                  </div>
                 )}
 
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-sm border border-blue-200">
                   <p className="text-sm text-blue-600">
-                    Votre formation sera examinée par notre équipe sous 48h. Vous serez notifié par email.
+                    Votre formation sera examinée par notre équipe sous 48h.
+                    Vous serez notifié par email.
                   </p>
                 </div>
               </>
@@ -1464,21 +1961,33 @@ export function EspaceFormateur() {
 
       {!submitSuccess && (
         <div className="flex justify-between">
-          <Button variant="outline" className="rounded-sm"
+          <Button
+            variant="outline"
+            className="rounded-sm"
             onClick={() => setCreationStep(Math.max(1, creationStep - 1))}
             disabled={creationStep === 1 || submitting}
           >
             Précédent
           </Button>
           {creationStep < 5 ? (
-            <Button className="rounded-sm" disabled={creationStep === 1 && !form.title}
+            <Button
+              className="rounded-sm"
+              disabled={creationStep === 1 && !form.title}
               onClick={() => setCreationStep(creationStep + 1)}
             >
               Suivant
             </Button>
           ) : (
-            <Button className="rounded-sm gap-2" onClick={handleSubmitFormation} disabled={submitting}>
-              {submitting ? <span className="animate-spin">⏳</span> : <Send className="w-4 h-4" />}
+            <Button
+              className="rounded-sm gap-2"
+              onClick={handleSubmitFormation}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
               {submitting ? "Envoi en cours..." : "Soumettre à validation"}
             </Button>
           )}
@@ -1501,24 +2010,38 @@ export function EspaceFormateur() {
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="gap-1">
             <Crown className="w-3 h-3 text-amber-500" />
-            Abonnement {subscriptionTier.charAt(0).toUpperCase() + subscriptionTier.slice(1)}
+            Abonnement{" "}
+            {subscriptionLabel.charAt(0).toUpperCase() +
+              subscriptionLabel.slice(1).toLowerCase()}
           </Badge>
           {limits.courses !== -1 && (
             <span className="text-sm text-muted-foreground">
               {publishedCount}/{limits.courses} cours publiés
             </span>
           )}
-          <Button variant="outline" size="sm" className="gap-2 rounded-sm" onClick={openDevenir}>
+          {/* <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-sm"
+            onClick={openDevenir}
+          >
             <Award className="w-4 h-4" />
             Devenir formateur
-          </Button>
+          </Button> */}
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         <TabsList>
           <TabsTrigger value="dashboard" className="gap-2">
             <BarChart3 className="w-4 h-4" /> Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="formateurs" className="gap-2">
+            <Users className="w-4 h-4" /> Mes formateurs
           </TabsTrigger>
           <TabsTrigger value="courses" className="gap-2">
             <BookOpen className="w-4 h-4" /> Mes cours
@@ -1529,6 +2052,7 @@ export function EspaceFormateur() {
           {/* <TabsTrigger value="evaluations" className="gap-2">
             <MessageSquare className="w-4 h-4" /> Évaluations
           </TabsTrigger> */}
+
           <TabsTrigger value="revenue" className="gap-2">
             <DollarSign className="w-4 h-4" /> Revenus
           </TabsTrigger>
@@ -1543,7 +2067,9 @@ export function EspaceFormateur() {
                   <BookOpen className="w-4 h-4" />
                   <span className="text-sm">Cours publiés</span>
                 </div>
-                <p className="text-2xl font-bold">{coursesLoading ? "…" : publishedCount}</p>
+                <p className="text-2xl font-bold">
+                  {coursesLoading ? "…" : publishedCount}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -1552,7 +2078,9 @@ export function EspaceFormateur() {
                   <Users className="w-4 h-4" />
                   <span className="text-sm">Apprenants</span>
                 </div>
-                <p className="text-2xl font-bold">{coursesLoading ? "…" : totalLearners}</p>
+                <p className="text-2xl font-bold">
+                  {coursesLoading ? "…" : totalLearners}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -1561,7 +2089,9 @@ export function EspaceFormateur() {
                   <BookOpen className="w-4 h-4" />
                   <span className="text-sm">Total</span>
                 </div>
-                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.length}</p>
+                <p className="text-2xl font-bold">
+                  {coursesLoading ? "…" : courses.length}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -1570,7 +2100,11 @@ export function EspaceFormateur() {
                   <TrendingUp className="w-4 h-4" />
                   <span className="text-sm">Inactifs</span>
                 </div>
-                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.filter(c => !c.isActive).length}</p>
+                <p className="text-2xl font-bold">
+                  {coursesLoading
+                    ? "…"
+                    : courses.filter((c) => !c.isActive).length}
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -1579,7 +2113,11 @@ export function EspaceFormateur() {
                   <DollarSign className="w-4 h-4" />
                   <span className="text-sm">Payantes</span>
                 </div>
-                <p className="text-2xl font-bold">{coursesLoading ? "…" : courses.filter(c => c.isPaid).length}</p>
+                <p className="text-2xl font-bold">
+                  {coursesLoading
+                    ? "…"
+                    : courses.filter((c) => c.isPaid).length}
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -1592,13 +2130,20 @@ export function EspaceFormateur() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {courses.length === 0 && !coursesLoading && (
-                  <p className="text-sm text-muted-foreground text-center py-4">Aucune formation créée</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Aucune formation créée
+                  </p>
                 )}
                 {courses.slice(0, 3).map((course) => (
-                  <div key={course.id} className="flex items-center justify-between p-2 bg-muted rounded">
+                  <div
+                    key={course.id}
+                    className="flex items-center justify-between p-2 bg-muted rounded"
+                  >
                     <div>
                       <p className="font-medium text-sm">{course.title}</p>
-                      <p className="text-xs text-muted-foreground">{course.participants?.length ?? 0} apprenants</p>
+                      <p className="text-xs text-muted-foreground">
+                        {course.participants?.length ?? 0} apprenants
+                      </p>
                     </div>
                     {getStatusBadge(courseStatus(course))}
                   </div>
@@ -1616,21 +2161,27 @@ export function EspaceFormateur() {
                     <Clock className="w-4 h-4 text-amber-500" />
                     <span className="text-sm">3 devoirs à corriger</span>
                   </div>
-                  <Button size="sm" variant="outline">Voir</Button>
+                  <Button size="sm" variant="outline">
+                    Voir
+                  </Button>
                 </div>
                 <div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-4 h-4 text-blue-500" />
                     <span className="text-sm">5 questions sans réponse</span>
                   </div>
-                  <Button size="sm" variant="outline">Répondre</Button>
+                  <Button size="sm" variant="outline">
+                    Répondre
+                  </Button>
                 </div>
                 <div className="flex items-center justify-between p-2 bg-green-50 dark:bg-green-900/20 rounded">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-green-500" />
                     <span className="text-sm">Live demain 14h</span>
                   </div>
-                  <Button size="sm" variant="outline">Préparer</Button>
+                  <Button size="sm" variant="outline">
+                    Préparer
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -1641,167 +2192,231 @@ export function EspaceFormateur() {
           <div className="space-y-4">
             {/* Toolbar */}
             <div className="flex justify-between items-center gap-2 flex-wrap">
-              <Input placeholder="Rechercher un cours..." className="max-w-sm" />
-              <Button onClick={() => { setCreationStep(1); setCreateOpen(true); }} disabled={!canCreateMore}>
+              <Input
+                placeholder="Rechercher un cours..."
+                className="max-w-sm"
+              />
+              <Button
+                onClick={() => {
+                  setCreationStep(1);
+                  setCreateOpen(true);
+                }}
+                disabled={!canCreateMore}
+              >
                 <Plus className="w-4 h-4 mr-2" /> Nouvelle formation
               </Button>
             </div>
 
             {/* Liste des formations */}
             {coursesLoading && (
-              <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+              <p className="text-sm text-muted-foreground text-center py-6">
+                Chargement…
+              </p>
             )}
             {!coursesLoading && courses.length === 0 && (
               <Card className="rounded-sm">
                 <CardContent className="py-12 text-center space-y-2">
                   <BookOpen className="w-10 h-10 mx-auto text-muted-foreground/30" />
-                  <p className="font-medium">Vous n'avez pas encore créé de formation.</p>
-                  <Button size="sm" className="mt-2 gap-2" onClick={() => { setCreationStep(1); setCreateOpen(true); }}>
+                  <p className="font-medium">
+                    Vous n'avez pas encore créé de formation.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-2 gap-2"
+                    onClick={() => {
+                      setCreationStep(1);
+                      setCreateOpen(true);
+                    }}
+                  >
                     <Plus className="w-4 h-4" /> Créer ma première formation
                   </Button>
                 </CardContent>
               </Card>
             )}
-            {!coursesLoading && courses.length > 0 && (() => {
-              const totalPages = Math.ceil(courses.length / COURSES_PER_PAGE);
-              const paginated = courses.slice((coursesPage - 1) * COURSES_PER_PAGE, coursesPage * COURSES_PER_PAGE);
-              return (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {paginated.map((course) => {
-                      const status = courseStatus(course);
-                      const learners = course.participants?.length ?? 0;
-                      const chapitresCount = course.chapitres?.length ?? 0;
-                      const price = course.price ? parseFloat(course.price) : 0;
-                      return (
-                        <Card key={course.id} className="rounded-sm flex flex-col">
-                          <CardContent className="p-0 flex flex-col flex-1">
-                            {/* Contenu principal */}
-                            <div className="p-4 flex-1">
-                              <div className="flex items-start justify-between gap-2 mb-2">
-                                <h3 className="font-semibold leading-tight line-clamp-2">{course.title}</h3>
-                                {getStatusBadge(status)}
-                              </div>
-                              <div className="flex flex-col gap-1.5 text-sm text-muted-foreground mt-3">
-                                <span className="flex items-center gap-1.5">
-                                  <Users className="w-3.5 h-3.5 shrink-0" /> {learners} apprenant{learners > 1 ? "s" : ""}
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <FileText className="w-3.5 h-3.5 shrink-0" /> {chapitresCount} chapitre{chapitresCount > 1 ? "s" : ""}
-                                </span>
-                                {course.isPaid && price > 0 ? (
-                                  <span className="flex items-center gap-1.5 text-primary font-medium">
-                                    <DollarSign className="w-3.5 h-3.5 shrink-0" /> {price.toLocaleString()} FCFA
-                                  </span>
-                                ) : (
-                                  <span className="flex items-center gap-1.5 text-emerald-600">
-                                    <Star className="w-3.5 h-3.5 shrink-0" /> Gratuit
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Actions icônes */}
-                            <div className="border-t px-4 py-2 flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" title="Voir le détail" onClick={() => openDetail(course)}>
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" title="Modifier la formation" onClick={() => openEdit(course)}>
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteTarget(course)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-
-                            {/* Barre d'actions contenu */}
-                            <div className="border-t px-4 py-2 bg-muted/30 flex items-center gap-2 flex-wrap rounded-b-sm">
-                              <span className="text-xs text-muted-foreground mr-1">Ajouter :</span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openChapitreList(course.id)}
-                              >
-                                <Layers className="w-3.5 h-3.5" />
-                                Chapitres
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openDevoirList(course.id)}
-                              >
-                                <ClipboardList className="w-3.5 h-3.5" />
-                                Devoirs
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openQuizList(course.id)}
-                              >
-                                <ListChecks className="w-3.5 h-3.5" />
-                                Quiz
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1.5 rounded-sm"
-                                onClick={() => openParticipants(course.id, course.title)}
-                              >
-                                <Users className="w-3.5 h-3.5" />
-                                Participants
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between pt-2">
-                      <p className="text-sm text-muted-foreground">
-                        Page {coursesPage} sur {totalPages} — {courses.length} formation{courses.length > 1 ? "s" : ""}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-3"
-                          disabled={coursesPage === 1}
-                          onClick={() => setCoursesPage(p => p - 1)}
-                        >
-                          Précédent
-                        </Button>
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                          <Button
-                            key={page}
-                            variant={page === coursesPage ? "default" : "outline"}
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => setCoursesPage(page)}
+            {!coursesLoading &&
+              courses.length > 0 &&
+              (() => {
+                const totalPages = Math.ceil(courses.length / COURSES_PER_PAGE);
+                const paginated = courses.slice(
+                  (coursesPage - 1) * COURSES_PER_PAGE,
+                  coursesPage * COURSES_PER_PAGE,
+                );
+                return (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {paginated.map((course) => {
+                        const status = courseStatus(course);
+                        const learners = course.participants?.length ?? 0;
+                        const chapitresCount = course.chapitres?.length ?? 0;
+                        const price = course.price
+                          ? parseFloat(course.price)
+                          : 0;
+                        return (
+                          <Card
+                            key={course.id}
+                            className="rounded-sm flex flex-col"
                           >
-                            {page}
-                          </Button>
-                        ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-3"
-                          disabled={coursesPage === totalPages}
-                          onClick={() => setCoursesPage(p => p + 1)}
-                        >
-                          Suivant
-                        </Button>
-                      </div>
+                            <CardContent className="p-0 flex flex-col flex-1">
+                              {/* Contenu principal */}
+                              <div className="p-4 flex-1">
+                                <div className="flex items-start justify-between gap-2 mb-2">
+                                  <h3 className="font-semibold leading-tight line-clamp-2">
+                                    {course.title}
+                                  </h3>
+                                  {getStatusBadge(status)}
+                                </div>
+                                <div className="flex flex-col gap-1.5 text-sm text-muted-foreground mt-3">
+                                  <span className="flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5 shrink-0" />{" "}
+                                    {learners} apprenant
+                                    {learners > 1 ? "s" : ""}
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5 shrink-0" />{" "}
+                                    {chapitresCount} chapitre
+                                    {chapitresCount > 1 ? "s" : ""}
+                                  </span>
+                                  {course.isPaid && price > 0 ? (
+                                    <span className="flex items-center gap-1.5 text-primary font-medium">
+                                      <DollarSign className="w-3.5 h-3.5 shrink-0" />{" "}
+                                      {price.toLocaleString()} FCFA
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1.5 text-emerald-600">
+                                      <Star className="w-3.5 h-3.5 shrink-0" />{" "}
+                                      Gratuit
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Actions icônes */}
+                              <div className="border-t px-4 py-2 flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Voir le détail"
+                                  onClick={() => openDetail(course)}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Modifier la formation"
+                                  onClick={() => openEdit(course)}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive hover:text-destructive"
+                                  title="Supprimer"
+                                  onClick={() => setDeleteTarget(course)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+
+                              {/* Barre d'actions contenu */}
+                              <div className="border-t px-4 py-2 bg-muted/30 flex items-center gap-2 flex-wrap rounded-b-sm">
+                                <span className="text-xs text-muted-foreground mr-1">
+                                  Ajouter :
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1.5 rounded-sm"
+                                  onClick={() => openChapitreList(course.id)}
+                                >
+                                  <Layers className="w-3.5 h-3.5" />
+                                  Chapitres
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1.5 rounded-sm"
+                                  onClick={() => openDevoirList(course.id)}
+                                >
+                                  <ClipboardList className="w-3.5 h-3.5" />
+                                  Devoirs
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1.5 rounded-sm"
+                                  onClick={() => openQuizList(course.id)}
+                                >
+                                  <ListChecks className="w-3.5 h-3.5" />
+                                  Quiz
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1.5 rounded-sm"
+                                  onClick={() =>
+                                    openParticipants(course.id, course.title)
+                                  }
+                                >
+                                  <Users className="w-3.5 h-3.5" />
+                                  Participants
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
-                  )}
-                </>
-              );
-            })()}
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between pt-2">
+                        <p className="text-sm text-muted-foreground">
+                          Page {coursesPage} sur {totalPages} — {courses.length}{" "}
+                          formation{courses.length > 1 ? "s" : ""}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3"
+                            disabled={coursesPage === 1}
+                            onClick={() => setCoursesPage((p) => p - 1)}
+                          >
+                            Précédent
+                          </Button>
+                          {Array.from(
+                            { length: totalPages },
+                            (_, i) => i + 1,
+                          ).map((page) => (
+                            <Button
+                              key={page}
+                              variant={
+                                page === coursesPage ? "default" : "outline"
+                              }
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => setCoursesPage(page)}
+                            >
+                              {page}
+                            </Button>
+                          ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3"
+                            disabled={coursesPage === totalPages}
+                            onClick={() => setCoursesPage((p) => p + 1)}
+                          >
+                            Suivant
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
           </div>
         </TabsContent>
 
@@ -1821,6 +2436,157 @@ export function EspaceFormateur() {
               <p>Corriger les devoirs et publier les notes</p>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="formateurs">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">
+                Mes formateurs ({formateurs.length})
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-sm"
+                onClick={openDevenir}
+              >
+                <Plus className="w-4 h-4" /> Ajouter un formateur
+              </Button>
+            </div>
+
+            {coursesLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-3 p-4 border rounded-sm">
+                    <Skeleton className="h-12 w-12 rounded-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : formateurs.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground space-y-3">
+                <Users className="w-12 h-12 mx-auto opacity-30" />
+                <p className="font-medium">Aucun formateur pour le moment</p>
+                <p className="text-sm">
+                  Cliquez sur "Ajouter un formateur" pour en créer un.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {formateurs.map((f) => {
+                  const statutColor =
+                    f.statut === "accepte"
+                      ? "border-green-500 text-green-600"
+                      : f.statut === "refuse"
+                        ? "border-red-500 text-red-600"
+                        : f.statut === "suspendu"
+                          ? "border-red-500 text-red-600"
+                          : f.statut === "inactif"
+                            ? "border-gray-400 text-gray-500"
+                            : "border-amber-500 text-amber-600";
+                  const statutLabel =
+                    f.statut === "accepte"
+                      ? "Accepté"
+                      : f.statut === "refuse"
+                        ? "Refusé"
+                        : f.statut === "suspendu"
+                          ? "Suspendu"
+                          : f.statut === "inactif"
+                            ? "Inactif"
+                            : "En attente";
+
+                  return (
+                    <div
+                      key={f.id}
+                      className="border rounded-sm p-4 space-y-3 hover:bg-muted/30 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        {f.photo ? (
+                          <img
+                            src={f.photo}
+                            alt={`${f.firstname} ${f.lastname}`}
+                            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                            <Users className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate">
+                            {f.firstname} {f.lastname}
+                          </p>
+                          {f.titre && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {f.titre}
+                            </p>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] mt-1 ${statutColor}`}
+                          >
+                            {statutLabel}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {f.bio && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {f.bio}
+                        </p>
+                      )}
+
+                      <div className="space-y-1">
+                        {f.email && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Mail className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{f.email}</span>
+                          </div>
+                        )}
+                        {f.phone && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Phone className="w-3 h-3 flex-shrink-0" />
+                            <span>{f.phone}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t">
+                        <span className="text-xs text-muted-foreground">
+                          {f.formations.length} formation
+                          {f.formations.length !== 1 ? "s" : ""}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {f.linkedin && (
+                            <a
+                              href={f.linkedin}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline"
+                            >
+                              LinkedIn
+                            </a>
+                          )}
+                          {f.website && (
+                            <a
+                              href={f.website}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline"
+                            >
+                              <Globe className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="revenue">
@@ -1850,7 +2616,11 @@ export function EspaceFormateur() {
               {/* Image */}
               {detailFormation.image ? (
                 <div className="h-44 overflow-hidden flex-shrink-0">
-                  <img src={detailFormation.image} alt={detailFormation.title} className="w-full h-full object-cover" />
+                  <img
+                    src={detailFormation.image}
+                    alt={detailFormation.title}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
               ) : (
                 <div className="h-44 bg-gradient-to-br from-primary/20 to-secondary/15 flex items-center justify-center flex-shrink-0">
@@ -1860,33 +2630,61 @@ export function EspaceFormateur() {
 
               <div className="p-5 space-y-5">
                 <SheetHeader>
-                  <SheetTitle className="text-lg leading-snug">{detailFormation.title}</SheetTitle>
+                  <SheetTitle className="text-lg leading-snug">
+                    {detailFormation.title}
+                  </SheetTitle>
                 </SheetHeader>
 
                 {/* Badges statut */}
                 <div className="flex flex-wrap gap-2">
-                  <Badge className={detailFormation.isActive ? "bg-green-500" : ""} variant={detailFormation.isActive ? "default" : "secondary"}>
+                  <Badge
+                    className={detailFormation.isActive ? "bg-green-500" : ""}
+                    variant={detailFormation.isActive ? "default" : "secondary"}
+                  >
                     {detailFormation.isActive ? "Publié" : "Brouillon"}
                   </Badge>
                   {detailFormation.isPaid ? (
-                    <Badge variant="outline" className="border-amber-500 text-amber-600">
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500 text-amber-600"
+                    >
                       <DollarSign className="w-3 h-3 mr-1" />
                       Payante
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="border-emerald-500 text-emerald-600">Gratuite</Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-600"
+                    >
+                      Gratuite
+                    </Badge>
                   )}
                   {detailFormation.mode && (
                     <Badge variant="outline">
-                      {detailFormation.mode === "a_son_rythme" ? <><Video className="w-3 h-3 mr-1" />À son rythme</> :
-                       detailFormation.mode === "webinaire"    ? <><PlayCircle className="w-3 h-3 mr-1" />Webinaire</> :
-                                                                  <><MapPin className="w-3 h-3 mr-1" />Présentiel</>}
+                      {detailFormation.mode === "a_son_rythme" ? (
+                        <>
+                          <Video className="w-3 h-3 mr-1" />À son rythme
+                        </>
+                      ) : detailFormation.mode === "webinaire" ? (
+                        <>
+                          <PlayCircle className="w-3 h-3 mr-1" />
+                          Webinaire
+                        </>
+                      ) : (
+                        <>
+                          <MapPin className="w-3 h-3 mr-1" />
+                          Présentiel
+                        </>
+                      )}
                     </Badge>
                   )}
                   {detailFormation.niveau && (
                     <Badge variant="outline">
-                      {detailFormation.niveau === "beginner" ? "Débutant" :
-                       detailFormation.niveau === "intermediate" ? "Intermédiaire" : "Avancé"}
+                      {detailFormation.niveau === "beginner"
+                        ? "Débutant"
+                        : detailFormation.niveau === "intermediate"
+                          ? "Intermédiaire"
+                          : "Avancé"}
                     </Badge>
                   )}
                 </div>
@@ -1895,7 +2693,9 @@ export function EspaceFormateur() {
                 {detailFormation.description && (
                   <div>
                     <h3 className="font-semibold text-sm mb-1">Description</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{detailFormation.description}</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {detailFormation.description}
+                    </p>
                   </div>
                 )}
 
@@ -1910,7 +2710,12 @@ export function EspaceFormateur() {
                   {detailFormation.date && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Calendar className="w-4 h-4 flex-shrink-0" />
-                      <span>{new Date(detailFormation.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span>
+                      <span>
+                        {new Date(detailFormation.date).toLocaleDateString(
+                          "fr-FR",
+                          { day: "numeric", month: "long", year: "numeric" },
+                        )}
+                      </span>
                     </div>
                   )}
                   {detailFormation.category && (
@@ -1921,35 +2726,56 @@ export function EspaceFormateur() {
                   )}
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Users className="w-4 h-4 flex-shrink-0" />
-                    <span>{detailFormation.participants?.length ?? 0} participant{(detailFormation.participants?.length ?? 0) > 1 ? "s" : ""}</span>
+                    <span>
+                      {detailFormation.participants?.length ?? 0} participant
+                      {(detailFormation.participants?.length ?? 0) > 1
+                        ? "s"
+                        : ""}
+                    </span>
                   </div>
                 </div>
 
                 {/* Prix */}
-                {detailFormation.isPaid && (detailFormation.price || detailFormation.price_member) && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-primary" />Tarification
-                      </h3>
-                      <div className="flex gap-4">
-                        {detailFormation.price && (
-                          <div className="text-sm">
-                            <span className="text-muted-foreground">Public : </span>
-                            <span className="font-semibold text-primary">{parseFloat(detailFormation.price).toLocaleString()} FCFA</span>
-                          </div>
-                        )}
-                        {detailFormation.price_member && (
-                          <div className="text-sm">
-                            <span className="text-muted-foreground">Membre : </span>
-                            <span className="font-semibold text-emerald-600">{parseFloat(detailFormation.price_member).toLocaleString()} FCFA</span>
-                          </div>
-                        )}
+                {detailFormation.isPaid &&
+                  (detailFormation.price || detailFormation.price_member) && (
+                    <>
+                      <Separator />
+                      <div>
+                        <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-primary" />
+                          Tarification
+                        </h3>
+                        <div className="flex gap-4">
+                          {detailFormation.price && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">
+                                Public :{" "}
+                              </span>
+                              <span className="font-semibold text-primary">
+                                {parseFloat(
+                                  detailFormation.price,
+                                ).toLocaleString()}{" "}
+                                FCFA
+                              </span>
+                            </div>
+                          )}
+                          {detailFormation.price_member && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">
+                                Membre :{" "}
+                              </span>
+                              <span className="font-semibold text-emerald-600">
+                                {parseFloat(
+                                  detailFormation.price_member,
+                                ).toLocaleString()}{" "}
+                                FCFA
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
+                    </>
+                  )}
 
                 {/* Formateur */}
                 {detailFormation.formateur && (
@@ -1957,30 +2783,42 @@ export function EspaceFormateur() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <GraduationCap className="w-4 h-4 text-primary" />Formateur
+                        <GraduationCap className="w-4 h-4 text-primary" />
+                        Formateur
                       </h3>
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-sm bg-muted flex items-center justify-center overflow-hidden flex-shrink-0 border">
                           {detailFormation.formateur.photo ? (
-                            <img src={detailFormation.formateur.photo} alt="" className="w-full h-full object-cover" />
+                            <img
+                              src={detailFormation.formateur.photo}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <GraduationCap className="w-5 h-5 text-muted-foreground" />
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium text-sm">{detailFormation.formateur.firstname} {detailFormation.formateur.lastname}</p>
+                          <p className="font-medium text-sm">
+                            {detailFormation.formateur.firstname}{" "}
+                            {detailFormation.formateur.lastname}
+                          </p>
                           {detailFormation.formateur.titre && (
-                            <p className="text-xs text-muted-foreground">{detailFormation.formateur.titre}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {detailFormation.formateur.titre}
+                            </p>
                           )}
                           <div className="flex items-center gap-2 mt-0.5">
                             {detailFormation.formateur.email && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Mail className="w-3 h-3" />{detailFormation.formateur.email}
+                                <Mail className="w-3 h-3" />
+                                {detailFormation.formateur.email}
                               </span>
                             )}
                             {detailFormation.formateur.phone && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Phone className="w-3 h-3" />{detailFormation.formateur.phone}
+                                <Phone className="w-3 h-3" />
+                                {detailFormation.formateur.phone}
                               </span>
                             )}
                           </div>
@@ -1996,14 +2834,21 @@ export function EspaceFormateur() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-primary" />Centre de formation
+                        <MapPin className="w-4 h-4 text-primary" />
+                        Centre de formation
                       </h3>
                       <div className="text-sm space-y-0.5">
-                        <p className="font-medium">{detailFormation.centreFormation.nom}</p>
-                        <p className="text-muted-foreground">{detailFormation.centreFormation.adresse}, {detailFormation.centreFormation.ville}</p>
+                        <p className="font-medium">
+                          {detailFormation.centreFormation.nom}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {detailFormation.centreFormation.adresse},{" "}
+                          {detailFormation.centreFormation.ville}
+                        </p>
                         {detailFormation.centreFormation.telephone && (
                           <p className="text-muted-foreground flex items-center gap-1">
-                            <Phone className="w-3 h-3" />{detailFormation.centreFormation.telephone}
+                            <Phone className="w-3 h-3" />
+                            {detailFormation.centreFormation.telephone}
                           </p>
                         )}
                       </div>
@@ -2017,10 +2862,17 @@ export function EspaceFormateur() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold text-sm mb-1 flex items-center gap-2">
-                        <Globe className="w-4 h-4 text-primary" />Lien de session
+                        <Globe className="w-4 h-4 text-primary" />
+                        Lien de session
                       </h3>
-                      <a href={detailFormation.lien} target="_blank" rel="noopener noreferrer"
-                        className="text-sm text-primary underline break-all">{detailFormation.lien}</a>
+                      <a
+                        href={detailFormation.lien}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary underline break-all"
+                      >
+                        {detailFormation.lien}
+                      </a>
                     </div>
                   </>
                 )}
@@ -2032,13 +2884,32 @@ export function EspaceFormateur() {
                     <div>
                       <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
                         <Award className="w-4 h-4 text-primary" />
-                        Certification {detailFormation.certification_nom_badge ? `— ${detailFormation.certification_nom_badge}` : ""}
+                        Certification{" "}
+                        {detailFormation.certification_nom_badge
+                          ? `— ${detailFormation.certification_nom_badge}`
+                          : ""}
                       </h3>
                       <div className="flex flex-wrap gap-1.5">
-                        {detailFormation.certification_quiz_reussi && <Badge variant="secondary" className="text-xs">Quiz réussi</Badge>}
-                        {detailFormation.certification_progression_100 && <Badge variant="secondary" className="text-xs">100% progression</Badge>}
-                        {detailFormation.certification_devoir_valide && <Badge variant="secondary" className="text-xs">Devoir validé</Badge>}
-                        {detailFormation.certification_presence_live && <Badge variant="secondary" className="text-xs">Présence live</Badge>}
+                        {detailFormation.certification_quiz_reussi && (
+                          <Badge variant="secondary" className="text-xs">
+                            Quiz réussi
+                          </Badge>
+                        )}
+                        {detailFormation.certification_progression_100 && (
+                          <Badge variant="secondary" className="text-xs">
+                            100% progression
+                          </Badge>
+                        )}
+                        {detailFormation.certification_devoir_valide && (
+                          <Badge variant="secondary" className="text-xs">
+                            Devoir validé
+                          </Badge>
+                        )}
+                        {detailFormation.certification_presence_live && (
+                          <Badge variant="secondary" className="text-xs">
+                            Présence live
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </>
@@ -2068,7 +2939,10 @@ export function EspaceFormateur() {
                   ) : (
                     <div className="space-y-1.5">
                       {detailChapitres.map((ch, i) => (
-                        <div key={ch.id} className="flex items-center gap-2 text-sm p-2 bg-muted rounded-sm">
+                        <div
+                          key={ch.id}
+                          className="flex items-center gap-2 text-sm p-2 bg-muted rounded-sm"
+                        >
                           <span className="w-5 h-5 rounded-full bg-primary/15 text-primary text-xs flex items-center justify-center font-medium flex-shrink-0">
                             {i + 1}
                           </span>
@@ -2076,15 +2950,28 @@ export function EspaceFormateur() {
                             <p className="truncate font-medium">{ch.titre}</p>
                             {ch.lecons?.length > 0 && (
                               <p className="text-xs text-muted-foreground">
-                                {ch.lecons.length} leçon{ch.lecons.length > 1 ? "s" : ""}
+                                {ch.lecons.length} leçon
+                                {ch.lecons.length > 1 ? "s" : ""}
                               </p>
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <Button variant="ghost" size="icon" className="w-7 h-7" title="Modifier" onClick={() => openEditChapitre(ch)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7"
+                              title="Modifier"
+                              onClick={() => openEditChapitre(ch)}
+                            >
                               <Edit className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteChapitreTarget(ch)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7 text-destructive hover:text-destructive"
+                              title="Supprimer"
+                              onClick={() => setDeleteChapitreTarget(ch)}
+                            >
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -2118,30 +3005,61 @@ export function EspaceFormateur() {
                   ) : (
                     <div className="space-y-2">
                       {detailDevoirs.map((dv) => (
-                        <div key={dv.id} className="flex items-start gap-2 p-2.5 bg-muted rounded-sm">
+                        <div
+                          key={dv.id}
+                          className="flex items-start gap-2 p-2.5 bg-muted rounded-sm"
+                        >
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">{dv.titre}</p>
+                            <p className="text-sm font-medium truncate">
+                              {dv.titre}
+                            </p>
                             {dv.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{dv.description}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                                {dv.description}
+                              </p>
                             )}
                             {dv.date_limite && (
                               <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
                                 <Clock className="w-3 h-3" />
-                                Limite : {new Date(dv.date_limite).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                Limite :{" "}
+                                {new Date(dv.date_limite).toLocaleDateString(
+                                  "fr-FR",
+                                  {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  },
+                                )}
                               </p>
                             )}
                             {dv.chapitre_id && (
                               <p className="text-xs text-muted-foreground/70 mt-0.5 flex items-center gap-1">
                                 <FileText className="w-3 h-3" />
-                                {detailFormation.chapitres?.find(c => c.id === dv.chapitre_id)?.titre ?? "Chapitre lié"}
+                                {detailFormation.chapitres?.find(
+                                  (c) => c.id === dv.chapitre_id,
+                                )?.titre ?? "Chapitre lié"}
                               </p>
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <Button variant="ghost" size="icon" className="w-7 h-7" title="Modifier" onClick={() => openEditDevoir(dv)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7"
+                              title="Modifier"
+                              onClick={() => openEditDevoir(dv)}
+                            >
                               <Edit className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteDevoirTarget(dv)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="w-7 h-7 text-destructive hover:text-destructive"
+                              title="Supprimer"
+                              onClick={() => setDeleteDevoirTarget(dv)}
+                            >
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -2157,12 +3075,19 @@ export function EspaceFormateur() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-primary" />Compétences acquises
+                        <CheckCircle className="w-4 h-4 text-primary" />
+                        Compétences acquises
                       </h3>
                       <div className="flex flex-wrap gap-1.5">
                         {detailFormation.competences.map((c, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs rounded-sm">
-                            {typeof c === "string" ? c : (c as { label?: string }).label ?? ""}
+                          <Badge
+                            key={i}
+                            variant="secondary"
+                            className="text-xs rounded-sm"
+                          >
+                            {typeof c === "string"
+                              ? c
+                              : ((c as { label?: string }).label ?? "")}
                           </Badge>
                         ))}
                       </div>
@@ -2176,10 +3101,19 @@ export function EspaceFormateur() {
                     <Separator />
                     <div>
                       <h3 className="font-semibold text-sm mb-1 flex items-center gap-2">
-                        <FileVideo className="w-4 h-4 text-primary" />Fichier principal
+                        <FileVideo className="w-4 h-4 text-primary" />
+                        Fichier principal
                       </h3>
-                      <a href={detailFormation.fichier} target="_blank" rel="noopener noreferrer">
-                        <Button variant="outline" size="sm" className="rounded-sm gap-2 text-xs">
+                      <a
+                        href={detailFormation.fichier}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-sm gap-2 text-xs"
+                        >
                           <Eye className="w-3.5 h-3.5" /> Ouvrir le fichier
                         </Button>
                       </a>
@@ -2190,7 +3124,11 @@ export function EspaceFormateur() {
                 {/* Date création */}
                 <Separator />
                 <p className="text-xs text-muted-foreground">
-                  Créée le {new Date(detailFormation.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  Créée le{" "}
+                  {new Date(detailFormation.created_at).toLocaleDateString(
+                    "fr-FR",
+                    { day: "numeric", month: "long", year: "numeric" },
+                  )}
                 </p>
               </div>
             </>
@@ -2199,7 +3137,12 @@ export function EspaceFormateur() {
       </Sheet>
 
       {/* Dialog Confirmer suppression */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -2208,15 +3151,32 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteTarget?.title}&nbsp;»</span> ?
-            Cette action est irréversible.
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              «&nbsp;{deleteTarget?.title}&nbsp;»
+            </span>{" "}
+            ? Cette action est irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteTarget(null)} disabled={deleteSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDelete} disabled={deleteSubmitting}>
-              {deleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleDelete}
+              disabled={deleteSubmitting}
+            >
+              {deleteSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {deleteSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -2232,14 +3192,23 @@ export function EspaceFormateur() {
           <div className="space-y-4">
             {/* Titre */}
             <div className="space-y-2">
-              <Label>Titre <span className="text-destructive">*</span></Label>
-              <Input value={editForm.title} onChange={(e) => setEF("title", e.target.value)} />
+              <Label>
+                Titre <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={editForm.title}
+                onChange={(e) => setEF("title", e.target.value)}
+              />
             </div>
 
             {/* Description */}
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea value={editForm.description} onChange={(e) => setEF("description", e.target.value)} rows={3} />
+              <Textarea
+                value={editForm.description}
+                onChange={(e) => setEF("description", e.target.value)}
+                rows={3}
+              />
             </div>
 
             {/* Catégorie / Mode */}
@@ -2254,8 +3223,13 @@ export function EspaceFormateur() {
               </div>
               <div className="space-y-2">
                 <Label>Mode</Label>
-                <Select value={editForm.mode} onValueChange={(v) => setEF("mode", v)}>
-                  <SelectTrigger><SelectValue placeholder="Mode" /></SelectTrigger>
+                <Select
+                  value={editForm.mode}
+                  onValueChange={(v) => setEF("mode", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Mode" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="a_son_rythme">À son rythme</SelectItem>
                     <SelectItem value="webinaire">Webinaire / Live</SelectItem>
@@ -2269,8 +3243,13 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Niveau</Label>
-                <Select value={editForm.niveau} onValueChange={(v) => setEF("niveau", v)}>
-                  <SelectTrigger><SelectValue placeholder="Niveau" /></SelectTrigger>
+                <Select
+                  value={editForm.niveau}
+                  onValueChange={(v) => setEF("niveau", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Niveau" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none_">Aucun niveau requis</SelectItem>
                     <SelectItem value="all_levels">Tous les niveaux</SelectItem>
@@ -2282,7 +3261,12 @@ export function EspaceFormateur() {
               </div>
               <div className="space-y-2">
                 <Label>Durée (heures)</Label>
-                <Input type="number" value={editForm.duration} onChange={(e) => setEF("duration", e.target.value)} min={0} />
+                <Input
+                  type="number"
+                  value={editForm.duration}
+                  onChange={(e) => setEF("duration", e.target.value)}
+                  min={0}
+                />
               </div>
             </div>
 
@@ -2290,25 +3274,39 @@ export function EspaceFormateur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Formateur</Label>
-                <Select value={editForm.formateur_id} onValueChange={(v) => setEF("formateur_id", v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir un formateur" /></SelectTrigger>
+                <Select
+                  value={editForm.formateur_id}
+                  onValueChange={(v) => setEF("formateur_id", v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un formateur" />
+                  </SelectTrigger>
                   <SelectContent>
                     {formateurs.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>{f.firstname} {f.lastname}</SelectItem>
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.firstname} {f.lastname}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label>Date & heure de la formation</Label>
-                <Input type="datetime-local" value={editForm.date} onChange={(e) => setEF("date", e.target.value)} />
+                <Input
+                  type="datetime-local"
+                  value={editForm.date}
+                  onChange={(e) => setEF("date", e.target.value)}
+                />
               </div>
             </div>
 
             {/* Payant */}
             <div className="flex items-center justify-between border rounded-sm px-3 py-2">
               <Label>Payante</Label>
-              <Switch checked={editForm.isPaid} onCheckedChange={(v) => setEF("isPaid", v)} />
+              <Switch
+                checked={editForm.isPaid}
+                onCheckedChange={(v) => setEF("isPaid", v)}
+              />
             </div>
 
             {/* Prix */}
@@ -2316,11 +3314,21 @@ export function EspaceFormateur() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Prix public (FCFA)</Label>
-                  <Input type="number" value={editForm.price} onChange={(e) => setEF("price", e.target.value)} min={0} />
+                  <Input
+                    type="number"
+                    value={editForm.price}
+                    onChange={(e) => setEF("price", e.target.value)}
+                    min={0}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Prix membre (FCFA)</Label>
-                  <Input type="number" value={editForm.price_member} onChange={(e) => setEF("price_member", e.target.value)} min={0} />
+                  <Input
+                    type="number"
+                    value={editForm.price_member}
+                    onChange={(e) => setEF("price_member", e.target.value)}
+                    min={0}
+                  />
                 </div>
               </div>
             )}
@@ -2328,8 +3336,10 @@ export function EspaceFormateur() {
             {/* Image */}
             <div className="space-y-2">
               <Label>Nouvelle image de couverture (optionnel)</Label>
-              <div className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => editImageRef.current?.click()}>
+              <div
+                className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => editImageRef.current?.click()}
+              >
                 {editForm.image ? (
                   <div className="flex items-center justify-center gap-2 text-sm">
                     <ImageIcon className="w-4 h-4 text-primary" />
@@ -2342,15 +3352,22 @@ export function EspaceFormateur() {
                   </div>
                 )}
               </div>
-              <input ref={editImageRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => setEF("image", e.target.files?.[0] ?? null)} />
+              <input
+                ref={editImageRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setEF("image", e.target.files?.[0] ?? null)}
+              />
             </div>
 
             {/* Fichier */}
             <div className="space-y-2">
               <Label>Nouveau fichier principal (optionnel)</Label>
-              <div className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => editFichierRef.current?.click()}>
+              <div
+                className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => editFichierRef.current?.click()}
+              >
                 {editForm.fichier ? (
                   <div className="flex items-center justify-center gap-2 text-sm">
                     <FileVideo className="w-4 h-4 text-primary" />
@@ -2363,21 +3380,40 @@ export function EspaceFormateur() {
                   </div>
                 )}
               </div>
-              <input ref={editFichierRef} type="file" accept="video/*,.pdf" className="hidden"
-                onChange={(e) => setEF("fichier", e.target.files?.[0] ?? null)} />
+              <input
+                ref={editFichierRef}
+                type="file"
+                accept="video/*,.pdf"
+                className="hidden"
+                onChange={(e) => setEF("fichier", e.target.files?.[0] ?? null)}
+              />
             </div>
 
             {editError && (
-              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{editError}</div>
+              <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">
+                {editError}
+              </div>
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" className="rounded-sm" onClick={() => setEditOpen(false)} disabled={editSubmitting}>
+              <Button
+                variant="outline"
+                className="rounded-sm"
+                onClick={() => setEditOpen(false)}
+                disabled={editSubmitting}
+              >
                 Annuler
               </Button>
-              <Button className="rounded-sm gap-2" onClick={handleEditSubmit}
-                disabled={editSubmitting || !editForm.title}>
-                {editSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              <Button
+                className="rounded-sm gap-2"
+                onClick={handleEditSubmit}
+                disabled={editSubmitting || !editForm.title}
+              >
+                {editSubmitting ? (
+                  <span className="animate-spin">⏳</span>
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
                 {editSubmitting ? "Enregistrement…" : "Enregistrer"}
               </Button>
             </div>
@@ -2398,16 +3434,28 @@ export function EspaceFormateur() {
             {/* Chapitre */}
             {editDevoirChapitres.length > 0 && (
               <div className="space-y-2">
-                <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                <Label>
+                  Chapitre{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optionnel)
+                  </span>
+                </Label>
                 <Select
                   value={editDevoirChapitreId}
-                  onValueChange={(v) => { setEditDevoirChapitreId(v === "_none" ? "" : v); setEditDevoirLeconId(""); }}
+                  onValueChange={(v) => {
+                    setEditDevoirChapitreId(v === "_none" ? "" : v);
+                    setEditDevoirLeconId("");
+                  }}
                 >
-                  <SelectTrigger><SelectValue placeholder="Choisir un chapitre" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un chapitre" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">Aucun chapitre</SelectItem>
                     {editDevoirChapitres.map((ch) => (
-                      <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                      <SelectItem key={ch.id} value={ch.id}>
+                        {ch.titre}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2417,13 +3465,27 @@ export function EspaceFormateur() {
             {/* Leçon */}
             {editDevoirChapitreId && editDevoirLecons.length > 0 && (
               <div className="space-y-2">
-                <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
-                <Select value={editDevoirLeconId} onValueChange={(v) => setEditDevoirLeconId(v === "_none" ? "" : v)}>
-                  <SelectTrigger><SelectValue placeholder="Choisir une leçon" /></SelectTrigger>
+                <Label>
+                  Leçon{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optionnel)
+                  </span>
+                </Label>
+                <Select
+                  value={editDevoirLeconId}
+                  onValueChange={(v) =>
+                    setEditDevoirLeconId(v === "_none" ? "" : v)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir une leçon" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">Aucune leçon</SelectItem>
                     {editDevoirLecons.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.titre}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2432,40 +3494,76 @@ export function EspaceFormateur() {
 
             {/* Titre */}
             <div className="space-y-2">
-              <Label>Titre <span className="text-destructive">*</span></Label>
-              <Input value={editDevoirTitre} onChange={(e) => setEditDevoirTitre(e.target.value)} placeholder="Titre du devoir" />
+              <Label>
+                Titre <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={editDevoirTitre}
+                onChange={(e) => setEditDevoirTitre(e.target.value)}
+                placeholder="Titre du devoir"
+              />
             </div>
 
             {/* Description */}
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea value={editDevoirDescription} onChange={(e) => setEditDevoirDescription(e.target.value)} placeholder="Description…" rows={2} className="resize-none" />
+              <Textarea
+                value={editDevoirDescription}
+                onChange={(e) => setEditDevoirDescription(e.target.value)}
+                placeholder="Description…"
+                rows={2}
+                className="resize-none"
+              />
             </div>
 
             {/* Consignes */}
             <div className="space-y-2">
               <Label>Consignes</Label>
-              <Textarea value={editDevoirConsignes} onChange={(e) => setEditDevoirConsignes(e.target.value)} placeholder="Instructions pour les apprenants…" rows={3} className="resize-none" />
+              <Textarea
+                value={editDevoirConsignes}
+                onChange={(e) => setEditDevoirConsignes(e.target.value)}
+                placeholder="Instructions pour les apprenants…"
+                rows={3}
+                className="resize-none"
+              />
             </div>
 
             {/* Date limite */}
             <div className="space-y-2">
               <Label>Date limite</Label>
-              <Input type="datetime-local" value={editDevoirDateLimite} onChange={(e) => setEditDevoirDateLimite(e.target.value)} />
+              <Input
+                type="datetime-local"
+                value={editDevoirDateLimite}
+                onChange={(e) => setEditDevoirDateLimite(e.target.value)}
+              />
             </div>
 
             {editDevoirError && (
               <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />{editDevoirError}
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {editDevoirError}
               </div>
             )}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setEditDevoirOpen(false)} disabled={editDevoirSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setEditDevoirOpen(false)}
+              disabled={editDevoirSubmitting}
+            >
               Annuler
             </Button>
-            <Button className="rounded-sm gap-2" onClick={handleUpdateDevoir} disabled={editDevoirSubmitting || !editDevoirTitre.trim()}>
-              {editDevoirSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+            <Button
+              className="rounded-sm gap-2"
+              onClick={handleUpdateDevoir}
+              disabled={editDevoirSubmitting || !editDevoirTitre.trim()}
+            >
+              {editDevoirSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}
               {editDevoirSubmitting ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
@@ -2473,7 +3571,12 @@ export function EspaceFormateur() {
       </Dialog>
 
       {/* Dialog Confirmer suppression devoir */}
-      <Dialog open={!!deleteDevoirTarget} onOpenChange={(open) => { if (!open) setDeleteDevoirTarget(null); }}>
+      <Dialog
+        open={!!deleteDevoirTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDevoirTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -2482,15 +3585,32 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteDevoirTarget?.titre}&nbsp;»</span> ?
-            Cette action est irréversible.
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              «&nbsp;{deleteDevoirTarget?.titre}&nbsp;»
+            </span>{" "}
+            ? Cette action est irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteDevoirTarget(null)} disabled={deleteDevoirSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setDeleteDevoirTarget(null)}
+              disabled={deleteDevoirSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteDevoir} disabled={deleteDevoirSubmitting}>
-              {deleteDevoirSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleDeleteDevoir}
+              disabled={deleteDevoirSubmitting}
+            >
+              {deleteDevoirSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {deleteDevoirSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -2511,8 +3631,16 @@ export function EspaceFormateur() {
             <div className="py-10 text-center space-y-4">
               <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
               <p className="font-semibold text-lg">Devoir créé avec succès !</p>
-              <p className="text-sm text-muted-foreground">Le devoir a bien été ajouté à la formation.</p>
-              <Button className="rounded-sm" onClick={() => { setDevoirOpen(false); setDevoirSuccess(false); }}>
+              <p className="text-sm text-muted-foreground">
+                Le devoir a bien été ajouté à la formation.
+              </p>
+              <Button
+                className="rounded-sm"
+                onClick={() => {
+                  setDevoirOpen(false);
+                  setDevoirSuccess(false);
+                }}
+              >
                 Fermer
               </Button>
             </div>
@@ -2520,14 +3648,21 @@ export function EspaceFormateur() {
             <div className="space-y-4 py-2">
               {/* Formation */}
               <div className="space-y-2">
-                <Label>Formation <span className="text-destructive">*</span></Label>
-                <Select value={devoirFormationId} onValueChange={handleDevoirFormationChange}>
+                <Label>
+                  Formation <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={devoirFormationId}
+                  onValueChange={handleDevoirFormationChange}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir une formation" />
                   </SelectTrigger>
                   <SelectContent>
                     {courses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2536,19 +3671,35 @@ export function EspaceFormateur() {
               {/* Chapitre (optionnel) */}
               {devoirFormationId && (
                 <div className="space-y-2">
-                  <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Label>
+                    Chapitre{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      (optionnel)
+                    </span>
+                  </Label>
                   <Select
                     value={devoirChapitreId}
-                    onValueChange={(v) => { setDevoirChapitreId(v); setDevoirLeconId(""); }}
+                    onValueChange={(v) => {
+                      setDevoirChapitreId(v);
+                      setDevoirLeconId("");
+                    }}
                     disabled={devoirChapitresLoading}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={devoirChapitresLoading ? "Chargement…" : "Choisir un chapitre"} />
+                      <SelectValue
+                        placeholder={
+                          devoirChapitresLoading
+                            ? "Chargement…"
+                            : "Choisir un chapitre"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="_none">Aucun chapitre</SelectItem>
                       {devoirChapitres.map((ch) => (
-                        <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                        <SelectItem key={ch.id} value={ch.id}>
+                          {ch.titre}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2556,26 +3707,40 @@ export function EspaceFormateur() {
               )}
 
               {/* Leçon (optionnel, si chapitre sélectionné) */}
-              {devoirChapitreId && devoirChapitreId !== "_none" && devoirLecons.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
-                  <Select value={devoirLeconId} onValueChange={setDevoirLeconId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choisir une leçon" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">Aucune leçon</SelectItem>
-                      {devoirLecons.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {devoirChapitreId &&
+                devoirChapitreId !== "_none" &&
+                devoirLecons.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>
+                      Leçon{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        (optionnel)
+                      </span>
+                    </Label>
+                    <Select
+                      value={devoirLeconId}
+                      onValueChange={setDevoirLeconId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choisir une leçon" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Aucune leçon</SelectItem>
+                        {devoirLecons.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.titre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
               {/* Titre */}
               <div className="space-y-2">
-                <Label>Titre <span className="text-destructive">*</span></Label>
+                <Label>
+                  Titre <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={devoirTitre}
                   onChange={(e) => setDevoirTitre(e.target.value)}
@@ -2628,15 +3793,26 @@ export function EspaceFormateur() {
 
           {!devoirSuccess && (
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" className="rounded-sm" onClick={() => setDevoirOpen(false)} disabled={devoirSubmitting}>
+              <Button
+                variant="outline"
+                className="rounded-sm"
+                onClick={() => setDevoirOpen(false)}
+                disabled={devoirSubmitting}
+              >
                 Annuler
               </Button>
               <Button
                 className="rounded-sm gap-2"
                 onClick={handleCreateDevoir}
-                disabled={devoirSubmitting || !devoirFormationId || !devoirTitre.trim()}
+                disabled={
+                  devoirSubmitting || !devoirFormationId || !devoirTitre.trim()
+                }
               >
-                {devoirSubmitting ? <span className="animate-spin">⏳</span> : <ClipboardList className="w-4 h-4" />}
+                {devoirSubmitting ? (
+                  <span className="animate-spin">⏳</span>
+                ) : (
+                  <ClipboardList className="w-4 h-4" />
+                )}
                 {devoirSubmitting ? "Création en cours…" : "Créer le devoir"}
               </Button>
             </DialogFooter>
@@ -2645,7 +3821,12 @@ export function EspaceFormateur() {
       </Dialog>
 
       {/* Dialog Confirmer suppression leçon */}
-      <Dialog open={!!deleteLeconTarget} onOpenChange={(open) => { if (!open) setDeleteLeconTarget(null); }}>
+      <Dialog
+        open={!!deleteLeconTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteLeconTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -2654,15 +3835,32 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteLeconTarget?.titre}&nbsp;»</span> ?
-            Cette action est irréversible.
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              «&nbsp;{deleteLeconTarget?.titre}&nbsp;»
+            </span>{" "}
+            ? Cette action est irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteLeconTarget(null)} disabled={deleteLeconSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setDeleteLeconTarget(null)}
+              disabled={deleteLeconSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteLecon} disabled={deleteLeconSubmitting}>
-              {deleteLeconSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleDeleteLecon}
+              disabled={deleteLeconSubmitting}
+            >
+              {deleteLeconSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {deleteLeconSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -2680,7 +3878,9 @@ export function EspaceFormateur() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Titre <span className="text-destructive">*</span></Label>
+              <Label>
+                Titre <span className="text-destructive">*</span>
+              </Label>
               <Input
                 value={editLeconTitre}
                 onChange={(e) => setEditLeconTitre(e.target.value)}
@@ -2698,7 +3898,9 @@ export function EspaceFormateur() {
                   setEditLeconContenu("");
                 }}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="video">Vidéo</SelectItem>
                   <SelectItem value="pdf">PDF</SelectItem>
@@ -2709,13 +3911,22 @@ export function EspaceFormateur() {
 
             {editLeconType !== "texte" && (
               <div className="space-y-2">
-                <Label>Nouveau fichier <span className="text-xs font-normal text-muted-foreground">(optionnel — laissez vide pour garder l'actuel)</span></Label>
+                <Label>
+                  Nouveau fichier{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optionnel — laissez vide pour garder l'actuel)
+                  </span>
+                </Label>
                 <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-3 cursor-pointer hover:bg-muted/50 transition-colors text-sm text-muted-foreground">
                   {editLeconFile ? (
                     <span className="flex items-center gap-1.5 text-foreground font-medium">
                       <FileVideo className="w-4 h-4 text-primary shrink-0" />
-                      <span className="truncate max-w-xs">{editLeconFile.name}</span>
-                      <span className="text-muted-foreground shrink-0">({(editLeconFile.size / 1024 / 1024).toFixed(1)} Mo)</span>
+                      <span className="truncate max-w-xs">
+                        {editLeconFile.name}
+                      </span>
+                      <span className="text-muted-foreground shrink-0">
+                        ({(editLeconFile.size / 1024 / 1024).toFixed(1)} Mo)
+                      </span>
                     </span>
                   ) : (
                     <span className="flex items-center gap-1.5">
@@ -2725,9 +3936,15 @@ export function EspaceFormateur() {
                   )}
                   <input
                     type="file"
-                    accept={editLeconType === "video" ? "video/*" : ".pdf,application/pdf"}
+                    accept={
+                      editLeconType === "video"
+                        ? "video/*"
+                        : ".pdf,application/pdf"
+                    }
                     className="hidden"
-                    onChange={(e) => setEditLeconFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) =>
+                      setEditLeconFile(e.target.files?.[0] ?? null)
+                    }
                   />
                 </label>
               </div>
@@ -2748,12 +3965,18 @@ export function EspaceFormateur() {
 
             {editLeconError && (
               <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />{editLeconError}
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {editLeconError}
               </div>
             )}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setEditLeconOpen(false)} disabled={editLeconSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setEditLeconOpen(false)}
+              disabled={editLeconSubmitting}
+            >
               Annuler
             </Button>
             <Button
@@ -2761,7 +3984,11 @@ export function EspaceFormateur() {
               onClick={handleUpdateLecon}
               disabled={editLeconSubmitting || !editLeconTitre.trim()}
             >
-              {editLeconSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {editLeconSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}
               {editLeconSubmitting ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
@@ -2781,7 +4008,9 @@ export function EspaceFormateur() {
           <div className="space-y-5 py-2">
             {/* Titre */}
             <div className="space-y-2">
-              <Label>Titre du chapitre <span className="text-destructive">*</span></Label>
+              <Label>
+                Titre du chapitre <span className="text-destructive">*</span>
+              </Label>
               <Input
                 value={editChapitreTitre}
                 onChange={(e) => setEditChapitreTitre(e.target.value)}
@@ -2790,49 +4019,63 @@ export function EspaceFormateur() {
             </div>
 
             {/* Leçons existantes */}
-            {editChapitreTarget?.lecons && editChapitreTarget.lecons.length > 0 && (
-              <div className="space-y-2">
-                <Label>Leçons existantes</Label>
-                <div className="space-y-1.5">
-                  {editChapitreTarget.lecons.map((lecon) => (
-                    <div
-                      key={lecon.id}
-                      className="flex items-center gap-2 p-2.5 rounded-sm border bg-muted/30 text-sm"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <span className="flex-1 truncate">{lecon.titre}</span>
-                      <Badge variant="outline" className="text-[10px] h-4 px-1.5 rounded-sm shrink-0">
-                        {lecon.type_contenu}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-6 h-6 shrink-0"
-                        onClick={() => openEditLecon(lecon)}
-                        title="Modifier la leçon"
+            {editChapitreTarget?.lecons &&
+              editChapitreTarget.lecons.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Leçons existantes</Label>
+                  <div className="space-y-1.5">
+                    {editChapitreTarget.lecons.map((lecon) => (
+                      <div
+                        key={lecon.id}
+                        className="flex items-center gap-2 p-2.5 rounded-sm border bg-muted/30 text-sm"
                       >
-                        <Edit className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-6 h-6 shrink-0 text-destructive hover:text-destructive"
-                        onClick={() => setDeleteLeconTarget(lecon)}
-                        title="Supprimer la leçon"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  ))}
+                        <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="flex-1 truncate">{lecon.titre}</span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-4 px-1.5 rounded-sm shrink-0"
+                        >
+                          {lecon.type_contenu}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-6 h-6 shrink-0"
+                          onClick={() => openEditLecon(lecon)}
+                          title="Modifier la leçon"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="w-6 h-6 shrink-0 text-destructive hover:text-destructive"
+                          onClick={() => setDeleteLeconTarget(lecon)}
+                          title="Supprimer la leçon"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {/* Nouvelles leçons */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Ajouter des leçons <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
-                <Button variant="outline" size="sm" className="gap-1.5 rounded-sm h-7 text-xs" onClick={addNewLeconToEdit}>
+                <Label>
+                  Ajouter des leçons{" "}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (optionnel)
+                  </span>
+                </Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 rounded-sm h-7 text-xs"
+                  onClick={addNewLeconToEdit}
+                >
                   <Plus className="w-3.5 h-3.5" />
                   Ajouter
                 </Button>
@@ -2845,9 +4088,14 @@ export function EspaceFormateur() {
               ) : (
                 <div className="space-y-3">
                   {editChapitreNewLecons.map((lecon, index) => (
-                    <div key={lecon.id} className="border rounded-sm p-3 space-y-3 bg-muted/20">
+                    <div
+                      key={lecon.id}
+                      className="border rounded-sm p-3 space-y-3 bg-muted/20"
+                    >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">Nouvelle leçon {index + 1}</span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Nouvelle leçon {index + 1}
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -2863,7 +4111,11 @@ export function EspaceFormateur() {
                           <Label className="text-xs">Titre</Label>
                           <Input
                             value={lecon.titre}
-                            onChange={(e) => updateNewLecon(lecon.id, { titre: e.target.value })}
+                            onChange={(e) =>
+                              updateNewLecon(lecon.id, {
+                                titre: e.target.value,
+                              })
+                            }
                             placeholder="Titre de la leçon"
                             className="h-8 text-sm"
                           />
@@ -2873,10 +4125,16 @@ export function EspaceFormateur() {
                           <Select
                             value={lecon.type_contenu}
                             onValueChange={(v: "video" | "pdf" | "texte") =>
-                              updateNewLecon(lecon.id, { type_contenu: v, file: null, contenu: "" })
+                              updateNewLecon(lecon.id, {
+                                type_contenu: v,
+                                file: null,
+                                contenu: "",
+                              })
                             }
                           >
-                            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="video">Vidéo</SelectItem>
                               <SelectItem value="pdf">PDF</SelectItem>
@@ -2889,15 +4147,21 @@ export function EspaceFormateur() {
                       {lecon.type_contenu !== "texte" && (
                         <div className="space-y-1.5">
                           <Label className="text-xs">
-                            Fichier {lecon.type_contenu === "video" ? "(MP4, MOV…)" : "(PDF)"}
+                            Fichier{" "}
+                            {lecon.type_contenu === "video"
+                              ? "(MP4, MOV…)"
+                              : "(PDF)"}
                           </Label>
                           <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-2.5 cursor-pointer hover:bg-muted/50 transition-colors text-xs text-muted-foreground">
                             {lecon.file ? (
                               <span className="flex items-center gap-1.5 text-foreground font-medium">
                                 <FileVideo className="w-3.5 h-3.5 text-primary shrink-0" />
-                                <span className="truncate max-w-xs">{lecon.file.name}</span>
+                                <span className="truncate max-w-xs">
+                                  {lecon.file.name}
+                                </span>
                                 <span className="text-muted-foreground shrink-0">
-                                  ({(lecon.file.size / 1024 / 1024).toFixed(1)} Mo)
+                                  ({(lecon.file.size / 1024 / 1024).toFixed(1)}{" "}
+                                  Mo)
                                 </span>
                               </span>
                             ) : (
@@ -2908,9 +4172,17 @@ export function EspaceFormateur() {
                             )}
                             <input
                               type="file"
-                              accept={lecon.type_contenu === "video" ? "video/*" : ".pdf,application/pdf"}
+                              accept={
+                                lecon.type_contenu === "video"
+                                  ? "video/*"
+                                  : ".pdf,application/pdf"
+                              }
                               className="hidden"
-                              onChange={(e) => updateNewLecon(lecon.id, { file: e.target.files?.[0] ?? null })}
+                              onChange={(e) =>
+                                updateNewLecon(lecon.id, {
+                                  file: e.target.files?.[0] ?? null,
+                                })
+                              }
                             />
                           </label>
                         </div>
@@ -2921,7 +4193,11 @@ export function EspaceFormateur() {
                           <Label className="text-xs">Contenu texte</Label>
                           <Textarea
                             value={lecon.contenu}
-                            onChange={(e) => updateNewLecon(lecon.id, { contenu: e.target.value })}
+                            onChange={(e) =>
+                              updateNewLecon(lecon.id, {
+                                contenu: e.target.value,
+                              })
+                            }
                             placeholder="Saisissez le contenu de la leçon…"
                             rows={3}
                             className="text-sm resize-none"
@@ -2936,13 +4212,19 @@ export function EspaceFormateur() {
 
             {editChapitreError && (
               <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />{editChapitreError}
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {editChapitreError}
               </div>
             )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setEditChapitreOpen(false)} disabled={editChapitreSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setEditChapitreOpen(false)}
+              disabled={editChapitreSubmitting}
+            >
               Annuler
             </Button>
             <Button
@@ -2950,7 +4232,11 @@ export function EspaceFormateur() {
               onClick={handleUpdateChapitre}
               disabled={editChapitreSubmitting || !editChapitreTitre.trim()}
             >
-              {editChapitreSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {editChapitreSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}
               {editChapitreSubmitting ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
@@ -2958,7 +4244,12 @@ export function EspaceFormateur() {
       </Dialog>
 
       {/* Dialog Confirmer suppression chapitre */}
-      <Dialog open={!!deleteChapitreTarget} onOpenChange={(open) => { if (!open) setDeleteChapitreTarget(null); }}>
+      <Dialog
+        open={!!deleteChapitreTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteChapitreTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -2967,15 +4258,33 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{deleteChapitreTarget?.titre}&nbsp;»</span> ?
-            Toutes les leçons associées seront également supprimées. Cette action est irréversible.
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              «&nbsp;{deleteChapitreTarget?.titre}&nbsp;»
+            </span>{" "}
+            ? Toutes les leçons associées seront également supprimées. Cette
+            action est irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteChapitreTarget(null)} disabled={deleteChapitreSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setDeleteChapitreTarget(null)}
+              disabled={deleteChapitreSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleDeleteChapitre} disabled={deleteChapitreSubmitting}>
-              {deleteChapitreSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleDeleteChapitre}
+              disabled={deleteChapitreSubmitting}
+            >
+              {deleteChapitreSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {deleteChapitreSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -2995,9 +4304,19 @@ export function EspaceFormateur() {
           {chapterSuccess ? (
             <div className="py-10 text-center space-y-4">
               <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
-              <p className="font-semibold text-lg">Chapitre créé avec succès !</p>
-              <p className="text-sm text-muted-foreground">Le chapitre a bien été ajouté à la formation.</p>
-              <Button className="rounded-sm" onClick={() => { setChapterOpen(false); setChapterSuccess(false); }}>
+              <p className="font-semibold text-lg">
+                Chapitre créé avec succès !
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Le chapitre a bien été ajouté à la formation.
+              </p>
+              <Button
+                className="rounded-sm"
+                onClick={() => {
+                  setChapterOpen(false);
+                  setChapterSuccess(false);
+                }}
+              >
                 Fermer
               </Button>
             </div>
@@ -3005,17 +4324,26 @@ export function EspaceFormateur() {
             <div className="space-y-5 py-2">
               {/* Formation */}
               <div className="space-y-2">
-                <Label>Formation <span className="text-destructive">*</span></Label>
-                <Select value={chapterFormationId} onValueChange={setChapterFormationId}>
+                <Label>
+                  Formation <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={chapterFormationId}
+                  onValueChange={setChapterFormationId}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir une formation" />
                   </SelectTrigger>
                   <SelectContent>
                     {courses.length === 0 && (
-                      <SelectItem value="_" disabled>Aucune formation créée</SelectItem>
+                      <SelectItem value="_" disabled>
+                        Aucune formation créée
+                      </SelectItem>
                     )}
                     {courses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -3023,7 +4351,9 @@ export function EspaceFormateur() {
 
               {/* Titre du chapitre */}
               <div className="space-y-2">
-                <Label>Titre du chapitre <span className="text-destructive">*</span></Label>
+                <Label>
+                  Titre du chapitre <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={chapterTitre}
                   onChange={(e) => setChapterTitre(e.target.value)}
@@ -3034,8 +4364,18 @@ export function EspaceFormateur() {
               {/* Leçons */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label>Leçons <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
-                  <Button variant="outline" size="sm" className="gap-1.5 rounded-sm h-7 text-xs" onClick={addLecon}>
+                  <Label>
+                    Leçons{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      (optionnel)
+                    </span>
+                  </Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 rounded-sm h-7 text-xs"
+                    onClick={addLecon}
+                  >
                     <Plus className="w-3.5 h-3.5" />
                     Ajouter une leçon
                   </Button>
@@ -3048,9 +4388,14 @@ export function EspaceFormateur() {
                 ) : (
                   <div className="space-y-3">
                     {chapterLecons.map((lecon, index) => (
-                      <div key={lecon.id} className="border rounded-sm p-3 space-y-3 bg-muted/20">
+                      <div
+                        key={lecon.id}
+                        className="border rounded-sm p-3 space-y-3 bg-muted/20"
+                      >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">Leçon {index + 1}</span>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Leçon {index + 1}
+                          </span>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -3066,7 +4411,9 @@ export function EspaceFormateur() {
                             <Label className="text-xs">Titre</Label>
                             <Input
                               value={lecon.titre}
-                              onChange={(e) => updateLecon(lecon.id, { titre: e.target.value })}
+                              onChange={(e) =>
+                                updateLecon(lecon.id, { titre: e.target.value })
+                              }
                               placeholder="Titre de la leçon"
                               className="h-8 text-sm"
                             />
@@ -3076,7 +4423,11 @@ export function EspaceFormateur() {
                             <Select
                               value={lecon.type_contenu}
                               onValueChange={(v: "video" | "pdf" | "texte") =>
-                                updateLecon(lecon.id, { type_contenu: v, file: null, contenu: "" })
+                                updateLecon(lecon.id, {
+                                  type_contenu: v,
+                                  file: null,
+                                  contenu: "",
+                                })
                               }
                             >
                               <SelectTrigger className="h-8 text-sm">
@@ -3094,15 +4445,22 @@ export function EspaceFormateur() {
                         {lecon.type_contenu !== "texte" && (
                           <div className="space-y-1.5">
                             <Label className="text-xs">
-                              Fichier {lecon.type_contenu === "video" ? "(MP4, MOV…)" : "(PDF)"}
+                              Fichier{" "}
+                              {lecon.type_contenu === "video"
+                                ? "(MP4, MOV…)"
+                                : "(PDF)"}
                             </Label>
                             <label className="flex items-center justify-center gap-2 border border-dashed rounded-sm p-2.5 cursor-pointer hover:bg-muted/50 transition-colors text-xs text-muted-foreground">
                               {lecon.file ? (
                                 <span className="flex items-center gap-1.5 text-foreground font-medium">
                                   <FileVideo className="w-3.5 h-3.5 text-primary shrink-0" />
-                                  <span className="truncate max-w-xs">{lecon.file.name}</span>
+                                  <span className="truncate max-w-xs">
+                                    {lecon.file.name}
+                                  </span>
                                   <span className="text-muted-foreground shrink-0">
-                                    ({(lecon.file.size / 1024 / 1024).toFixed(1)} Mo)
+                                    (
+                                    {(lecon.file.size / 1024 / 1024).toFixed(1)}{" "}
+                                    Mo)
                                   </span>
                                 </span>
                               ) : (
@@ -3113,9 +4471,17 @@ export function EspaceFormateur() {
                               )}
                               <input
                                 type="file"
-                                accept={lecon.type_contenu === "video" ? "video/*" : ".pdf,application/pdf"}
+                                accept={
+                                  lecon.type_contenu === "video"
+                                    ? "video/*"
+                                    : ".pdf,application/pdf"
+                                }
                                 className="hidden"
-                                onChange={(e) => updateLecon(lecon.id, { file: e.target.files?.[0] ?? null })}
+                                onChange={(e) =>
+                                  updateLecon(lecon.id, {
+                                    file: e.target.files?.[0] ?? null,
+                                  })
+                                }
                               />
                             </label>
                           </div>
@@ -3126,7 +4492,11 @@ export function EspaceFormateur() {
                             <Label className="text-xs">Contenu texte</Label>
                             <Textarea
                               value={lecon.contenu}
-                              onChange={(e) => updateLecon(lecon.id, { contenu: e.target.value })}
+                              onChange={(e) =>
+                                updateLecon(lecon.id, {
+                                  contenu: e.target.value,
+                                })
+                              }
                               placeholder="Saisissez le contenu de la leçon…"
                               rows={3}
                               className="text-sm resize-none"
@@ -3150,15 +4520,28 @@ export function EspaceFormateur() {
 
           {!chapterSuccess && (
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" className="rounded-sm" onClick={() => setChapterOpen(false)} disabled={chapterSubmitting}>
+              <Button
+                variant="outline"
+                className="rounded-sm"
+                onClick={() => setChapterOpen(false)}
+                disabled={chapterSubmitting}
+              >
                 Annuler
               </Button>
               <Button
                 className="rounded-sm gap-2"
                 onClick={handleCreateChapter}
-                disabled={chapterSubmitting || !chapterFormationId || !chapterTitre.trim()}
+                disabled={
+                  chapterSubmitting ||
+                  !chapterFormationId ||
+                  !chapterTitre.trim()
+                }
               >
-                {chapterSubmitting ? <span className="animate-spin">⏳</span> : <Layers className="w-4 h-4" />}
+                {chapterSubmitting ? (
+                  <span className="animate-spin">⏳</span>
+                ) : (
+                  <Layers className="w-4 h-4" />
+                )}
                 {chapterSubmitting ? "Création en cours…" : "Créer le chapitre"}
               </Button>
             </DialogFooter>
@@ -3171,12 +4554,15 @@ export function EspaceFormateur() {
           <DialogHeader>
             <DialogTitle>Créer une formation</DialogTitle>
           </DialogHeader>
-          {canCreateMore ? renderCreationWizard() : (
+          {canCreateMore ? (
+            renderCreationWizard()
+          ) : (
             <div className="p-4 text-center space-y-4">
               <Lock className="w-12 h-12 mx-auto text-muted-foreground" />
               <h3 className="text-lg font-semibold">Limite atteinte</h3>
               <p className="text-muted-foreground">
-                Vous avez atteint le nombre maximum de cours pour votre abonnement {subscriptionTier}.
+                Vous avez atteint le nombre maximum de cours pour votre
+                abonnement {subscriptionTier}.
               </p>
               <Button>
                 <Crown className="w-4 h-4 mr-2" /> Passer au plan supérieur
@@ -3200,8 +4586,16 @@ export function EspaceFormateur() {
             <div className="py-10 text-center space-y-4">
               <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
               <p className="font-semibold text-lg">Quiz créé avec succès !</p>
-              <p className="text-sm text-muted-foreground">Le quiz a bien été ajouté à la formation.</p>
-              <Button className="rounded-sm" onClick={() => { setQuizOpen(false); setQuizSuccess(false); }}>
+              <p className="text-sm text-muted-foreground">
+                Le quiz a bien été ajouté à la formation.
+              </p>
+              <Button
+                className="rounded-sm"
+                onClick={() => {
+                  setQuizOpen(false);
+                  setQuizSuccess(false);
+                }}
+              >
                 Fermer
               </Button>
             </div>
@@ -3209,14 +4603,21 @@ export function EspaceFormateur() {
             <div className="space-y-4 py-2">
               {/* Formation */}
               <div className="space-y-2">
-                <Label>Formation <span className="text-destructive">*</span></Label>
-                <Select value={quizFormationId} onValueChange={handleQuizFormationChange}>
+                <Label>
+                  Formation <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={quizFormationId}
+                  onValueChange={handleQuizFormationChange}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir une formation" />
                   </SelectTrigger>
                   <SelectContent>
                     {courses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -3225,19 +4626,35 @@ export function EspaceFormateur() {
               {/* Chapitre (optionnel) */}
               {quizFormationId && (
                 <div className="space-y-2">
-                  <Label>Chapitre <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
+                  <Label>
+                    Chapitre{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      (optionnel)
+                    </span>
+                  </Label>
                   <Select
                     value={quizChapitreId}
-                    onValueChange={(v) => { setQuizChapitreId(v); setQuizLeconId(""); }}
+                    onValueChange={(v) => {
+                      setQuizChapitreId(v);
+                      setQuizLeconId("");
+                    }}
                     disabled={quizChapitresLoading}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder={quizChapitresLoading ? "Chargement…" : "Choisir un chapitre"} />
+                      <SelectValue
+                        placeholder={
+                          quizChapitresLoading
+                            ? "Chargement…"
+                            : "Choisir un chapitre"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="_none">Aucun chapitre</SelectItem>
                       {quizChapitres.map((ch) => (
-                        <SelectItem key={ch.id} value={ch.id}>{ch.titre}</SelectItem>
+                        <SelectItem key={ch.id} value={ch.id}>
+                          {ch.titre}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -3245,26 +4662,37 @@ export function EspaceFormateur() {
               )}
 
               {/* Leçon (optionnel) */}
-              {quizChapitreId && quizChapitreId !== "_none" && quizLecons.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Leçon <span className="text-xs font-normal text-muted-foreground">(optionnel)</span></Label>
-                  <Select value={quizLeconId} onValueChange={setQuizLeconId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choisir une leçon" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">Aucune leçon</SelectItem>
-                      {quizLecons.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>{l.titre}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              {quizChapitreId &&
+                quizChapitreId !== "_none" &&
+                quizLecons.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>
+                      Leçon{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        (optionnel)
+                      </span>
+                    </Label>
+                    <Select value={quizLeconId} onValueChange={setQuizLeconId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choisir une leçon" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Aucune leçon</SelectItem>
+                        {quizLecons.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            {l.titre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
               {/* Titre */}
               <div className="space-y-2">
-                <Label>Titre <span className="text-destructive">*</span></Label>
+                <Label>
+                  Titre <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   value={quizTitre}
                   onChange={(e) => setQuizTitre(e.target.value)}
@@ -3295,15 +4723,26 @@ export function EspaceFormateur() {
 
           {!quizSuccess && (
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" className="rounded-sm" onClick={() => setQuizOpen(false)} disabled={quizSubmitting}>
+              <Button
+                variant="outline"
+                className="rounded-sm"
+                onClick={() => setQuizOpen(false)}
+                disabled={quizSubmitting}
+              >
                 Annuler
               </Button>
               <Button
                 className="rounded-sm gap-2"
                 onClick={handleCreateQuiz}
-                disabled={quizSubmitting || !quizFormationId || !quizTitre.trim()}
+                disabled={
+                  quizSubmitting || !quizFormationId || !quizTitre.trim()
+                }
               >
-                {quizSubmitting ? <span className="animate-spin">⏳</span> : <HelpCircle className="w-4 h-4" />}
+                {quizSubmitting ? (
+                  <span className="animate-spin">⏳</span>
+                ) : (
+                  <HelpCircle className="w-4 h-4" />
+                )}
                 {quizSubmitting ? "Création en cours…" : "Créer le quiz"}
               </Button>
             </DialogFooter>
@@ -3322,19 +4761,33 @@ export function EspaceFormateur() {
           </DialogHeader>
 
           {quizListLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chargement…
+            </p>
           ) : quizListItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <HelpCircle className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucun quiz pour cette formation.</p>
-              <Button size="sm" className="gap-2 mt-2" onClick={() => { setQuizListOpen(false); openQuizDialog(quizListFormationId); }}>
+              <p className="text-sm text-muted-foreground">
+                Aucun quiz pour cette formation.
+              </p>
+              <Button
+                size="sm"
+                className="gap-2 mt-2"
+                onClick={() => {
+                  setQuizListOpen(false);
+                  openQuizDialog(quizListFormationId);
+                }}
+              >
                 <Plus className="w-4 h-4" /> Créer un quiz
               </Button>
             </div>
           ) : (
             <div className="space-y-3 py-2">
               {quizListItems.map((q) => (
-                <div key={q.id} className="flex items-start justify-between gap-3 p-3 border rounded-sm">
+                <div
+                  key={q.id}
+                  className="flex items-start justify-between gap-3 p-3 border rounded-sm"
+                >
                   {quizEditTarget?.id === q.id ? (
                     <div className="flex-1 space-y-2">
                       <Input
@@ -3350,14 +4803,28 @@ export function EspaceFormateur() {
                         placeholder="Description…"
                       />
                       {quizEditError && (
-                        <p className="text-xs text-destructive">{quizEditError}</p>
+                        <p className="text-xs text-destructive">
+                          {quizEditError}
+                        </p>
                       )}
                       <div className="flex gap-2">
-                        <Button size="sm" className="h-7 text-xs rounded-sm gap-1" onClick={handleQuizEditSave} disabled={quizEditSubmitting}>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs rounded-sm gap-1"
+                          onClick={handleQuizEditSave}
+                          disabled={quizEditSubmitting}
+                        >
                           <CheckCircle className="w-3 h-3" />
-                          {quizEditSubmitting ? "Enregistrement…" : "Enregistrer"}
+                          {quizEditSubmitting
+                            ? "Enregistrement…"
+                            : "Enregistrer"}
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-xs rounded-sm" onClick={() => setQuizEditTarget(null)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs rounded-sm"
+                          onClick={() => setQuizEditTarget(null)}
+                        >
                           Annuler
                         </Button>
                       </div>
@@ -3366,25 +4833,48 @@ export function EspaceFormateur() {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm truncate">{q.titre}</p>
                       {q.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{q.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                          {q.description}
+                        </p>
                       )}
                     </div>
                   )}
                   {quizEditTarget?.id !== q.id && (
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" title="Questions" onClick={() => { setQuizListOpen(false); openQuestionList(q.id, q.titre); }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs gap-1 px-2"
+                        title="Questions"
+                        onClick={() => {
+                          setQuizListOpen(false);
+                          openQuestionList(q.id, q.titre);
+                        }}
+                      >
                         <HelpCircle className="w-3.5 h-3.5" />
                         Questions
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => {
-                        setQuizEditTarget(q);
-                        setQuizEditTitre(q.titre);
-                        setQuizEditDescription(q.description ?? "");
-                        setQuizEditError(null);
-                      }}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Modifier"
+                        onClick={() => {
+                          setQuizEditTarget(q);
+                          setQuizEditTitre(q.titre);
+                          setQuizEditDescription(q.description ?? "");
+                          setQuizEditError(null);
+                        }}
+                      >
                         <Edit className="w-3.5 h-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setQuizDeleteTarget(q)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        title="Supprimer"
+                        onClick={() => setQuizDeleteTarget(q)}
+                      >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -3395,8 +4885,20 @@ export function EspaceFormateur() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setQuizListOpen(false)}>Fermer</Button>
-            <Button className="rounded-sm gap-2" onClick={() => { setQuizListOpen(false); openQuizDialog(quizListFormationId); }}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setQuizListOpen(false)}
+            >
+              Fermer
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={() => {
+                setQuizListOpen(false);
+                openQuizDialog(quizListFormationId);
+              }}
+            >
               <Plus className="w-4 h-4" /> Nouveau quiz
             </Button>
           </DialogFooter>
@@ -3414,22 +4916,30 @@ export function EspaceFormateur() {
           </DialogHeader>
 
           {participantsLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chargement…
+            </p>
           ) : participantsItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <Users className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucun participant pour cette formation.</p>
+              <p className="text-sm text-muted-foreground">
+                Aucun participant pour cette formation.
+              </p>
             </div>
           ) : (
             <div className="space-y-1 py-2">
-              <p className="text-xs text-muted-foreground mb-3">{participantsItems.length} participant{participantsItems.length > 1 ? "s" : ""}</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                {participantsItems.length} participant
+                {participantsItems.length > 1 ? "s" : ""}
+              </p>
               <div className="divide-y border rounded-sm">
                 {participantsItems.map((p, i) => {
                   const statusColors: Record<string, string> = {
                     pending: "bg-amber-50 text-amber-700 border-amber-200",
                     confirmed: "bg-blue-50 text-blue-700 border-blue-200",
                     started: "bg-primary/10 text-primary border-primary/20",
-                    completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                    completed:
+                      "bg-emerald-50 text-emerald-700 border-emerald-200",
                   };
                   const statusLabels: Record<string, string> = {
                     pending: "En attente",
@@ -3439,24 +4949,40 @@ export function EspaceFormateur() {
                   };
                   const progression = parseFloat(p.progression ?? "0");
                   return (
-                    <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+                    <div
+                      key={p.id}
+                      className="flex items-center gap-3 px-3 py-2.5"
+                    >
                       <span className="w-6 h-6 rounded-full bg-muted text-xs flex items-center justify-center font-medium flex-shrink-0 text-muted-foreground">
                         {i + 1}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground truncate font-mono">{p.user_id}</p>
+                        <p className="text-xs text-muted-foreground truncate font-mono">
+                          {p.user_id}
+                        </p>
                         <div className="flex items-center gap-2 mt-1">
                           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                            <div className="h-full bg-primary rounded-full" style={{ width: `${progression}%` }} />
+                            <div
+                              className="h-full bg-primary rounded-full"
+                              style={{ width: `${progression}%` }}
+                            />
                           </div>
-                          <span className="text-xs text-muted-foreground flex-shrink-0">{progression}%</span>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {progression}%
+                          </span>
                         </div>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          Inscrit le {new Date(p.registered_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                          Inscrit le{" "}
+                          {new Date(p.registered_at).toLocaleDateString(
+                            "fr-FR",
+                            { day: "numeric", month: "short", year: "numeric" },
+                          )}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${statusColors[p.status] ?? "bg-muted text-muted-foreground"}`}>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-sm border ${statusColors[p.status] ?? "bg-muted text-muted-foreground"}`}
+                        >
                           {statusLabels[p.status] ?? p.status}
                         </span>
                         {p.certificat_delivre && (
@@ -3473,7 +4999,13 @@ export function EspaceFormateur() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setParticipantsOpen(false)}>Fermer</Button>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setParticipantsOpen(false)}
+            >
+              Fermer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -3489,19 +5021,33 @@ export function EspaceFormateur() {
           </DialogHeader>
 
           {chapitreListLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chargement…
+            </p>
           ) : chapitreListItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <Layers className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucun chapitre pour cette formation.</p>
-              <Button size="sm" className="gap-2 mt-2" onClick={() => { setChapitreListOpen(false); openChapterDialog(chapitreListFormationId); }}>
+              <p className="text-sm text-muted-foreground">
+                Aucun chapitre pour cette formation.
+              </p>
+              <Button
+                size="sm"
+                className="gap-2 mt-2"
+                onClick={() => {
+                  setChapitreListOpen(false);
+                  openChapterDialog(chapitreListFormationId);
+                }}
+              >
                 <Plus className="w-4 h-4" /> Créer un chapitre
               </Button>
             </div>
           ) : (
             <div className="space-y-2 py-2">
               {chapitreListItems.map((ch, i) => (
-                <div key={ch.id} className="flex items-center gap-3 p-3 border rounded-sm">
+                <div
+                  key={ch.id}
+                  className="flex items-center gap-3 p-3 border rounded-sm"
+                >
                   <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-xs flex items-center justify-center font-medium flex-shrink-0">
                     {i + 1}
                   </span>
@@ -3509,7 +5055,8 @@ export function EspaceFormateur() {
                     <p className="font-medium text-sm truncate">{ch.titre}</p>
                     {ch.lecons?.length > 0 && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {ch.lecons.length} leçon{ch.lecons.length > 1 ? "s" : ""}
+                        {ch.lecons.length} leçon
+                        {ch.lecons.length > 1 ? "s" : ""}
                       </p>
                     )}
                   </div>
@@ -3519,7 +5066,10 @@ export function EspaceFormateur() {
                       size="icon"
                       className="h-7 w-7"
                       title="Modifier"
-                      onClick={() => { setChapitreListOpen(false); openEditChapitre(ch); }}
+                      onClick={() => {
+                        setChapitreListOpen(false);
+                        openEditChapitre(ch);
+                      }}
                     >
                       <Edit className="w-3.5 h-3.5" />
                     </Button>
@@ -3539,8 +5089,20 @@ export function EspaceFormateur() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setChapitreListOpen(false)}>Fermer</Button>
-            <Button className="rounded-sm gap-2" onClick={() => { setChapitreListOpen(false); openChapterDialog(chapitreListFormationId); }}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setChapitreListOpen(false)}
+            >
+              Fermer
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={() => {
+                setChapitreListOpen(false);
+                openChapterDialog(chapitreListFormationId);
+              }}
+            >
               <Plus className="w-4 h-4" /> Créer un chapitre
             </Button>
           </DialogFooter>
@@ -3558,28 +5120,49 @@ export function EspaceFormateur() {
           </DialogHeader>
 
           {devoirListLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chargement…
+            </p>
           ) : devoirListItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <ClipboardList className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucun devoir pour cette formation.</p>
-              <Button size="sm" className="gap-2 mt-2" onClick={() => { setDevoirListOpen(false); openDevoirDialog(devoirListFormationId); }}>
+              <p className="text-sm text-muted-foreground">
+                Aucun devoir pour cette formation.
+              </p>
+              <Button
+                size="sm"
+                className="gap-2 mt-2"
+                onClick={() => {
+                  setDevoirListOpen(false);
+                  openDevoirDialog(devoirListFormationId);
+                }}
+              >
                 <Plus className="w-4 h-4" /> Créer un devoir
               </Button>
             </div>
           ) : (
             <div className="space-y-3 py-2">
               {devoirListItems.map((dv) => (
-                <div key={dv.id} className="flex items-start justify-between gap-3 p-3 border rounded-sm">
+                <div
+                  key={dv.id}
+                  className="flex items-start justify-between gap-3 p-3 border rounded-sm"
+                >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm truncate">{dv.titre}</p>
                     {dv.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{dv.description}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                        {dv.description}
+                      </p>
                     )}
                     {dv.date_limite && (
                       <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        Limite : {new Date(dv.date_limite).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
+                        Limite :{" "}
+                        {new Date(dv.date_limite).toLocaleDateString("fr-FR", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </p>
                     )}
                   </div>
@@ -3589,15 +5172,33 @@ export function EspaceFormateur() {
                       size="sm"
                       className="h-7 text-xs gap-1 px-2"
                       title="Questions"
-                      onClick={() => { setDevoirListOpen(false); openQuestionList(dv.id, dv.titre, "devoir"); }}
+                      onClick={() => {
+                        setDevoirListOpen(false);
+                        openQuestionList(dv.id, dv.titre, "devoir");
+                      }}
                     >
                       <HelpCircle className="w-3.5 h-3.5" />
                       Questions
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => { setDevoirListOpen(false); openEditDevoir(dv); }}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Modifier"
+                      onClick={() => {
+                        setDevoirListOpen(false);
+                        openEditDevoir(dv);
+                      }}
+                    >
                       <Edit className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setDeleteDevoirTarget(dv)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                      title="Supprimer"
+                      onClick={() => setDeleteDevoirTarget(dv)}
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -3607,8 +5208,20 @@ export function EspaceFormateur() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setDevoirListOpen(false)}>Fermer</Button>
-            <Button className="rounded-sm gap-2" onClick={() => { setDevoirListOpen(false); openDevoirDialog(devoirListFormationId); }}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setDevoirListOpen(false)}
+            >
+              Fermer
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={() => {
+                setDevoirListOpen(false);
+                openDevoirDialog(devoirListFormationId);
+              }}
+            >
               <Plus className="w-4 h-4" /> Créer un devoir
             </Button>
           </DialogFooter>
@@ -3616,7 +5229,12 @@ export function EspaceFormateur() {
       </Dialog>
 
       {/* Dialog Confirmer suppression quiz */}
-      <Dialog open={!!quizDeleteTarget} onOpenChange={(open) => { if (!open) setQuizDeleteTarget(null); }}>
+      <Dialog
+        open={!!quizDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setQuizDeleteTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -3625,15 +5243,32 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer <span className="font-semibold text-foreground">«&nbsp;{quizDeleteTarget?.titre}&nbsp;»</span> ?
-            Cette action est irréversible.
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              «&nbsp;{quizDeleteTarget?.titre}&nbsp;»
+            </span>{" "}
+            ? Cette action est irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setQuizDeleteTarget(null)} disabled={quizDeleteSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setQuizDeleteTarget(null)}
+              disabled={quizDeleteSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleQuizDelete} disabled={quizDeleteSubmitting}>
-              {quizDeleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleQuizDelete}
+              disabled={quizDeleteSubmitting}
+            >
+              {quizDeleteSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {quizDeleteSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -3651,11 +5286,16 @@ export function EspaceFormateur() {
           </DialogHeader>
 
           {questionListLoading ? (
-            <p className="text-sm text-muted-foreground text-center py-6">Chargement…</p>
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chargement…
+            </p>
           ) : questionListItems.length === 0 ? (
             <div className="py-10 text-center space-y-2">
               <HelpCircle className="w-10 h-10 mx-auto text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Aucune question pour {questionContextType === "devoir" ? "ce devoir" : "ce quiz"}.</p>
+              <p className="text-sm text-muted-foreground">
+                Aucune question pour{" "}
+                {questionContextType === "devoir" ? "ce devoir" : "ce quiz"}.
+              </p>
             </div>
           ) : (
             <div className="space-y-3 py-2">
@@ -3663,27 +5303,52 @@ export function EspaceFormateur() {
                 <div key={q.id} className="border rounded-sm p-3 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">Q{idx + 1}. {q.texte}</p>
+                      <p className="font-medium text-sm">
+                        Q{idx + 1}. {q.texte}
+                      </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                          {q.type === "single_choice" ? "Choix unique" : "Choix multiple"}
+                          {q.type === "single_choice"
+                            ? "Choix unique"
+                            : "Choix multiple"}
                         </span>
-                        <span className="text-xs text-muted-foreground">{q.points} pt{q.points > 1 ? "s" : ""}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {q.points} pt{q.points > 1 ? "s" : ""}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Modifier" onClick={() => openQuestionEdit(q)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Modifier"
+                        onClick={() => openQuestionEdit(q)}
+                      >
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" title="Supprimer" onClick={() => setQuestionDeleteTarget(q)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        title="Supprimer"
+                        onClick={() => setQuestionDeleteTarget(q)}
+                      >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {q.options.map((opt, i) => (
-                      <div key={i} className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${q.reponses_correctes.includes(i) ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 font-medium" : "bg-muted text-muted-foreground"}`}>
-                        {q.reponses_correctes.includes(i) ? <CheckCircle className="w-3 h-3 shrink-0" /> : <span className="w-3 h-3 shrink-0 inline-block" />}
+                      <div
+                        key={i}
+                        className={`text-xs px-2 py-1 rounded flex items-center gap-1.5 ${q.reponses_correctes.includes(i) ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 font-medium" : "bg-muted text-muted-foreground"}`}
+                      >
+                        {q.reponses_correctes.includes(i) ? (
+                          <CheckCircle className="w-3 h-3 shrink-0" />
+                        ) : (
+                          <span className="w-3 h-3 shrink-0 inline-block" />
+                        )}
                         {opt}
                       </div>
                     ))}
@@ -3694,8 +5359,24 @@ export function EspaceFormateur() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionListOpen(false)}>Fermer</Button>
-            <Button className="rounded-sm gap-2" onClick={() => { setQuestionListOpen(false); openQuestionDialog(questionListQuizId, questionListQuizTitre, questionContextType); }}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setQuestionListOpen(false)}
+            >
+              Fermer
+            </Button>
+            <Button
+              className="rounded-sm gap-2"
+              onClick={() => {
+                setQuestionListOpen(false);
+                openQuestionDialog(
+                  questionListQuizId,
+                  questionListQuizTitre,
+                  questionContextType,
+                );
+              }}
+            >
               <Plus className="w-4 h-4" /> Ajouter une question
             </Button>
           </DialogFooter>
@@ -3708,7 +5389,8 @@ export function EspaceFormateur() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-primary" />
-              Ajouter une question — {questionQuizTitre} {questionContextType === "devoir" ? "(Devoir)" : "(Quiz)"}
+              Ajouter une question — {questionQuizTitre}{" "}
+              {questionContextType === "devoir" ? "(Devoir)" : "(Quiz)"}
             </DialogTitle>
           </DialogHeader>
 
@@ -3717,10 +5399,26 @@ export function EspaceFormateur() {
               <CheckCircle className="w-14 h-14 mx-auto text-emerald-500" />
               <p className="font-semibold text-lg">Question ajoutée !</p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" className="rounded-sm" onClick={() => { setQuestionSuccess(false); }}>
+                <Button
+                  variant="outline"
+                  className="rounded-sm"
+                  onClick={() => {
+                    setQuestionSuccess(false);
+                  }}
+                >
                   Ajouter une autre
                 </Button>
-                <Button className="rounded-sm" onClick={() => { setQuestionOpen(false); openQuestionList(questionQuizId, questionQuizTitre, questionContextType); }}>
+                <Button
+                  className="rounded-sm"
+                  onClick={() => {
+                    setQuestionOpen(false);
+                    openQuestionList(
+                      questionQuizId,
+                      questionQuizTitre,
+                      questionContextType,
+                    );
+                  }}
+                >
                   Voir les questions
                 </Button>
               </div>
@@ -3729,21 +5427,35 @@ export function EspaceFormateur() {
             <div className="space-y-4 py-2">
               {/* Type */}
               <div className="space-y-2">
-                <Label>Type de question <span className="text-destructive">*</span></Label>
-                <Select value={questionType} onValueChange={(v) => { setQuestionType(v as "single_choice" | "multiple_choice"); setQuestionReponsesCorrectes([]); }}>
+                <Label>
+                  Type de question <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={questionType}
+                  onValueChange={(v) => {
+                    setQuestionType(v as "single_choice" | "multiple_choice");
+                    setQuestionReponsesCorrectes([]);
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="single_choice">Choix unique (une seule bonne réponse)</SelectItem>
-                    <SelectItem value="multiple_choice">Choix multiple (plusieurs bonnes réponses)</SelectItem>
+                    <SelectItem value="single_choice">
+                      Choix unique (une seule bonne réponse)
+                    </SelectItem>
+                    <SelectItem value="multiple_choice">
+                      Choix multiple (plusieurs bonnes réponses)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* Texte de la question */}
               <div className="space-y-2">
-                <Label>Question <span className="text-destructive">*</span></Label>
+                <Label>
+                  Question <span className="text-destructive">*</span>
+                </Label>
                 <Textarea
                   value={questionTexte}
                   onChange={(e) => setQuestionTexte(e.target.value)}
@@ -3755,9 +5467,13 @@ export function EspaceFormateur() {
 
               {/* Options de réponse */}
               <div className="space-y-2">
-                <Label>Options de réponse <span className="text-destructive">*</span></Label>
+                <Label>
+                  Options de réponse <span className="text-destructive">*</span>
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  {questionType === "single_choice" ? "Cliquez sur une option pour la marquer comme correcte." : "Cliquez sur les options correctes (plusieurs possibles)."}
+                  {questionType === "single_choice"
+                    ? "Cliquez sur une option pour la marquer comme correcte."
+                    : "Cliquez sur les options correctes (plusieurs possibles)."}
                 </p>
                 <div className="space-y-2">
                   {questionOptions.map((opt, idx) => (
@@ -3772,23 +5488,37 @@ export function EspaceFormateur() {
                         }`}
                         title="Marquer comme réponse correcte"
                       >
-                        {questionReponsesCorrectes.includes(idx) && <CheckCircle className="w-3.5 h-3.5" />}
+                        {questionReponsesCorrectes.includes(idx) && (
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        )}
                       </button>
                       <Input
                         value={opt}
-                        onChange={(e) => updateQuestionOption(idx, e.target.value)}
+                        onChange={(e) =>
+                          updateQuestionOption(idx, e.target.value)
+                        }
                         placeholder={`Option ${idx + 1}`}
                         className="flex-1 h-8 text-sm"
                       />
                       {questionOptions.length > 2 && (
-                        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" onClick={() => removeQuestionOption(idx)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground"
+                          onClick={() => removeQuestionOption(idx)}
+                        >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       )}
                     </div>
                   ))}
                 </div>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 rounded-sm" onClick={addQuestionOption}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5 rounded-sm"
+                  onClick={addQuestionOption}
+                >
                   <Plus className="w-3.5 h-3.5" /> Ajouter une option
                 </Button>
               </div>
@@ -3800,7 +5530,11 @@ export function EspaceFormateur() {
                   type="number"
                   min={1}
                   value={questionPoints}
-                  onChange={(e) => setQuestionPoints(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={(e) =>
+                    setQuestionPoints(
+                      Math.max(1, parseInt(e.target.value) || 1),
+                    )
+                  }
                   className="w-28 h-8"
                 />
               </div>
@@ -3811,15 +5545,23 @@ export function EspaceFormateur() {
                   {questionError}
                 </div>
               )}
-              {questionReponsesCorrectes.length === 0 && questionTexte.trim() && (
-                <p className="text-xs text-amber-600">Sélectionnez au moins une réponse correcte.</p>
-              )}
+              {questionReponsesCorrectes.length === 0 &&
+                questionTexte.trim() && (
+                  <p className="text-xs text-amber-600">
+                    Sélectionnez au moins une réponse correcte.
+                  </p>
+                )}
             </div>
           )}
 
           {!questionSuccess && (
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" className="rounded-sm" onClick={() => setQuestionOpen(false)} disabled={questionSubmitting}>
+              <Button
+                variant="outline"
+                className="rounded-sm"
+                onClick={() => setQuestionOpen(false)}
+                disabled={questionSubmitting}
+              >
                 Annuler
               </Button>
               <Button
@@ -3832,7 +5574,11 @@ export function EspaceFormateur() {
                   questionReponsesCorrectes.length === 0
                 }
               >
-                {questionSubmitting ? <span className="animate-spin">⏳</span> : <Plus className="w-4 h-4" />}
+                {questionSubmitting ? (
+                  <span className="animate-spin">⏳</span>
+                ) : (
+                  <Plus className="w-4 h-4" />
+                )}
                 {questionSubmitting ? "Ajout en cours…" : "Ajouter la question"}
               </Button>
             </DialogFooter>
@@ -3842,7 +5588,12 @@ export function EspaceFormateur() {
 
       {/* Dialog Confirmer suppression question */}
       {/* Dialog Modifier une question */}
-      <Dialog open={!!questionEditTarget} onOpenChange={(open) => { if (!open) setQuestionEditTarget(null); }}>
+      <Dialog
+        open={!!questionEditTarget}
+        onOpenChange={(open) => {
+          if (!open) setQuestionEditTarget(null);
+        }}
+      >
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -3854,21 +5605,35 @@ export function EspaceFormateur() {
           <div className="space-y-4 py-2">
             {/* Type */}
             <div className="space-y-2">
-              <Label>Type de question <span className="text-destructive">*</span></Label>
-              <Select value={questionEditType} onValueChange={(v) => { setQuestionEditType(v as "single_choice" | "multiple_choice"); setQuestionEditReponsesCorrectes([]); }}>
+              <Label>
+                Type de question <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={questionEditType}
+                onValueChange={(v) => {
+                  setQuestionEditType(v as "single_choice" | "multiple_choice");
+                  setQuestionEditReponsesCorrectes([]);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="single_choice">Choix unique (une seule bonne réponse)</SelectItem>
-                  <SelectItem value="multiple_choice">Choix multiple (plusieurs bonnes réponses)</SelectItem>
+                  <SelectItem value="single_choice">
+                    Choix unique (une seule bonne réponse)
+                  </SelectItem>
+                  <SelectItem value="multiple_choice">
+                    Choix multiple (plusieurs bonnes réponses)
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {/* Texte */}
             <div className="space-y-2">
-              <Label>Question <span className="text-destructive">*</span></Label>
+              <Label>
+                Question <span className="text-destructive">*</span>
+              </Label>
               <Textarea
                 value={questionEditTexte}
                 onChange={(e) => setQuestionEditTexte(e.target.value)}
@@ -3879,15 +5644,23 @@ export function EspaceFormateur() {
 
             {/* Options */}
             <div className="space-y-2">
-              <Label>Options de réponse <span className="text-destructive">*</span></Label>
+              <Label>
+                Options de réponse <span className="text-destructive">*</span>
+              </Label>
               <p className="text-xs text-muted-foreground">
-                {questionEditType === "single_choice" ? "Cochez la bonne réponse." : "Cochez toutes les bonnes réponses."}
+                {questionEditType === "single_choice"
+                  ? "Cochez la bonne réponse."
+                  : "Cochez toutes les bonnes réponses."}
               </p>
               <div className="space-y-2">
                 {questionEditOptions.map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <input
-                      type={questionEditType === "single_choice" ? "radio" : "checkbox"}
+                      type={
+                        questionEditType === "single_choice"
+                          ? "radio"
+                          : "checkbox"
+                      }
                       name="edit-reponse-correcte"
                       checked={questionEditReponsesCorrectes.includes(i)}
                       onChange={() => {
@@ -3895,7 +5668,9 @@ export function EspaceFormateur() {
                           setQuestionEditReponsesCorrectes([i]);
                         } else {
                           setQuestionEditReponsesCorrectes((prev) =>
-                            prev.includes(i) ? prev.filter((r) => r !== i) : [...prev, i]
+                            prev.includes(i)
+                              ? prev.filter((r) => r !== i)
+                              : [...prev, i],
                           );
                         }
                       }}
@@ -3903,24 +5678,42 @@ export function EspaceFormateur() {
                     />
                     <Input
                       value={opt}
-                      onChange={(e) => setQuestionEditOptions((prev) => prev.map((o, j) => j === i ? e.target.value : o))}
+                      onChange={(e) =>
+                        setQuestionEditOptions((prev) =>
+                          prev.map((o, j) => (j === i ? e.target.value : o)),
+                        )
+                      }
                       placeholder={`Option ${i + 1}`}
                       className="flex-1"
                     />
                     {questionEditOptions.length > 2 && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive" onClick={() => {
-                        setQuestionEditOptions((prev) => prev.filter((_, j) => j !== i));
-                        setQuestionEditReponsesCorrectes((prev) =>
-                          prev.filter((r) => r !== i).map((r) => (r > i ? r - 1 : r))
-                        );
-                      }}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          setQuestionEditOptions((prev) =>
+                            prev.filter((_, j) => j !== i),
+                          );
+                          setQuestionEditReponsesCorrectes((prev) =>
+                            prev
+                              .filter((r) => r !== i)
+                              .map((r) => (r > i ? r - 1 : r)),
+                          );
+                        }}
+                      >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     )}
                   </div>
                 ))}
               </div>
-              <Button variant="outline" size="sm" className="rounded-sm gap-1.5" onClick={() => setQuestionEditOptions((prev) => [...prev, ""])}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-sm gap-1.5"
+                onClick={() => setQuestionEditOptions((prev) => [...prev, ""])}
+              >
                 <Plus className="w-3.5 h-3.5" /> Ajouter une option
               </Button>
             </div>
@@ -3932,7 +5725,11 @@ export function EspaceFormateur() {
                 type="number"
                 min={1}
                 value={questionEditPoints}
-                onChange={(e) => setQuestionEditPoints(Math.max(1, parseInt(e.target.value) || 1))}
+                onChange={(e) =>
+                  setQuestionEditPoints(
+                    Math.max(1, parseInt(e.target.value) || 1),
+                  )
+                }
                 className="w-24"
               />
             </div>
@@ -3945,7 +5742,12 @@ export function EspaceFormateur() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionEditTarget(null)} disabled={questionEditSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setQuestionEditTarget(null)}
+              disabled={questionEditSubmitting}
+            >
               Annuler
             </Button>
             <Button
@@ -3958,7 +5760,11 @@ export function EspaceFormateur() {
                 questionEditReponsesCorrectes.length === 0
               }
             >
-              {questionEditSubmitting ? <span className="animate-spin">⏳</span> : <CheckCircle className="w-4 h-4" />}
+              {questionEditSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <CheckCircle className="w-4 h-4" />
+              )}
               {questionEditSubmitting ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
@@ -3979,8 +5785,13 @@ export function EspaceFormateur() {
             <div className="py-8 text-center space-y-3">
               <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
               <p className="font-semibold text-lg">Profil créé avec succès !</p>
-              <p className="text-sm text-muted-foreground">Votre profil formateur est maintenant disponible.</p>
-              <Button onClick={() => setDevenirOpen(false)} className="rounded-sm">
+              <p className="text-sm text-muted-foreground">
+                Votre profil formateur est maintenant disponible.
+              </p>
+              <Button
+                onClick={() => setDevenirOpen(false)}
+                className="rounded-sm"
+              >
                 Fermer
               </Button>
             </div>
@@ -3996,28 +5807,49 @@ export function EspaceFormateur() {
                   {devenirForm.photo ? (
                     <div className="flex items-center justify-center gap-2 text-sm">
                       <ImageIcon className="w-4 h-4 text-primary" />
-                      <span className="font-medium">{devenirForm.photo.name}</span>
+                      <span className="font-medium">
+                        {devenirForm.photo.name}
+                      </span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-1">
                       <Upload className="w-7 h-7 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">Cliquer pour choisir une photo</p>
+                      <p className="text-sm text-muted-foreground">
+                        Cliquer pour choisir une photo
+                      </p>
                     </div>
                   )}
                 </div>
-                <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
-                  onChange={(e) => setDF("photo", e.target.files?.[0] ?? null)} />
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setDF("photo", e.target.files?.[0] ?? null)}
+                />
               </div>
 
               {/* Nom / Prénom */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Prénom <span className="text-destructive">*</span></Label>
-                  <Input value={devenirForm.firstname} onChange={(e) => setDF("firstname", e.target.value)} placeholder="Prénom" />
+                  <Label>
+                    Prénom <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={devenirForm.firstname}
+                    onChange={(e) => setDF("firstname", e.target.value)}
+                    placeholder="Prénom"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Nom <span className="text-destructive">*</span></Label>
-                  <Input value={devenirForm.lastname} onChange={(e) => setDF("lastname", e.target.value)} placeholder="Nom" />
+                  <Label>
+                    Nom <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    value={devenirForm.lastname}
+                    onChange={(e) => setDF("lastname", e.target.value)}
+                    placeholder="Nom"
+                  />
                 </div>
               </div>
 
@@ -4025,50 +5857,93 @@ export function EspaceFormateur() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input type="email" value={devenirForm.email} onChange={(e) => setDF("email", e.target.value)} placeholder="email@exemple.com" />
+                  <Input
+                    type="email"
+                    value={devenirForm.email}
+                    onChange={(e) => setDF("email", e.target.value)}
+                    placeholder="email@exemple.com"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Téléphone</Label>
-                  <Input value={devenirForm.phone} onChange={(e) => setDF("phone", e.target.value)} placeholder="07 XX XX XX XX" />
+                  <Input
+                    value={devenirForm.phone}
+                    onChange={(e) => setDF("phone", e.target.value)}
+                    placeholder="07 XX XX XX XX"
+                  />
                 </div>
               </div>
 
               {/* Titre */}
               <div className="space-y-2">
                 <Label>Titre / Spécialité</Label>
-                <Input value={devenirForm.titre} onChange={(e) => setDF("titre", e.target.value)} placeholder="Ex: Expert Finance PME" />
+                <Input
+                  value={devenirForm.titre}
+                  onChange={(e) => setDF("titre", e.target.value)}
+                  placeholder="Ex: Expert Finance PME"
+                />
               </div>
 
               {/* Bio */}
               <div className="space-y-2">
                 <Label>Biographie</Label>
-                <Textarea value={devenirForm.bio} onChange={(e) => setDF("bio", e.target.value)}
-                  placeholder="Décrivez votre expertise et votre parcours..." rows={3} />
+                <Textarea
+                  value={devenirForm.bio}
+                  onChange={(e) => setDF("bio", e.target.value)}
+                  placeholder="Décrivez votre expertise et votre parcours..."
+                  rows={3}
+                />
               </div>
 
               {/* Liens */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>LinkedIn</Label>
-                  <Input value={devenirForm.linkedin} onChange={(e) => setDF("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
+                  <Input
+                    value={devenirForm.linkedin}
+                    onChange={(e) => setDF("linkedin", e.target.value)}
+                    placeholder="https://linkedin.com/in/..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Site web</Label>
-                  <Input value={devenirForm.website} onChange={(e) => setDF("website", e.target.value)} placeholder="https://monsite.com" />
+                  <Input
+                    value={devenirForm.website}
+                    onChange={(e) => setDF("website", e.target.value)}
+                    placeholder="https://monsite.com"
+                  />
                 </div>
               </div>
 
               {devenirError && (
-                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">{devenirError}</div>
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">
+                  {devenirError}
+                </div>
               )}
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" className="rounded-sm" onClick={() => setDevenirOpen(false)} disabled={devenirSubmitting}>
+                <Button
+                  variant="outline"
+                  className="rounded-sm"
+                  onClick={() => setDevenirOpen(false)}
+                  disabled={devenirSubmitting}
+                >
                   Annuler
                 </Button>
-                <Button className="rounded-sm gap-2" onClick={handleDevenirSubmit}
-                  disabled={devenirSubmitting || !devenirForm.firstname || !devenirForm.lastname}>
-                  {devenirSubmitting ? <span className="animate-spin">⏳</span> : <Award className="w-4 h-4" />}
+                <Button
+                  className="rounded-sm gap-2"
+                  onClick={handleDevenirSubmit}
+                  disabled={
+                    devenirSubmitting ||
+                    !devenirForm.firstname ||
+                    !devenirForm.lastname
+                  }
+                >
+                  {devenirSubmitting ? (
+                    <span className="animate-spin">⏳</span>
+                  ) : (
+                    <Award className="w-4 h-4" />
+                  )}
                   {devenirSubmitting ? "Envoi en cours..." : "Créer mon profil"}
                 </Button>
               </div>
@@ -4077,7 +5952,12 @@ export function EspaceFormateur() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!questionDeleteTarget} onOpenChange={(open) => { if (!open) setQuestionDeleteTarget(null); }}>
+      <Dialog
+        open={!!questionDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setQuestionDeleteTarget(null);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -4086,14 +5966,29 @@ export function EspaceFormateur() {
             </DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Voulez-vous vraiment supprimer cette question ? Cette action est irréversible.
+            Voulez-vous vraiment supprimer cette question ? Cette action est
+            irréversible.
           </p>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="rounded-sm" onClick={() => setQuestionDeleteTarget(null)} disabled={questionDeleteSubmitting}>
+            <Button
+              variant="outline"
+              className="rounded-sm"
+              onClick={() => setQuestionDeleteTarget(null)}
+              disabled={questionDeleteSubmitting}
+            >
               Annuler
             </Button>
-            <Button variant="destructive" className="rounded-sm gap-2" onClick={handleQuestionDelete} disabled={questionDeleteSubmitting}>
-              {questionDeleteSubmitting ? <span className="animate-spin">⏳</span> : <Trash2 className="w-4 h-4" />}
+            <Button
+              variant="destructive"
+              className="rounded-sm gap-2"
+              onClick={handleQuestionDelete}
+              disabled={questionDeleteSubmitting}
+            >
+              {questionDeleteSubmitting ? (
+                <span className="animate-spin">⏳</span>
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
               {questionDeleteSubmitting ? "Suppression…" : "Supprimer"}
             </Button>
           </DialogFooter>
@@ -4106,9 +6001,21 @@ export function EspaceFormateur() {
 // ── Onglet Revenus ─────────────────────────────────────────────────────────
 
 function statusBadgeRevenue(status: string) {
-  if (status === "success") return <Badge className="bg-green-100 text-green-700 border-green-200">Succès</Badge>;
-  if (status === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">En attente</Badge>;
-  return <Badge className="bg-red-100 text-red-700 border-red-200">Annulé</Badge>;
+  if (status === "success")
+    return (
+      <Badge className="bg-green-100 text-green-700 border-green-200">
+        Succès
+      </Badge>
+    );
+  if (status === "pending")
+    return (
+      <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">
+        En attente
+      </Badge>
+    );
+  return (
+    <Badge className="bg-red-100 text-red-700 border-red-200">Annulé</Badge>
+  );
 }
 
 function RevenueTab({
@@ -4126,7 +6033,7 @@ function RevenueTab({
 }) {
   useEffect(() => {
     if (!paymentsFetched) onLoad();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ensemble des IDs de formations créées par l'utilisateur
@@ -4135,15 +6042,25 @@ function RevenueTab({
   // Paiements liés à ces formations
   const formationPayments = payments.filter((p) => {
     if (p.contextType !== "formation_participation") return false;
-    const fId = p.providerResponse?.additional_infos?.participantDto?.formation_id;
+    const fId =
+      p.providerResponse?.additional_infos?.participantDto?.formation_id;
     return fId ? myFormationIds.has(fId) : false;
   });
 
   // KPIs
-  const successPayments = formationPayments.filter((p) => p.status === "success");
-  const totalRevenue = successPayments.reduce((acc, p) => acc + parseFloat(p.amount), 0);
-  const pendingCount = formationPayments.filter((p) => p.status === "pending").length;
-  const cancelledCount = formationPayments.filter((p) => p.status === "cancelled").length;
+  const successPayments = formationPayments.filter(
+    (p) => p.status === "success",
+  );
+  const totalRevenue = successPayments.reduce(
+    (acc, p) => acc + parseFloat(p.amount),
+    0,
+  );
+  const pendingCount = formationPayments.filter(
+    (p) => p.status === "pending",
+  ).length;
+  const cancelledCount = formationPayments.filter(
+    (p) => p.status === "cancelled",
+  ).length;
 
   // Map formation id → titre
   const formationMap = new Map(courses.map((c) => [c.id, c.title]));
@@ -4151,7 +6068,9 @@ function RevenueTab({
   if (paymentsLoading) {
     return (
       <div className="space-y-4">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+        {[...Array(3)].map((_, i) => (
+          <Skeleton key={i} className="h-20 w-full" />
+        ))}
       </div>
     );
   }
@@ -4166,7 +6085,9 @@ function RevenueTab({
               <DollarSign className="w-4 h-4" />
               <span className="text-sm">Revenus totaux</span>
             </div>
-            <p className="text-2xl font-bold">{totalRevenue.toLocaleString("fr-FR")} XOF</p>
+            <p className="text-2xl font-bold">
+              {totalRevenue.toLocaleString("fr-FR")} XOF
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -4208,39 +6129,67 @@ function RevenueTab({
           {formationPayments.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <DollarSign className="w-10 h-10 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">Aucun paiement enregistré pour vos formations</p>
+              <p className="text-sm">
+                Aucun paiement enregistré pour vos formations
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="text-left pb-3 pr-4 font-medium">Formation</th>
-                    <th className="text-left pb-3 pr-4 font-medium">Apprenant</th>
-                    <th className="text-right pb-3 pr-4 font-medium">Montant</th>
-                    <th className="text-center pb-3 pr-4 font-medium">Statut</th>
+                    <th className="text-left pb-3 pr-4 font-medium">
+                      Formation
+                    </th>
+                    <th className="text-left pb-3 pr-4 font-medium">
+                      Apprenant
+                    </th>
+                    <th className="text-right pb-3 pr-4 font-medium">
+                      Montant
+                    </th>
+                    <th className="text-center pb-3 pr-4 font-medium">
+                      Statut
+                    </th>
                     <th className="text-left pb-3 font-medium">Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {formationPayments.map((p) => {
-                    const fId = p.providerResponse?.additional_infos?.participantDto?.formation_id ?? "";
+                    const fId =
+                      p.providerResponse?.additional_infos?.participantDto
+                        ?.formation_id ?? "";
                     const formationTitle = formationMap.get(fId) ?? fId;
                     const infos = p.providerResponse?.additional_infos;
-                    const nom = infos ? `${infos.customer_firstname ?? ""} ${infos.customer_lastname ?? ""}`.trim() : "—";
+                    const nom = infos
+                      ? `${infos.customer_firstname ?? ""} ${infos.customer_lastname ?? ""}`.trim()
+                      : "—";
                     const date = p.paidAt ?? p.createdAt;
                     return (
-                      <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={p.id}
+                        className="hover:bg-muted/30 transition-colors"
+                      >
                         <td className="py-3 pr-4">
-                          <span className="font-medium line-clamp-1 max-w-[180px] block">{formationTitle}</span>
+                          <span className="font-medium line-clamp-1 max-w-[180px] block">
+                            {formationTitle}
+                          </span>
                         </td>
-                        <td className="py-3 pr-4 text-muted-foreground">{nom || "—"}</td>
+                        <td className="py-3 pr-4 text-muted-foreground">
+                          {nom || "—"}
+                        </td>
                         <td className="py-3 pr-4 text-right font-semibold">
-                          {parseFloat(p.amount).toLocaleString("fr-FR")} {p.currency}
+                          {parseFloat(p.amount).toLocaleString("fr-FR")}{" "}
+                          {p.currency}
                         </td>
-                        <td className="py-3 pr-4 text-center">{statusBadgeRevenue(p.status)}</td>
+                        <td className="py-3 pr-4 text-center">
+                          {statusBadgeRevenue(p.status)}
+                        </td>
                         <td className="py-3 text-muted-foreground whitespace-nowrap">
-                          {new Date(date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}
+                          {new Date(date).toLocaleDateString("fr-FR", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
                         </td>
                       </tr>
                     );

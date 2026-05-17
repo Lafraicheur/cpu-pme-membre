@@ -1167,6 +1167,8 @@ export interface FormationFormateur {
   photo: string | null;
   linkedin: string | null;
   website: string | null;
+  statut: string | null;
+  motifAnnulation: string | null;
   creator_user_id?: string;
 }
 
@@ -1215,18 +1217,22 @@ export const formateursApi = {
     bio?: string;
     linkedin?: string;
     website?: string;
+    statut?: string;
+    motifAnnulation?: string;
     photo?: File | null;
   }): Promise<FormationFormateur> => {
     const fd = new FormData();
     fd.append("firstname", payload.firstname);
     fd.append("lastname", payload.lastname);
-    if (payload.email)   fd.append("email",    payload.email);
-    if (payload.phone)   fd.append("phone",    payload.phone);
-    if (payload.titre)   fd.append("titre",    payload.titre);
-    if (payload.bio)     fd.append("bio",      payload.bio);
-    if (payload.linkedin !== undefined) fd.append("linkedin", payload.linkedin);
-    if (payload.website  !== undefined) fd.append("website",  payload.website);
-    if (payload.photo)   fd.append("photo",    payload.photo);
+    if (payload.email)           fd.append("email",           payload.email);
+    if (payload.phone)           fd.append("phone",           payload.phone);
+    if (payload.titre)           fd.append("titre",           payload.titre);
+    if (payload.bio)             fd.append("bio",             payload.bio);
+    if (payload.linkedin)        fd.append("linkedin",        payload.linkedin);
+    if (payload.website)         fd.append("website",         payload.website);
+    if (payload.statut)          fd.append("statut",          payload.statut);
+    if (payload.motifAnnulation) fd.append("motifAnnulation", payload.motifAnnulation);
+    if (payload.photo)           fd.append("photo",           payload.photo);
     const res = await requestMultipart<{ success: boolean; data: FormationFormateur }>(
       "/api/formation/formateurs", fd
     );
@@ -1626,6 +1632,20 @@ export interface MonInscription {
   confirmedAt: string | null;
 }
 
+export interface MonProgression {
+  participantId: string;
+  formationId: string;
+  formationTitle: string;
+  progression: number;
+  progressPercent: number;
+  status: string;
+  grade: string | null;
+  currentLeconId: string | null;
+  completedLeconIds: string[];
+  singleBlockCompleted: boolean;
+  lastAccessedAt: string | null;
+}
+
 export const mesCoursApi = {
   getMesFormations: async (): Promise<MonInscription[]> => {
     const res = await request<{ success: boolean; data: (Omit<MonInscription, "formation"> & { formation: FormationAPI | null })[] }>(
@@ -1648,6 +1668,13 @@ export const mesCoursApi = {
           } : null,
         },
       }));
+  },
+
+  getMesProgressions: async (): Promise<MonProgression[]> => {
+    const res = await request<{ success: boolean; data: MonProgression[] }>(
+      "/api/formation/participant/me/progression"
+    );
+    return res.data ?? [];
   },
 };
 
@@ -1952,6 +1979,71 @@ export const authApi = {
       "/api/auth/adhesion/profile"
     );
     return res?.data ?? (res as unknown as Record<string, unknown>);
+  },
+};
+
+// ── Certificats ───────────────────────────────────────────────────────────────
+
+export interface TypeCertification {
+  id: string;
+  nom: string;
+  code: string;
+  description: string | null;
+  niveau: string;
+  adminId: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface FormationCertificat {
+  id: string;
+  code: string;
+  score: number | null;
+  dateCompletion: string | null;
+  organizationName: string | null;
+  typeCertificationId: string;
+  typeCertification: TypeCertification | null;
+  formationId: string;
+  formation: (FormationAPI & { slug: string | null }) | null;
+  participantId: string;
+  participant: FormationParticipant | null;
+  dateDelivrance: string;
+  dateExpiration: string | null;
+  dureeValidite: number | null;
+  prerequis: string | null;
+  competencesCles: string | null;
+  nbCertifies: number;
+  tauxReussite: string | null;
+  couleur: string | null;
+  adminId: string;
+}
+
+export interface CertificatGenerateData {
+  verifyUrl: string;
+  [key: string]: unknown;
+}
+
+export const certificatsApi = {
+  getAll: async (params?: {
+    formationId?: string;
+    participantId?: string;
+    typeCertificationId?: string;
+  }): Promise<FormationCertificat[]> => {
+    const qs = new URLSearchParams();
+    if (params?.formationId) qs.set("formationId", params.formationId);
+    if (params?.participantId) qs.set("participantId", params.participantId);
+    if (params?.typeCertificationId) qs.set("typeCertificationId", params.typeCertificationId);
+    const url = `/api/formation/certificats${qs.toString() ? "?" + qs.toString() : ""}`;
+    const res = await request<{ success: boolean; data: FormationCertificat[] } | FormationCertificat[]>(url);
+    return Array.isArray(res) ? res : ((res as { data: FormationCertificat[] }).data ?? []);
+  },
+
+  generate: async (slug: string): Promise<CertificatGenerateData> => {
+    const res = await request<{ success: boolean; data: CertificatGenerateData }>(
+      `/api/formation/${encodeURIComponent(slug)}/certificat/generate`
+    );
+    return (res as { data: CertificatGenerateData }).data ?? (res as unknown as CertificatGenerateData);
   },
 };
 
