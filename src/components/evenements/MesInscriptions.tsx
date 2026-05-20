@@ -350,7 +350,7 @@ export function MesInscriptions() {
 
       {/* E-Ticket Dialog */}
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
-        <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Mon E-Ticket</DialogTitle>
             <DialogDescription>

@@ -104,6 +104,7 @@ import {
   type CentreFormation,
   type SousFiliere,
   type FormateurAvecFormations,
+  type FormateurDocument,
   type FormationAPI,
   type FormationChapitre,
   type FormationLecon,
@@ -120,6 +121,11 @@ interface LessonDraft {
   type_contenu: "video" | "pdf" | "texte";
   file: File | null;
   contenu: string;
+}
+
+interface DocumentDraft {
+  category: "cv" | "diplome" | "certificat";
+  file: File;
 }
 
 type SubscriptionTier = "bronze" | "silver" | "gold" | "platine";
@@ -212,6 +218,7 @@ const DEVENIR_FORM_INIT = {
   linkedin: "",
   website: "",
   photo: null as File | null,
+  documents: [] as DocumentDraft[],
 };
 
 export function EspaceFormateur() {
@@ -1295,9 +1302,23 @@ export function EspaceFormateur() {
   const [devenirError, setDevenirError] = useState<string | null>(null);
   const [devenirSuccess, setDevenirSuccess] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const cvInputRef = useRef<HTMLInputElement>(null);
+  const diplomeInputRef = useRef<HTMLInputElement>(null);
+  const certificatInputRef = useRef<HTMLInputElement>(null);
 
   const setDF = (key: string, value: unknown) =>
     setDevenirForm((p) => ({ ...p, [key]: value }));
+
+  const handleDocumentChange = (
+    category: DocumentDraft["category"],
+    file: File | null,
+  ) => {
+    setDevenirForm((p) => {
+      const docs = p.documents.filter((d) => d.category !== category);
+      if (file) docs.push({ category, file });
+      return { ...p, documents: docs };
+    });
+  };
 
   const openDevenir = () => {
     setDevenirForm({ ...DEVENIR_FORM_INIT, email: user?.email ?? "" });
@@ -1307,6 +1328,10 @@ export function EspaceFormateur() {
   };
 
   const handleDevenirSubmit = async () => {
+    if (devenirForm.documents.length === 0) {
+      setDevenirError("Veuillez ajouter au moins un document (CV, diplôme ou certificat).");
+      return;
+    }
     setDevenirSubmitting(true);
     setDevenirError(null);
     try {
@@ -1320,6 +1345,7 @@ export function EspaceFormateur() {
         linkedin: devenirForm.linkedin || undefined,
         website: devenirForm.website || undefined,
         photo: devenirForm.photo,
+        documents: devenirForm.documents,
       });
       setDevenirSuccess(true);
     } catch (e: unknown) {
@@ -1328,6 +1354,101 @@ export function EspaceFormateur() {
       );
     } finally {
       setDevenirSubmitting(false);
+    }
+  };
+
+  // ── Edit formateur dialog ─────────────────────────────────────────────────
+  const [editFormateurOpen, setEditFormateurOpen] = useState(false);
+  const [editFormateurTarget, setEditFormateurTarget] = useState<FormateurAvecFormations | null>(null);
+  const [editFormateurForm, setEditFormateurForm] = useState({ ...DEVENIR_FORM_INIT });
+  const [editFormateurSubmitting, setEditFormateurSubmitting] = useState(false);
+  const [editFormateurError, setEditFormateurError] = useState<string | null>(null);
+  const [editFormateurSuccess, setEditFormateurSuccess] = useState(false);
+  const editFormateurPhotoRef = useRef<HTMLInputElement>(null);
+  const editFormateurCvRef = useRef<HTMLInputElement>(null);
+  const editFormateurDiplomeRef = useRef<HTMLInputElement>(null);
+  const editFormateurCertificatRef = useRef<HTMLInputElement>(null);
+
+  const setEDF = (key: string, value: unknown) =>
+    setEditFormateurForm((p) => ({ ...p, [key]: value }));
+
+  const handleEditFormateurDocumentChange = (
+    category: DocumentDraft["category"],
+    file: File | null,
+  ) => {
+    setEditFormateurForm((p) => {
+      const docs = p.documents.filter((d) => d.category !== category);
+      if (file) docs.push({ category, file });
+      return { ...p, documents: docs };
+    });
+  };
+
+  const openEditFormateur = (f: FormateurAvecFormations) => {
+    setEditFormateurTarget(f);
+    setEditFormateurForm({
+      firstname: f.firstname,
+      lastname: f.lastname,
+      email: f.email ?? "",
+      phone: f.phone ?? "",
+      titre: f.titre ?? "",
+      bio: f.bio ?? "",
+      linkedin: f.linkedin ?? "",
+      website: f.website ?? "",
+      photo: null,
+      documents: [],
+    });
+    setEditFormateurError(null);
+    setEditFormateurSuccess(false);
+    setEditFormateurOpen(true);
+  };
+
+  const handleEditFormateurSubmit = async () => {
+    if (!editFormateurTarget) return;
+    setEditFormateurSubmitting(true);
+    setEditFormateurError(null);
+    try {
+      await formateursApi.update(editFormateurTarget.id, {
+        firstname: editFormateurForm.firstname || undefined,
+        lastname: editFormateurForm.lastname || undefined,
+        email: editFormateurForm.email || undefined,
+        phone: editFormateurForm.phone || undefined,
+        titre: editFormateurForm.titre || undefined,
+        bio: editFormateurForm.bio || undefined,
+        linkedin: editFormateurForm.linkedin || undefined,
+        website: editFormateurForm.website || undefined,
+        photo: editFormateurForm.photo,
+        documents: editFormateurForm.documents.length ? editFormateurForm.documents : undefined,
+      });
+      setEditFormateurSuccess(true);
+      if (user?.id) {
+        formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
+      }
+    } catch (e: unknown) {
+      setEditFormateurError(
+        e instanceof Error ? e.message : "Erreur lors de la mise à jour",
+      );
+    } finally {
+      setEditFormateurSubmitting(false);
+    }
+  };
+
+  // ── Delete formateur ───────────────────────────────────────────────────────
+  const [deleteFormateurTarget, setDeleteFormateurTarget] = useState<FormateurAvecFormations | null>(null);
+  const [deleteFormateurSubmitting, setDeleteFormateurSubmitting] = useState(false);
+
+  const handleDeleteFormateur = async () => {
+    if (!deleteFormateurTarget) return;
+    setDeleteFormateurSubmitting(true);
+    try {
+      await formateursApi.delete(deleteFormateurTarget.id);
+      setDeleteFormateurTarget(null);
+      if (user?.id) {
+        formateursApi.getByCreator(user.id).then(setFormateurs).catch(() => {});
+      }
+    } catch {
+      // garde le dialog ouvert
+    } finally {
+      setDeleteFormateurSubmitting(false);
     }
   };
 
@@ -2553,6 +2674,30 @@ export function EspaceFormateur() {
                         )}
                       </div>
 
+                      {f.documents && f.documents.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Documents
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {f.documents.map((doc: FormateurDocument, i: number) => (
+                              <a
+                                key={i}
+                                href={doc.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-border hover:bg-muted transition-colors"
+                              >
+                                <FileText className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate max-w-[80px]">
+                                  {doc.name || doc.type.toUpperCase()}
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between pt-1 border-t">
                         <span className="text-xs text-muted-foreground">
                           {f.formations.length} formation
@@ -2579,6 +2724,22 @@ export function EspaceFormateur() {
                               <Globe className="w-3 h-3" />
                             </a>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => openEditFormateur(f)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                            onClick={() => setDeleteFormateurTarget(f)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -5915,6 +6076,63 @@ export function EspaceFormateur() {
                 </div>
               </div>
 
+              {/* Documents */}
+              <div className="space-y-2">
+                <Label>
+                  Documents <span className="text-destructive">*</span>{" "}
+                  <span className="text-muted-foreground font-normal text-xs">(au moins 1 requis)</span>
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Formats acceptés : PDF ou image. CV, diplôme et certificat sont optionnels mais au moins un est requis.
+                </p>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { category: "cv" as const, label: "CV", ref: cvInputRef },
+                      { category: "diplome" as const, label: "Diplôme", ref: diplomeInputRef },
+                      { category: "certificat" as const, label: "Certificat", ref: certificatInputRef },
+                    ] as const
+                  ).map(({ category, label, ref }) => {
+                    const doc = devenirForm.documents.find((d) => d.category === category);
+                    return (
+                      <div key={category} className="flex items-center gap-3">
+                        <div
+                          className="flex-1 border border-dashed rounded-sm px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors flex items-center gap-2"
+                          onClick={() => ref.current?.click()}
+                        >
+                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                          {doc ? (
+                            <span className="font-medium text-foreground truncate">{doc.file.name}</span>
+                          ) : (
+                            <span className="text-muted-foreground">{label} (PDF ou image)</span>
+                          )}
+                        </div>
+                        {doc && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive h-8 w-8 p-0"
+                            onClick={() => handleDocumentChange(category, null)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <input
+                          ref={ref}
+                          type="file"
+                          accept=".pdf,image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleDocumentChange(category, e.target.files?.[0] ?? null)
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {devenirError && (
                 <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">
                   {devenirError}
@@ -5949,6 +6167,210 @@ export function EspaceFormateur() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Éditer formateur */}
+      <Dialog open={editFormateurOpen} onOpenChange={setEditFormateurOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-5 h-5 text-primary" />
+              Modifier le formateur
+            </DialogTitle>
+          </DialogHeader>
+
+          {editFormateurSuccess ? (
+            <div className="py-8 text-center space-y-3">
+              <CheckCircle className="w-14 h-14 mx-auto text-green-500" />
+              <p className="font-semibold text-lg">Formateur mis à jour !</p>
+              <Button onClick={() => setEditFormateurOpen(false)} className="rounded-sm">
+                Fermer
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Photo */}
+              <div className="space-y-2">
+                <Label>Photo de profil</Label>
+                <div
+                  className="border-2 border-dashed rounded-sm p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => editFormateurPhotoRef.current?.click()}
+                >
+                  {editFormateurForm.photo ? (
+                    <div className="flex items-center justify-center gap-2 text-sm">
+                      <ImageIcon className="w-4 h-4 text-primary" />
+                      <span className="font-medium">{editFormateurForm.photo.name}</span>
+                    </div>
+                  ) : editFormateurTarget?.photo ? (
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Photo actuelle — cliquer pour remplacer</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Upload className="w-7 h-7 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Cliquer pour choisir une photo</p>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={editFormateurPhotoRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setEDF("photo", e.target.files?.[0] ?? null)}
+                />
+              </div>
+
+              {/* Nom / Prénom */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Prénom <span className="text-destructive">*</span></Label>
+                  <Input value={editFormateurForm.firstname} onChange={(e) => setEDF("firstname", e.target.value)} placeholder="Prénom" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nom <span className="text-destructive">*</span></Label>
+                  <Input value={editFormateurForm.lastname} onChange={(e) => setEDF("lastname", e.target.value)} placeholder="Nom" />
+                </div>
+              </div>
+
+              {/* Email / Téléphone */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={editFormateurForm.email} onChange={(e) => setEDF("email", e.target.value)} placeholder="email@exemple.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Téléphone</Label>
+                  <Input value={editFormateurForm.phone} onChange={(e) => setEDF("phone", e.target.value)} placeholder="07 XX XX XX XX" />
+                </div>
+              </div>
+
+              {/* Titre */}
+              <div className="space-y-2">
+                <Label>Titre / Spécialité</Label>
+                <Input value={editFormateurForm.titre} onChange={(e) => setEDF("titre", e.target.value)} placeholder="Ex: Expert Finance PME" />
+              </div>
+
+              {/* Bio */}
+              <div className="space-y-2">
+                <Label>Biographie</Label>
+                <Textarea value={editFormateurForm.bio} onChange={(e) => setEDF("bio", e.target.value)} placeholder="Décrivez votre expertise..." rows={3} />
+              </div>
+
+              {/* Liens */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>LinkedIn</Label>
+                  <Input value={editFormateurForm.linkedin} onChange={(e) => setEDF("linkedin", e.target.value)} placeholder="https://linkedin.com/in/..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Site web</Label>
+                  <Input value={editFormateurForm.website} onChange={(e) => setEDF("website", e.target.value)} placeholder="https://monsite.com" />
+                </div>
+              </div>
+
+              {/* Nouveaux documents */}
+              <div className="space-y-2">
+                <Label>
+                  Ajouter des documents{" "}
+                  <span className="text-muted-foreground font-normal text-xs">(optionnel)</span>
+                </Label>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { category: "cv" as const, label: "CV", ref: editFormateurCvRef },
+                      { category: "diplome" as const, label: "Diplôme", ref: editFormateurDiplomeRef },
+                      { category: "certificat" as const, label: "Certificat", ref: editFormateurCertificatRef },
+                    ] as const
+                  ).map(({ category, label, ref }) => {
+                    const doc = editFormateurForm.documents.find((d) => d.category === category);
+                    return (
+                      <div key={category} className="flex items-center gap-3">
+                        <div
+                          className="flex-1 border border-dashed rounded-sm px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 transition-colors flex items-center gap-2"
+                          onClick={() => ref.current?.click()}
+                        >
+                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                          {doc ? (
+                            <span className="font-medium text-foreground truncate">{doc.file.name}</span>
+                          ) : (
+                            <span className="text-muted-foreground">{label} (PDF ou image)</span>
+                          )}
+                        </div>
+                        {doc && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive h-8 w-8 p-0"
+                            onClick={() => handleEditFormateurDocumentChange(category, null)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <input
+                          ref={ref}
+                          type="file"
+                          accept=".pdf,image/*"
+                          className="hidden"
+                          onChange={(e) => handleEditFormateurDocumentChange(category, e.target.files?.[0] ?? null)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {editFormateurError && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-sm text-sm">
+                  {editFormateurError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" className="rounded-sm" onClick={() => setEditFormateurOpen(false)} disabled={editFormateurSubmitting}>
+                  Annuler
+                </Button>
+                <Button
+                  className="rounded-sm gap-2"
+                  onClick={handleEditFormateurSubmit}
+                  disabled={editFormateurSubmitting || !editFormateurForm.firstname || !editFormateurForm.lastname}
+                >
+                  {editFormateurSubmitting ? <span className="animate-spin">⏳</span> : <Pencil className="w-4 h-4" />}
+                  {editFormateurSubmitting ? "Enregistrement..." : "Enregistrer"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Supprimer formateur */}
+      <Dialog open={!!deleteFormateurTarget} onOpenChange={(open) => { if (!open) setDeleteFormateurTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              Supprimer le formateur
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Voulez-vous vraiment supprimer{" "}
+            <span className="font-semibold text-foreground">
+              {deleteFormateurTarget?.firstname} {deleteFormateurTarget?.lastname}
+            </span>{" "}
+            ? Cette action est irréversible.
+          </p>
+          <DialogFooter className="gap-2 mt-2">
+            <Button variant="outline" className="rounded-sm" onClick={() => setDeleteFormateurTarget(null)} disabled={deleteFormateurSubmitting}>
+              Annuler
+            </Button>
+            <Button variant="destructive" className="rounded-sm" onClick={handleDeleteFormateur} disabled={deleteFormateurSubmitting}>
+              {deleteFormateurSubmitting ? "Suppression..." : "Supprimer"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

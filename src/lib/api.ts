@@ -141,6 +141,7 @@ export interface TicketDetail {
   ticket_type: { nom: string; prix: string } | null;
   quantite: number;
   montantTotal: number;
+  participant_tickets?: Array<{ id: string; code: string; numero: number; est_valable: boolean; used_at: string | null }>;
 }
 
 export interface Registration {
@@ -411,6 +412,103 @@ export interface RegistrationVerif {
   }>;
 }
 
+export interface RegistrationParticipant {
+  id: string;
+  user_id: string;
+  event_id: string;
+  est_valable: boolean;
+  prenom: string;
+  nom: string;
+  email: string;
+  telephone: string | null;
+  entreprise: string | null;
+  total_price: number | string;
+  date_commande: string;
+  statut_paiement: string;
+  details: Array<{
+    id: string;
+    ticket_type_id: string;
+    ticket_type: { id: string; nom: string; prix: string; prix_membre: string } | null;
+    quantite: number;
+    montantTotal: number;
+    participant_tickets?: Array<{ id: string; code: string; numero: number; est_valable: boolean; used_at: string | null }>;
+  }>;
+  participant_tickets?: Array<{ id: string; code: string; ticket: { nom: string } | null; numero: number; est_valable: boolean; used_at: string | null }>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ParticipantTicketAll {
+  id: string;
+  code: string;
+  registration_id: string;
+  registration: {
+    id: string;
+    prenom: string;
+    nom: string;
+    email: string;
+    telephone: string | null;
+    entreprise: string | null;
+    est_valable: boolean;
+    statut_paiement: string;
+    date_commande: string;
+  } | null;
+  registration_detail_id: string;
+  ticket_type_id: string;
+  ticket: {
+    id: string;
+    nom: string;
+    prix: string;
+    prix_membre: string;
+    quantite_totale: number;
+    quantite_restante: number;
+  } | null;
+  event_id: string;
+  user_id: string;
+  numero: number;
+  est_valable: boolean;
+  used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AllEventTicketsResponse {
+  eventId: string;
+  total: number;
+  valables: number;
+  utilises: number;
+  participantsCount: number;
+  tickets: ParticipantTicketAll[];
+}
+
+export const participantTicketsApi = {
+  getAllByEvent: async (eventId: string, params?: { est_valable?: boolean; ticket_type_id?: string }): Promise<AllEventTicketsResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.est_valable !== undefined) qs.set("est_valable", String(params.est_valable));
+    if (params?.ticket_type_id) qs.set("ticket_type_id", params.ticket_type_id);
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    const res = await request<{ success: boolean; data: AllEventTicketsResponse }>(
+      `/api/participant-tickets/event/${encodeURIComponent(eventId)}/all${query}`
+    );
+    return res.data;
+  },
+
+  verify: async (codeOrId: string): Promise<ParticipantTicketAll> => {
+    const res = await request<{ success: boolean; data: ParticipantTicketAll }>(
+      `/api/participant-tickets/verify/${encodeURIComponent(codeOrId)}`
+    );
+    return res.data;
+  },
+
+  validerAcces: async (codeOrId: string): Promise<ParticipantTicketAll> => {
+    const res = await request<{ success: boolean; data: ParticipantTicketAll }>(
+      `/api/participant-tickets/valider-acces/${encodeURIComponent(codeOrId)}`,
+      { method: "POST" }
+    );
+    return res.data;
+  },
+};
+
 export const registrationsApi = {
   getByUser: async (userId: string): Promise<Registration[]> => {
     const res = await request<{ success: boolean; data: Registration[] } | Registration[]>(
@@ -420,11 +518,11 @@ export const registrationsApi = {
     return list.filter((r) => r.user_id === userId);
   },
 
-  getAll: async (): Promise<Registration[]> => {
-    const res = await request<{ success: boolean; data: Registration[] } | Registration[]>(
+  getAll: async (): Promise<RegistrationParticipant[]> => {
+    const res = await request<{ success: boolean; data: RegistrationParticipant[] } | RegistrationParticipant[]>(
       `/api/registrations`
     );
-    return Array.isArray(res) ? res : (res as { data: Registration[] }).data ?? [];
+    return Array.isArray(res) ? res : (res as { data: RegistrationParticipant[] }).data ?? [];
   },
 
   verifiTicket: async (registrationId: string): Promise<RegistrationVerif> => {
@@ -440,6 +538,13 @@ export const registrationsApi = {
       { method: "POST", skipAuth: true }
     );
     return (res as { data: RegistrationVerif }).data ?? (res as RegistrationVerif);
+  },
+
+  getByEvent: async (eventId: string): Promise<RegistrationParticipant[]> => {
+    const res = await request<{ success: boolean; data: RegistrationParticipant[] } | RegistrationParticipant[]>(
+      `/api/registrations?event_id=${encodeURIComponent(eventId)}`
+    );
+    return Array.isArray(res) ? res : (res as { data: RegistrationParticipant[] }).data ?? [];
   },
 };
 
@@ -1168,6 +1273,12 @@ export interface FormationChapitre {
   lecons: FormationLecon[];
 }
 
+export interface FormateurDocument {
+  url: string;
+  name: string;
+  type: string;
+}
+
 export interface FormationFormateur {
   id: string;
   firstname: string;
@@ -1181,7 +1292,13 @@ export interface FormationFormateur {
   website: string | null;
   statut: string | null;
   motifAnnulation: string | null;
+  documents: FormateurDocument[] | null;
   creator_user_id?: string;
+  creator_role?: string;
+  creator_details?: { id: string; role: string; name: string; email: string } | null;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface FormateurAvecFormations extends FormationFormateur {
@@ -1232,6 +1349,7 @@ export const formateursApi = {
     statut?: string;
     motifAnnulation?: string;
     photo?: File | null;
+    documents?: Array<{ file: File; category: "cv" | "diplome" | "certificat" }>;
   }): Promise<FormationFormateur> => {
     const fd = new FormData();
     fd.append("firstname", payload.firstname);
@@ -1245,6 +1363,7 @@ export const formateursApi = {
     if (payload.statut)          fd.append("statut",          payload.statut);
     if (payload.motifAnnulation) fd.append("motifAnnulation", payload.motifAnnulation);
     if (payload.photo)           fd.append("photo",           payload.photo);
+    payload.documents?.forEach((d) => fd.append("documents", d.file));
     const res = await requestMultipart<{ success: boolean; data: FormationFormateur }>(
       "/api/formation/formateurs", fd
     );
@@ -1285,6 +1404,49 @@ export const formateursApi = {
     }
 
     return Array.from(byEmail.values());
+  },
+
+  update: async (
+    id: string,
+    payload: {
+      firstname?: string;
+      lastname?: string;
+      email?: string;
+      phone?: string;
+      titre?: string;
+      bio?: string;
+      linkedin?: string;
+      website?: string;
+      statut?: string;
+      motifAnnulation?: string;
+      photo?: File | null;
+      documents?: Array<{ file: File; category: "cv" | "diplome" | "certificat" }>;
+    },
+  ): Promise<FormationFormateur> => {
+    const fd = new FormData();
+    if (payload.firstname)        fd.append("firstname",        payload.firstname);
+    if (payload.lastname)         fd.append("lastname",         payload.lastname);
+    if (payload.email !== undefined) fd.append("email",         payload.email ?? "");
+    if (payload.phone !== undefined) fd.append("phone",         payload.phone ?? "");
+    if (payload.titre !== undefined) fd.append("titre",         payload.titre ?? "");
+    if (payload.bio !== undefined)   fd.append("bio",           payload.bio ?? "");
+    if (payload.linkedin !== undefined) fd.append("linkedin",   payload.linkedin ?? "");
+    if (payload.website !== undefined)  fd.append("website",    payload.website ?? "");
+    if (payload.statut)          fd.append("statut",          payload.statut);
+    if (payload.motifAnnulation) fd.append("motifAnnulation", payload.motifAnnulation);
+    if (payload.photo)           fd.append("photo",           payload.photo);
+    payload.documents?.forEach((d) => fd.append("documents", d.file));
+    const res = await requestMultipart<{ success: boolean; data: FormationFormateur }>(
+      `/api/formation/formateurs/${id}`, fd, "PATCH"
+    );
+    return res.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    const token = getToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    await fetch(`${API_BASE}/api/formation/formateurs/${id}`, { method: "DELETE", headers });
   },
 };
 

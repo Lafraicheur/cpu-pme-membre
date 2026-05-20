@@ -24,6 +24,7 @@ import Support from "./pages/Support";
 import Historique from "./pages/Historique";
 import Parametres from "./pages/Parametres";
 import NotFound from "./pages/NotFound";
+import EvenementParticipants from "./pages/EvenementParticipants";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const App = () => (
               <Route path="/kyc" element={<KYCConformite />} />
               <Route path="/incubateur" element={<Incubateur />} />
               <Route path="/evenements" element={<Evenements />} />
+              <Route path="/evenements/:eventId/participants" element={<EvenementParticipants />} />
               <Route path="/formation" element={<Formation />} />
               <Route path="/affiliation" element={<Affiliation />} />
               <Route path="/data-hub" element={<DataHub />} />

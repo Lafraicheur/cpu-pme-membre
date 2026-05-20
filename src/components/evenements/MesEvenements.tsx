@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { evenementsApi, ticketTypesApi, registrationsApi, paymentsApi, type Evenement, type TicketType, type RegistrationVerif, type Payment } from "@/lib/api";
+import { evenementsApi, ticketTypesApi, registrationsApi, paymentsApi, participantTicketsApi, type Evenement, type TicketType, type Payment, type ParticipantTicketAll } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +17,7 @@ import {
   Calendar, MapPin, Clock, PlusCircle, CalendarX, Banknote, Users, Ticket,
   Search, CheckCircle2, XCircle, AlertCircle, Loader2, ScanLine, ShieldCheck,
   Camera, Keyboard, X, Pencil, Trash2, TrendingUp, CreditCard, ArrowUpRight,
-  Filter, Download,
+  Filter, Download, ChevronDown, ChevronRight,
 } from "lucide-react";
 
 function formatDate(iso: string) {
@@ -32,19 +33,29 @@ function formatPrice(price: number): string {
 // ─── Ticket price row ────────────────────────────────────────────────────────
 
 function TicketPriceRow({ ticket }: { ticket: TicketType }) {
+  const vendus = ticket.quantite_totale - ticket.quantite_restante;
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="rounded-lg bg-muted/60 px-3 py-2">
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-0.5">
-          <Banknote className="w-3 h-3" /> Public
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-muted/60 px-3 py-2">
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium uppercase tracking-wide mb-0.5">
+            <Banknote className="w-3 h-3" /> Public
+          </div>
+          <p className="text-sm font-bold text-foreground">{formatPrice(ticket.prix)}</p>
         </div>
-        <p className="text-sm font-bold text-foreground">{formatPrice(ticket.prix)}</p>
+        <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
+          <div className="flex items-center gap-1 text-[10px] text-primary font-medium uppercase tracking-wide mb-0.5">
+            <Users className="w-3 h-3" /> Membre
+          </div>
+          <p className="text-sm font-bold text-primary">{formatPrice(ticket.prix_membre)}</p>
+        </div>
       </div>
-      <div className="rounded-lg bg-primary/5 border border-primary/20 px-3 py-2">
-        <div className="flex items-center gap-1 text-[10px] text-primary font-medium uppercase tracking-wide mb-0.5">
-          <Users className="w-3 h-3" /> Membre
-        </div>
-        <p className="text-sm font-bold text-primary">{formatPrice(ticket.prix_membre)}</p>
+      <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5">
+        <span className="flex items-center gap-1">
+          <Ticket className="w-3 h-3" />
+          {vendus} / {ticket.quantite_totale} vendus
+        </span>
+        <span className="font-medium text-foreground">{ticket.quantite_restante} restants</span>
       </div>
     </div>
   );
@@ -113,6 +124,7 @@ function MonEvenementCard({
   onEdit: (event: Evenement) => void;
   onDelete: (event: Evenement) => void;
 }) {
+  const navigate = useNavigate();
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
   const typeNom = event.type_evenement?.nom ?? "Événement";
   const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
@@ -192,6 +204,15 @@ function MonEvenementCard({
           <a href={eventUrl} target="_blank" rel="noopener noreferrer" className="flex-1">
             <Button variant="outline" size="sm" className="w-full h-8 text-xs">Voir l'événement</Button>
           </a>
+          <Button
+            variant="outline" size="sm"
+            className="h-8 px-2 text-xs gap-1 shrink-0 text-primary border-primary/30 hover:bg-primary/10"
+            onClick={() => navigate(`/evenements/${event.id}/participants`)}
+            title="Voir les participants"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Participants</span>
+          </Button>
           <Button variant="outline" size="sm" className="h-8 w-8 p-0 shrink-0" onClick={() => onEdit(event)}>
             <Pencil className="w-3.5 h-3.5" />
           </Button>
@@ -316,47 +337,46 @@ function QrScannerView({ onScan, onClose }: { onScan: (text: string) => void; on
 
 function VerifTicketTab() {
   const [inputMode, setInputMode] = useState<"manual" | "scan">("manual");
-  const [inputId, setInputId] = useState("");
-  const [registrationId, setRegistrationId] = useState<string | null>(null);
+  const [inputCode, setInputCode] = useState("");
+  const [codeOrId, setCodeOrId] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState<RegistrationVerif | null>(null);
+  const [validationResult, setValidationResult] = useState<ParticipantTicketAll | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [accessValidated, setAccessValidated] = useState(false);
 
   const { data: verif, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["verifi-ticket", registrationId],
-    queryFn: () => registrationsApi.verifiTicket(registrationId!),
-    enabled: !!registrationId,
+    queryKey: ["verify-ticket", codeOrId],
+    queryFn: () => participantTicketsApi.verify(codeOrId!),
+    enabled: !!codeOrId,
     retry: false,
     staleTime: 0,
   });
 
   const result = validationResult ?? verif;
 
-  const triggerSearch = (id: string) => {
-    const clean = id.trim();
+  const triggerSearch = (val: string) => {
+    const clean = val.trim();
     if (!clean) return;
     setValidationResult(null);
     setValidationError(null);
     setInputMode("manual");
-    if (clean === registrationId) {
+    if (clean === codeOrId) {
       refetch();
     } else {
-      setRegistrationId(clean);
+      setCodeOrId(clean);
     }
   };
 
   const handleScan = (decoded: string) => {
-    setInputId(decoded);
+    setInputCode(decoded);
     triggerSearch(decoded);
   };
 
   const handleValiderAcces = async () => {
-    if (!registrationId) return;
+    if (!codeOrId) return;
     setValidating(true);
     setValidationError(null);
     try {
-      const res = await registrationsApi.validerAcces(registrationId);
+      const res = await participantTicketsApi.validerAcces(codeOrId);
       setValidationResult(res);
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Erreur lors de la validation.");
@@ -365,12 +385,15 @@ function VerifTicketTab() {
     }
   };
 
+  const reg = result?.registration;
+  const isUsed = !!result?.used_at;
+
   return (
     <div className="space-y-6 max-w-xl">
       <div>
-        <h2 className="text-lg font-semibold">Vérifier un ticket</h2>
+        <h2 className="text-lg font-semibold">Vérifier un billet</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          Scannez le QR code du billet ou saisissez l'ID d'inscription manuellement.
+          Scannez le QR code ou saisissez le code billet (EVT-…) ou son UUID.
         </p>
       </div>
 
@@ -396,14 +419,14 @@ function VerifTicketTab() {
           <div className="relative flex-1">
             <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              className="pl-9 font-mono text-sm"
-              placeholder="ID d'inscription (UUID)…"
-              value={inputId}
-              onChange={(e) => setInputId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && triggerSearch(inputId)}
+              className="pl-9 font-mono text-sm uppercase"
+              placeholder="EVT-XXXXXXXX"
+              value={inputCode}
+              onChange={(e) => setInputCode(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && triggerSearch(inputCode)}
             />
           </div>
-          <Button onClick={() => triggerSearch(inputId)} disabled={!inputId.trim() || isLoading} className="gap-2 shrink-0">
+          <Button onClick={() => triggerSearch(inputCode)} disabled={!inputCode.trim() || isLoading} className="gap-2 shrink-0">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             Vérifier
           </Button>
@@ -415,11 +438,11 @@ function VerifTicketTab() {
         <QrScannerView onScan={handleScan} onClose={() => setInputMode("manual")} />
       )}
 
-      {/* Erreur API (404, etc.) */}
+      {/* Erreur API */}
       {isError && (
         <div className="flex items-center gap-2 text-sm text-destructive p-4 border border-destructive/20 rounded-lg bg-destructive/5">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          {(error as Error)?.message ?? "Inscription introuvable."}
+          {(error as Error)?.message ?? "Billet introuvable."}
         </div>
       )}
 
@@ -427,84 +450,79 @@ function VerifTicketTab() {
       {result && (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Bandeau statut */}
-          <div className={`px-5 py-4 flex items-center gap-3 ${result.est_valable ? "bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800"}`}>
-            {result.est_valable
+          <div className={`px-5 py-4 flex items-center gap-3 ${
+            isUsed
+              ? "bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800"
+              : result.est_valable
+              ? "bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-200 dark:border-emerald-800"
+              : "bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800"
+          }`}>
+            {isUsed
+              ? <XCircle className="w-6 h-6 text-amber-500 shrink-0" />
+              : result.est_valable
               ? <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
               : <XCircle className="w-6 h-6 text-red-500 shrink-0" />}
             <div>
-              <p className={`font-semibold text-sm ${result.est_valable ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                {result.est_valable ? "Billet valide" : "Billet non valable"}
+              <p className={`font-semibold text-sm ${
+                isUsed
+                  ? "text-amber-700 dark:text-amber-400"
+                  : result.est_valable
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : "text-red-600 dark:text-red-400"
+              }`}>
+                {isUsed ? "Billet déjà utilisé" : result.est_valable ? "Billet valide" : "Billet non valable"}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5 font-mono">{result.id}</p>
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono">{result.code}</p>
             </div>
-            <div className="ml-auto">
-              <Badge className={result.statut_paiement === "paye" ? "bg-emerald-500 text-white" : "bg-amber-500 text-white"}>
-                {result.statut_paiement}
-              </Badge>
+            <div className="ml-auto shrink-0">
+              <Badge variant="outline" className="font-mono text-[10px]">N°{result.numero}</Badge>
             </div>
           </div>
 
           <div className="p-5 space-y-5">
-            {/* Événement */}
-            {result.evenement && (
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Événement</p>
-                <p className="font-semibold text-sm">{result.evenement.titre}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {formatDate(result.evenement.date_debut)} à {result.evenement.heure_debut}
-                  </span>
-                  {result.evenement.lieu && (
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {result.evenement.lieu}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="border-t" />
-
-            {/* Participant */}
+            {/* Billet */}
             <div className="space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Participant</p>
-              <p className="font-semibold text-sm">{result.prenom} {result.nom}</p>
-              <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                <span>{result.email}</span>
-                {result.telephone && <span>{result.telephone}</span>}
-                {result.entreprise && <span>{result.entreprise}</span>}
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Type de billet</p>
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <Ticket className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="font-medium">{result.ticket?.nom ?? "—"}</span>
+                </div>
+                <span className="font-semibold text-xs">
+                  {Number(result.ticket?.prix ?? 0) === 0 ? "Gratuit" : `${Number(result.ticket?.prix).toLocaleString("fr-FR")} FCFA`}
+                </span>
               </div>
+              {isUsed && result.used_at && (
+                <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Utilisé le {new Date(result.used_at).toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
             </div>
 
-            <div className="border-t" />
-
-            {/* Billets */}
-            {(result.details ?? []).length > 0 && (
-              <div className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Billets</p>
-                {(result.details ?? []).map((d) => (
-                  <div key={d.id} className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Ticket className="w-3.5 h-3.5 text-primary shrink-0" />
-                      <span className="font-medium">{d.ticket_type?.nom ?? "Billet"}</span>
-                      <span className="text-xs text-muted-foreground">×{d.quantite}</span>
-                    </div>
-                    <span className="font-semibold text-xs">
-                      {d.montantTotal === 0 ? "Gratuit" : `${d.montantTotal.toLocaleString("fr-FR")} FCFA`}
-                    </span>
+            {/* Participant */}
+            {reg && (
+              <>
+                <div className="border-t" />
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Participant</p>
+                  <p className="font-semibold text-sm">{reg.prenom} {reg.nom}</p>
+                  <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                    <span>{reg.email}</span>
+                    {reg.telephone && <span>{reg.telephone}</span>}
+                    {reg.entreprise && <span>{reg.entreprise}</span>}
                   </div>
-                ))}
-                <div className="flex items-center justify-between text-sm font-semibold pt-1 px-1">
-                  <span>Total</span>
-                  <span>
-                    {Number(result.total_price) === 0
-                      ? "Gratuit"
-                      : `${Number(result.total_price).toLocaleString("fr-FR")} FCFA`}
-                  </span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge className={reg.statut_paiement === "gratuit" || reg.statut_paiement === "paye" || reg.statut_paiement === "success" ? "bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]" : "bg-amber-100 text-amber-700 border-amber-200 text-[10px]"}>
+                      {reg.statut_paiement}
+                    </Badge>
+                    {reg.est_valable
+                      ? <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Inscription valide</span>
+                      : <span className="text-[10px] text-red-500 font-medium flex items-center gap-1"><XCircle className="w-3 h-3" /> Inscription invalide</span>
+                    }
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {/* Erreur validation */}
@@ -516,7 +534,7 @@ function VerifTicketTab() {
             )}
 
             {/* Bouton valider accès */}
-            {result.est_valable && (
+            {result.est_valable && !isUsed && (
               <Button onClick={handleValiderAcces} disabled={validating} className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700">
                 {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
                 Valider l'accès (marquer comme utilisé)
@@ -679,6 +697,15 @@ function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statutFilter, setStatutFilter] = useState<string>("all");
   const [exporting, setExporting] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const eventIds = new Set(evenements.map((e) => e.id));
   const eventMap = Object.fromEntries(evenements.map((e) => [e.id, e.titre]));
@@ -725,15 +752,35 @@ function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
         selectedEventId === "all"
           ? "Tous les événements"
           : (eventMap[selectedEventId] ?? selectedEventId);
+      const dateExport = new Date().toLocaleDateString("fr-FR", {
+        day: "numeric", month: "long", year: "numeric",
+      });
+      const totalBillets = filtered.reduce(
+        (s, r) => s + r.details.reduce((ds, d) => ds + d.quantite, 0), 0
+      );
 
-      doc.setFontSize(14);
-      doc.text("Liste des participants", 14, 15);
+      // ── En-tête ──────────────────────────────────────────────────────────────
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.text("Liste des participants", 14, 16);
+
       doc.setFontSize(9);
-      doc.setTextColor(120);
-      doc.text(`Événement : ${eventLabel}`, 14, 22);
-      doc.text(`Exporté le ${new Date().toLocaleDateString("fr-FR")}`, 14, 27);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Événement : ${eventLabel}`, 14, 23);
+      doc.text(
+        `Exporté le ${dateExport}  ·  ${filtered.length} inscription${filtered.length > 1 ? "s" : ""}  ·  ${totalBillets} billet${totalBillets > 1 ? "s" : ""}`,
+        14, 29
+      );
+      doc.setTextColor(0, 0, 0);
 
-      const rows = filtered.map((r, i) => {
+      // ── Tableau 1 : Récapitulatif inscriptions ────────────────────────────────
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Récapitulatif des inscriptions", 14, 37);
+
+      const summaryRows = filtered.map((r, i) => {
         const isFree = Number(r.total_price) === 0;
         const ticketNames = r.details
           .map((d) => `${d.ticket_type?.nom ?? "Billet"} ×${d.quantite}`)
@@ -753,14 +800,76 @@ function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
       });
 
       autoTable(doc, {
-        startY: 32,
+        startY: 41,
         head: [["#", "Nom & Prénom", "Email", "Téléphone", "Entreprise", "Événement", "Billet(s)", "Prix", "Statut", "Date"]],
-        body: rows,
+        body: summaryRows,
         styles: { fontSize: 7.5, cellPadding: 2.5 },
         headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: "bold" },
         alternateRowStyles: { fillColor: [248, 248, 252] },
         columnStyles: { 0: { halign: "center", cellWidth: 8 }, 9: { cellWidth: 22 } },
       });
+
+      // ── Tableau 2 : Détail des billets individuels ────────────────────────────
+      const detailRows: (string | number)[][] = [];
+      let rowIndex = 1;
+      filtered.forEach((r) => {
+        const allPts = r.details.flatMap((d) =>
+          (d.participant_tickets ?? []).map((pt) => ({
+            ...pt,
+            ticketNom: d.ticket_type?.nom ?? "Billet",
+          }))
+        );
+        if (allPts.length === 0) return;
+
+        allPts
+          .sort((a, b) => a.numero - b.numero)
+          .forEach((pt) => {
+            detailRows.push([
+              rowIndex++,
+              `${r.prenom} ${r.nom}`,
+              r.email,
+              eventMap[r.event_id] ?? "—",
+              pt.code,
+              pt.ticketNom,
+              pt.numero,
+              pt.used_at ? "Utilisé" : pt.est_valable ? "Valide" : "Non valide",
+              pt.used_at ? new Date(pt.used_at).toLocaleString("fr-FR") : "—",
+            ]);
+          });
+      });
+
+      if (detailRows.length > 0) {
+        const prevTable = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable;
+        const startY = (prevTable?.finalY ?? 41) + 12;
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("Détail des billets individuels", 14, startY - 4);
+
+        autoTable(doc, {
+          startY,
+          head: [["#", "Participant", "Email", "Événement", "Code billet", "Type", "N°", "Statut", "Utilisé le"]],
+          body: detailRows,
+          styles: { fontSize: 7.5, cellPadding: 2.5 },
+          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [240, 253, 244] },
+          columnStyles: {
+            0: { halign: "center", cellWidth: 8 },
+            4: { font: "courier", fontStyle: "bold" },
+            6: { halign: "center", cellWidth: 10 },
+            7: { cellWidth: 22 },
+            8: { cellWidth: 28 },
+          },
+          didParseCell: (data) => {
+            if (data.column.index === 7 && data.section === "body") {
+              const val = String(data.cell.raw);
+              if (val === "Valide") data.cell.styles.textColor = [5, 150, 105];
+              else if (val === "Utilisé") data.cell.styles.textColor = [217, 119, 6];
+              else data.cell.styles.textColor = [156, 163, 175];
+            }
+          },
+        });
+      }
 
       const filename = `participants_${selectedEventId === "all" ? "tous" : selectedEventId.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.pdf`;
       doc.save(filename);
@@ -888,6 +997,7 @@ function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/20 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <th className="w-8 px-2 py-3" />
                   <th className="px-4 py-3">#</th>
                   <th className="px-4 py-3">Participant</th>
                   <th className="px-4 py-3">Contact</th>
@@ -903,44 +1013,114 @@ function MesParticipantsTab({ evenements }: { evenements: Evenement[] }) {
                 {filtered.map((r, i) => {
                   const isFree = Number(r.total_price) === 0;
                   const isPaid = r.statut_paiement === "paye";
-                  const ticketNames = r.details
-                    .map((d) => `${d.ticket_type?.nom ?? "Billet"} ×${d.quantite}`)
-                    .join(", ");
+                  const allTickets = r.details.flatMap((d) =>
+                    (d.participant_tickets ?? []).map((pt) => ({
+                      ...pt,
+                      ticketNom: d.ticket_type?.nom ?? "Billet",
+                    }))
+                  );
+                  const hasTickets = allTickets.length > 0;
+                  const isExpanded = expandedRows.has(r.id);
+
                   return (
-                    <tr key={r.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 text-muted-foreground text-xs">{i + 1}</td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium whitespace-nowrap">{r.prenom} {r.nom}</p>
-                        <p className="text-xs text-muted-foreground">{r.email}</p>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {r.telephone ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {r.entreprise ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs max-w-[160px]">
-                        <span className="line-clamp-2">{eventMap[r.event_id] ?? "—"}</span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {ticketNames || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
-                        {isFree ? (
-                          <span className="text-blue-500">Gratuit</span>
-                        ) : (
-                          `${Number(r.total_price).toLocaleString("fr-FR")} FCFA`
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                    <>
+                      <tr
+                        key={r.id}
+                        className={`transition-colors ${hasTickets ? "cursor-pointer hover:bg-muted/20" : "hover:bg-muted/10"} ${isExpanded ? "bg-muted/10" : ""}`}
+                        onClick={() => hasTickets && toggleRow(r.id)}
+                      >
+                        <td className="w-8 px-2 py-3 text-center">
+                          {hasTickets ? (
+                            isExpanded
+                              ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground mx-auto" />
+                              : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground mx-auto" />
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground text-xs">{i + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium whitespace-nowrap">{r.prenom} {r.nom}</p>
+                          <p className="text-xs text-muted-foreground">{r.email}</p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {r.telephone ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {r.entreprise ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-xs max-w-[160px]">
+                          <span className="line-clamp-2">{eventMap[r.event_id] ?? "—"}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          <div className="space-y-0.5">
+                            {r.details.map((d) => (
+                              <div key={d.id} className="flex items-center gap-1 whitespace-nowrap">
+                                <span>{d.ticket_type?.nom ?? "Billet"} ×{d.quantite}</span>
+                                {(d.participant_tickets ?? []).length > 0 && (
+                                  <span className="text-[10px] text-primary">
+                                    ({(d.participant_tickets ?? []).length} code{(d.participant_tickets ?? []).length > 1 ? "s" : ""})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
+                          {isFree ? (
+                            <span className="text-blue-500">Gratuit</span>
+                          ) : (
+                            `${Number(r.total_price).toLocaleString("fr-FR")} FCFA`
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <Badge className={isPaid ? "bg-emerald-500 text-white text-[10px]" : "bg-amber-500 text-white text-[10px]"}>
                             {isPaid ? "Payé" : "En attente"}
                           </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {formatDate(r.date_commande)}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {formatDate(r.date_commande)}
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr key={`${r.id}-detail`} className="bg-muted/5">
+                          <td colSpan={10} className="px-6 pb-4 pt-2">
+                            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                              Billets individuels ({allTickets.length})
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                              {allTickets
+                                .sort((a, b) => a.numero - b.numero)
+                                .map((pt) => (
+                                  <div
+                                    key={pt.id}
+                                    className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${
+                                      pt.used_at
+                                        ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+                                        : pt.est_valable
+                                        ? "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                                        : "border-border bg-background"
+                                    }`}
+                                  >
+                                    <div className="space-y-0.5 min-w-0">
+                                      <p className="font-mono font-semibold text-foreground truncate">{pt.code}</p>
+                                      <p className="text-muted-foreground">{pt.ticketNom} · N°{pt.numero}</p>
+                                    </div>
+                                    <div className="ml-2 shrink-0">
+                                      {pt.used_at ? (
+                                        <span className="text-[10px] text-amber-600 font-medium">Utilisé</span>
+                                      ) : pt.est_valable ? (
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                      ) : (
+                                        <XCircle className="w-4 h-4 text-muted-foreground/50" />
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
               </tbody>
@@ -1005,9 +1185,9 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
           <TabsTrigger value="mes-evenements" className="gap-2">
             <Calendar className="w-4 h-4" /> Mes événements
           </TabsTrigger>
-          <TabsTrigger value="participants" className="gap-2">
+          {/* <TabsTrigger value="participants" className="gap-2">
             <Users className="w-4 h-4" /> Mes participants
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger value="revenues" className="gap-2">
             <TrendingUp className="w-4 h-4" /> Revenues
           </TabsTrigger>
@@ -1072,7 +1252,7 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
         </TabsContent>
 
         {/* ── Onglet : Mes participants ── */}
-        <TabsContent value="participants">
+        {/* <TabsContent value="participants">
           <div className="space-y-2">
             <div>
               <h2 className="text-lg font-semibold">Mes participants</h2>
@@ -1080,7 +1260,7 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
             </div>
             <MesParticipantsTab evenements={evenements} />
           </div>
-        </TabsContent>
+        </TabsContent> */}
 
         {/* ── Onglet : Revenues ── */}
         <TabsContent value="revenues">
