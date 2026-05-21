@@ -1675,16 +1675,18 @@ export function EspaceFormateur() {
                     <SelectValue placeholder="Choisir un formateur" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formateurs.length === 0 && (
+                    {formateurs.filter((f) => f.statut === "accepte").length === 0 && (
                       <SelectItem value="_" disabled>
-                        Aucun formateur trouvé
+                        Aucun formateur disponible
                       </SelectItem>
                     )}
-                    {formateurs.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.firstname} {f.lastname}
-                      </SelectItem>
-                    ))}
+                    {formateurs
+                      .filter((f) => f.statut === "accepte")
+                      .map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.firstname} {f.lastname}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -3443,11 +3445,13 @@ export function EspaceFormateur() {
                     <SelectValue placeholder="Choisir un formateur" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formateurs.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.firstname} {f.lastname}
-                      </SelectItem>
-                    ))}
+                    {formateurs
+                      .filter((f) => f.statut === "accepte")
+                      .map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.firstname} {f.lastname}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

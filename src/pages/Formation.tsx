@@ -86,10 +86,10 @@ export default function Formation() {
               <BookOpen className="w-3.5 h-3.5" />
               Catalogue
             </TabsTrigger>
-            <TabsTrigger value="experts" className="gap-1.5 text-xs sm:text-sm">
+            {/* <TabsTrigger value="experts" className="gap-1.5 text-xs sm:text-sm">
               <User className="w-3.5 h-3.5" />
               Experts
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger value="apprentissage" className="gap-1.5 text-xs sm:text-sm">
               <PlayCircle className="w-3.5 h-3.5" />
               Mes cours
@@ -143,9 +143,9 @@ export default function Formation() {
             <ParcoursFormations onViewDetail={handleViewDetail} />
           </TabsContent>
 
-          <TabsContent value="experts">
+          {/* <TabsContent value="experts">
             <ExpertsFormateurs />
-          </TabsContent>
+          </TabsContent> */}
 
           <TabsContent value="apprentissage">
             <MesCoursApprentissage onStartLearning={handleStartLearning} />
