@@ -123,6 +123,17 @@ export interface Evenement {
     nom: string;
     couleur: string;
   } | null;
+  creator_details?: {
+    id: string;
+    name: string;
+    email: string;
+    logo: string | null;
+    organisation?: {
+      display_name: string | null;
+      custom_organisation_name: string | null;
+      logo: string | null;
+    } | null;
+  } | null;
 }
 
 /** Décode les entités HTML encodées par l'API (&#x27; → ', &amp; → &, etc.) */
@@ -136,12 +147,29 @@ export function decodeHtml(str: string): string {
     .replace(/&quot;/g, '"');
 }
 
+export interface ParticipantTicket {
+  id: string;
+  code: string;
+  registration_id: string;
+  registration_detail_id: string;
+  ticket_type_id: string;
+  ticket: { id: string; nom: string; prix: string; prix_membre: string } | null;
+  event_id: string;
+  user_id: string;
+  numero: number;
+  est_valable: boolean;
+  used_at: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
 export interface TicketDetail {
   id: string;
   ticket_type: { nom: string; prix: string } | null;
   quantite: number;
   montantTotal: number;
-  participant_tickets?: Array<{ id: string; code: string; numero: number; est_valable: boolean; used_at: string | null }>;
+  participant_tickets?: ParticipantTicket[];
 }
 
 export interface Registration {
@@ -158,6 +186,8 @@ export interface Registration {
   date_commande: string;
   statut_paiement: string;
   details: TicketDetail[];
+  participant_tickets: ParticipantTicket[];
+  tickets: ParticipantTicket[];
   created_at: string;
   updated_at: string;
 }

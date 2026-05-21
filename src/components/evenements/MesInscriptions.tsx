@@ -26,12 +26,16 @@ export interface EnrichedRegistration extends Registration {
   event?: Evenement;
 }
 
-function mapStatut(statut: string): {
+function mapStatut(statut: string, est_valable = true): {
   label: string;
   color: string;
   Icon: typeof Clock;
 } {
+  if (!est_valable) {
+    return { label: "Annulé", color: "bg-destructive/10 text-destructive", Icon: XCircle };
+  }
   switch (statut) {
+    case "gratuit":
     case "payé":
     case "paye":
     case "confirmed":
@@ -134,22 +138,29 @@ export function MesInscriptions() {
 
   const now = new Date();
 
-  // 4. Séparer à venir / passés selon date_debut de l'événement
+  // 4. Séparer à venir / passés selon date_debut de l'événement et est_valable
   const upcoming = enriched.filter((r) => {
-    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return false;
+    if (!r.est_valable) return false;
     const dateDebut = r.event?.date_debut;
-    if (!dateDebut) return true; // si event pas encore chargé, on garde dans "à venir" par défaut
+    if (!dateDebut) return true;
     return new Date(dateDebut) >= now;
   });
 
   const past = enriched.filter((r) => {
-    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return true;
+    if (!r.est_valable) return true;
     const dateDebut = r.event?.date_debut;
     if (!dateDebut) return false;
     return new Date(dateDebut) < now;
   });
 
-  const pendingCount = enriched.filter((r) => r.statut_paiement === "en_attente").length;
+  const pendingCount = enriched.filter((r) => r.est_valable && r.statut_paiement === "en_attente").length;
+
+  const countTickets = (regs: EnrichedRegistration[]) =>
+    regs.reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0);
+
+  const totalBillets = countTickets(enriched);
+  const upcomingBillets = countTickets(upcoming);
+  const pastBillets = countTickets(past);
 
   const handleShowQR = (reg: EnrichedRegistration) => {
     setSelectedReg(reg);
@@ -163,8 +174,9 @@ export function MesInscriptions() {
     reg: EnrichedRegistration;
     isPast?: boolean;
   }) {
-    const { label, color, Icon } = mapStatut(reg.statut_paiement);
-    const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
+    const { label, color, Icon } = mapStatut(reg.statut_paiement, reg.est_valable);
+    const ticketNom = reg.participant_tickets?.[0]?.ticket?.nom ?? reg.details[0]?.ticket_type?.nom ?? "Billet";
+    const nbBillets = reg.participant_tickets?.length ?? reg.tickets?.length ?? reg.details.reduce((s, d) => s + d.quantite, 0);
     const pendingPayment = pendingPaymentMap.get(reg.id);
 
     return (
@@ -177,6 +189,9 @@ export function MesInscriptions() {
               {label}
             </Badge>
             <Badge variant="outline">{ticketNom}</Badge>
+            {nbBillets > 1 && (
+              <Badge variant="secondary">{nbBillets} billets</Badge>
+            )}
           </div>
 
           {/* Titre */}
@@ -254,8 +269,8 @@ export function MesInscriptions() {
               <Ticket className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : enriched.length}</p>
-              <p className="text-sm text-muted-foreground">Total inscriptions</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : totalBillets}</p>
+              <p className="text-sm text-muted-foreground">Total billets</p>
             </div>
           </CardContent>
         </Card>
@@ -265,7 +280,7 @@ export function MesInscriptions() {
               <Calendar className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : upcoming.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : upcomingBillets}</p>
               <p className="text-sm text-muted-foreground">À venir</p>
             </div>
           </CardContent>
@@ -287,7 +302,7 @@ export function MesInscriptions() {
               <CheckCircle2 className="w-6 h-6 text-blue-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : past.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : pastBillets}</p>
               <p className="text-sm text-muted-foreground">Passés</p>
             </div>
           </CardContent>

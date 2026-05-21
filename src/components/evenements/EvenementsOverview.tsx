@@ -20,7 +20,7 @@ import {
   ImageOff,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { evenementsApi, registrationsApi, type Evenement, type Registration } from "@/lib/api";
+import { evenementsApi, registrationsApi, type Evenement } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface OverviewProps {
@@ -100,11 +100,13 @@ function EventCardSkeleton() {
   );
 }
 
-function statusLabel(statut: string) {
+function statusLabel(statut: string, est_valable = true) {
+  if (!est_valable) return { label: "Annulé", className: "bg-destructive/10 text-destructive" };
   switch (statut) {
+    case "gratuit":
     case "payé":
     case "paye":
-    case "confirmed": return { label: "Payé", className: "bg-green-500/10 text-green-600" };
+    case "confirmed": return { label: "Confirmé", className: "bg-green-500/10 text-green-600" };
     case "en_attente": return { label: "En attente", className: "bg-amber-500/10 text-amber-600" };
     case "annulé":
     case "annule": return { label: "Annulé", className: "bg-destructive/10 text-destructive" };
@@ -153,7 +155,9 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               <Ticket className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoadingTickets ? "—" : (registrations?.length ?? 0)}</p>
+              <p className="text-2xl font-bold">
+                {isLoadingTickets ? "—" : (registrations ?? []).filter(r => r.est_valable).reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0)}
+              </p>
               <p className="text-sm text-muted-foreground">Billets actifs</p>
             </div>
           </CardContent>
@@ -223,7 +227,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               Mes billets
               {registrations && registrations.length > 0 && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  ({registrations.length})
+                  ({registrations.reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0)})
                 </span>
               )}
             </CardTitle>
@@ -250,39 +254,35 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               </p>
             )}
             {registrations?.slice(0, 3).map((reg) => {
-              const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
-              const { label, className } = statusLabel(reg.statut_paiement);
+              const ticketNom = reg.participant_tickets?.[0]?.ticket?.nom ?? reg.details[0]?.ticket_type?.nom ?? "Billet";
+              const nbBillets = reg.participant_tickets?.length ?? reg.details.reduce((s, d) => s + d.quantite, 0);
+              const { label, className } = statusLabel(reg.statut_paiement, reg.est_valable);
               return (
                 <div
                   key={reg.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5 gap-3"
+                  className="flex items-center gap-3 p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-3 rounded-lg bg-background border shrink-0">
-                      <QrCode className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {reg.prenom} {reg.nom}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 text-sm mt-0.5">
-                        <Badge variant="outline">{ticketNom}</Badge>
-                        <Badge className={className}>{label}</Badge>
-                        <span className="text-muted-foreground">
-                          {new Date(reg.date_commande).toLocaleDateString("fr-FR")}
-                        </span>
-                      </div>
-                      {Number(reg.total_price) > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
-                        </p>
-                      )}
-                    </div>
+                  <div className="p-3 rounded-lg bg-background border shrink-0">
+                    <QrCode className="w-6 h-6 text-primary" />
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0">
-                    <QrCode className="w-4 h-4 mr-1" />
-                    Pass
-                  </Button>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {reg.prenom} {reg.nom}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-sm mt-0.5">
+                      <Badge variant="outline">{ticketNom}</Badge>
+                      {nbBillets > 1 && <Badge variant="secondary">{nbBillets} billets</Badge>}
+                      <Badge className={className}>{label}</Badge>
+                      <span className="text-muted-foreground">
+                        {new Date(reg.date_commande).toLocaleDateString("fr-FR")}
+                      </span>
+                    </div>
+                    {Number(reg.total_price) > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
+                      </p>
+                    )}
+                  </div>
                 </div>
               );
             })}

@@ -45,39 +45,48 @@ export function ETicket({ reg }: ETicketProps) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const event = reg.event;
+  const organizerName =
+    event?.creator_details?.organisation?.display_name ??
+    event?.creator_details?.organisation?.custom_organisation_name ??
+    event?.creator_details?.name ??
+    null;
+  const organizerLogo =
+    event?.creator_details?.organisation?.logo ??
+    event?.creator_details?.logo ??
+    null;
 
   const individualTickets = useMemo<IndividualTicket[]>(() => {
-    // Codes réels depuis participant_tickets dans les détails
-    const codes: IndividualTicket[] = [];
+    // Utilise participant_tickets du niveau racine de la registration
+    const pts = reg.participant_tickets ?? reg.tickets ?? [];
+    if (pts.length > 0) {
+      return pts.map((pt, i) => ({
+        nom: pt.ticket?.nom,
+        code: pt.code,
+        index: i + 1,
+        total: pts.length,
+      }));
+    }
+
+    // Fallback : codes depuis les détails
+    const fromDetails: IndividualTicket[] = [];
     for (const d of reg.details) {
       if (d.participant_tickets && d.participant_tickets.length > 0) {
         for (const pt of d.participant_tickets) {
-          codes.push({
-            nom: d.ticket_type?.nom,
-            code: pt.code,
-            index: pt.numero,
-            total: d.participant_tickets.length,
-          });
+          fromDetails.push({ nom: d.ticket_type?.nom, code: pt.code, index: pt.numero, total: 0 });
         }
       }
     }
-    if (codes.length > 0) {
-      const total = codes.length;
-      return codes.map((c, i) => ({ ...c, index: i + 1, total }));
+    if (fromDetails.length > 0) {
+      return fromDetails.map((c, i) => ({ ...c, index: i + 1, total: fromDetails.length }));
     }
 
-    // Fallback : génération depuis les quantités
+    // Fallback final : génération depuis les quantités
     const total = reg.details.reduce((s, d) => s + d.quantite, 0);
     const result: IndividualTicket[] = [];
     let counter = 1;
     for (const d of reg.details) {
       for (let i = 0; i < d.quantite; i++) {
-        result.push({
-          nom: d.ticket_type?.nom,
-          code: `${reg.id.slice(0, 8).toUpperCase()}-${counter}`,
-          index: counter,
-          total,
-        });
+        result.push({ nom: d.ticket_type?.nom, code: `${reg.id.slice(0, 8).toUpperCase()}-${counter}`, index: counter, total });
         counter++;
       }
     }
@@ -118,9 +127,13 @@ export function ETicket({ reg }: ETicketProps) {
           <div className="bg-gradient-to-r from-primary to-orange-400 p-4 text-primary-foreground">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img src={logoCpu} alt="CPU-PME" className="w-10 h-10 rounded-lg object-contain bg-white p-0.5" />
+                {organizerLogo ? (
+                  <img src={organizerLogo} alt={organizerName ?? "Organisateur"} className="w-10 h-10 rounded-lg object-cover" />
+                ) : (
+                  <img src={logoCpu} alt="CPU-PME" className="w-10 h-10 rounded-lg object-contain bg-white p-0.5" />
+                )}
                 <div>
-                  <p className="font-bold">CPU-PME Events</p>
+                  <p className="font-bold">{organizerName ?? "CPU-PME Events"}</p>
                   <p className="text-xs opacity-80">E-Ticket Officiel</p>
                 </div>
               </div>
