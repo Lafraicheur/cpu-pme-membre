@@ -1,7 +1,7 @@
 import { CreditCard, User, Building2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRef } from "react";
+import logoCpuPme from "@/assets/logo-cpu-pme.png";
 
 interface Props {
   isLoading: boolean;
@@ -20,6 +20,8 @@ const PLAN_CONFIG: Record<string, { from: string; to: string; label: string }> =
   or:     { from: "#D97706", to: "#92400E", label: "Or"     },
 };
 
+const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
+
 function formatExpiration(createdAt: string): string {
   if (!createdAt) return "—";
   const d = new Date(createdAt);
@@ -28,24 +30,156 @@ function formatExpiration(createdAt: string): string {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function fillRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(img);
+    img.src = src;
+  });
+}
+
 export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt }: Props) {
-  const cardRef = useRef<HTMLDivElement>(null);
   const planKey = plan.toLowerCase();
   const config = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.basic;
   const expirationDate = formatExpiration(abonnementCreatedAt);
 
-  function handleDownload() {
-    if (!cardRef.current) return;
-    import("html2canvas").then(({ default: html2canvas }) => {
-      html2canvas(cardRef.current!, { scale: 3, useCORS: true, backgroundColor: null }).then((canvas) => {
-        const link = document.createElement("a");
-        link.download = `carte-membre-${numeroMembre}.png`;
-        link.href = canvas.toDataURL("image/png");
-        link.click();
-      });
-    }).catch(() => {
-      window.print();
-    });
+  async function handleDownload() {
+    // Dimensions carte bancaire standard ×10
+    const W = 856;
+    const H = 540;
+    const PAD = 52;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+
+    // ── Clip arrondi ──────────────────────────────────────────
+    ctx.beginPath();
+    ctx.moveTo(40, 0);
+    ctx.lineTo(W - 40, 0);
+    ctx.quadraticCurveTo(W, 0, W, 40);
+    ctx.lineTo(W, H - 40);
+    ctx.quadraticCurveTo(W, H, W - 40, H);
+    ctx.lineTo(40, H);
+    ctx.quadraticCurveTo(0, H, 0, H - 40);
+    ctx.lineTo(0, 40);
+    ctx.quadraticCurveTo(0, 0, 40, 0);
+    ctx.closePath();
+    ctx.clip();
+
+    // ── Gradient de fond ──────────────────────────────────────
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, config.from);
+    grad.addColorStop(1, config.to);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Logo watermark (multiply efface le fond blanc du PNG) ─
+    const logo = await loadImage(logoCpuPme);
+    if (logo.complete && logo.naturalWidth > 0) {
+      const padding = W * 0.08;
+      const availW = W - padding * 2;
+      const availH = H - padding * 2;
+      const imgRatio = logo.naturalWidth / logo.naturalHeight;
+      let drawW = availW;
+      let drawH = drawW / imgRatio;
+      if (drawH > availH) { drawH = availH; drawW = drawH * imgRatio; }
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.globalCompositeOperation = "multiply";
+      ctx.drawImage(logo, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH);
+      ctx.restore();
+    }
+
+    // ── Badge "Pass PME" (haut gauche) ───────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    fillRoundRect(ctx, PAD, PAD, 150, 38, 19);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold 17px ${FONT}`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText("⊟  Pass PME", PAD + 16, PAD + 19);
+
+    // ── Badge plan (haut droit) ───────────────────────────────
+    ctx.font = `bold 17px ${FONT}`;
+    const planW = ctx.measureText(config.label).width + 36;
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    fillRoundRect(ctx, W - PAD - planW, PAD, planW, 38, 19);
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "right";
+    ctx.fillText(config.label, W - PAD - 18, PAD + 19);
+
+    // ── CPU-PME.CI label ──────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = `13px ${FONT}`;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    ctx.fillText("CPU-PME.CI", PAD, 158);
+
+    // ── Nom ───────────────────────────────────────────────────
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold 50px ${FONT}`;
+    ctx.fillText(name || "—", PAD, 184, W - PAD * 2 - 10);
+
+    // ── Organisation ──────────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.font = `30px ${FONT}`;
+    ctx.fillText(orgName || "—", PAD, 250, W - PAD * 2 - 10);
+
+    // ── Texte confédération ───────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = `bold 13px ${FONT}`;
+    ctx.fillText("CONFÉDÉRATION PATRONALE UNIQUE DES PME DE CÔTE D'IVOIRE", PAD, H - 138, W - PAD * 2);
+
+    // ── Séparateur ────────────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillRect(PAD, H - 112, W - PAD * 2, 1);
+
+    // ── N° Membre ─────────────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.font = `13px ${FONT}`;
+    ctx.textAlign = "left";
+    ctx.fillText("N° Membre", PAD, H - 100);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold 24px ${FONT}`;
+    ctx.fillText(numeroMembre || "—", PAD, H - 78);
+
+    // ── Valide jusqu'au ───────────────────────────────────────
+    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.font = `13px ${FONT}`;
+    ctx.textAlign = "right";
+    ctx.fillText("Valide jusqu'au", W - PAD, H - 100);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold 24px ${FONT}`;
+    ctx.fillText(expirationDate, W - PAD, H - 78);
+
+    // ── Déclencher le téléchargement ──────────────────────────
+    const link = document.createElement("a");
+    link.download = `carte-membre-${numeroMembre}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   }
 
   return (
@@ -58,32 +192,35 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
         </p>
       </div>
 
-      {/* Card */}
+      {/* Carte affichée */}
       <div className="flex justify-center px-4">
         {isLoading ? (
-          <Skeleton className="w-full max-w-sm rounded-2xl" style={{ aspectRatio: "1.586" }} />
+          <Skeleton className="w-full max-w-lg rounded-2xl" style={{ aspectRatio: "1.586" }} />
         ) : (
           <div
-            ref={cardRef}
-            className="relative w-full max-w-sm rounded-2xl overflow-hidden text-white select-none shadow-2xl"
+            className="relative w-full max-w-lg rounded-2xl overflow-hidden text-white select-none shadow-2xl"
             style={{
               background: `linear-gradient(135deg, ${config.from} 0%, ${config.to} 100%)`,
               aspectRatio: "1.586",
             }}
           >
-            {/* Watermark */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
-              <span
-                className="text-6xl font-black whitespace-nowrap tracking-widest"
-                style={{ color: "rgba(255,255,255,0.12)", userSelect: "none" }}
-              >
-                CPU-PME.CI
-              </span>
-            </div>
+            {/* Logo watermark — mix-blend-mode:multiply efface le fond blanc du PNG */}
+            <img
+              src={logoCpuPme}
+              alt=""
+              draggable={false}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{
+                objectFit: "contain",
+                padding: "8%",
+                opacity: 0.22,
+                mixBlendMode: "multiply",
+              }}
+            />
 
-            {/* Content */}
+            {/* Contenu */}
             <div className="relative h-full flex flex-col justify-between p-5">
-              {/* Top row */}
+              {/* Top */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 bg-white/25 rounded-full px-3 py-1">
                   <CreditCard className="w-3 h-3" />
@@ -94,7 +231,7 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
                 </span>
               </div>
 
-              {/* Middle info */}
+              {/* Infos */}
               <div className="space-y-0.5">
                 <p className="text-[10px] tracking-widest opacity-70 uppercase">CPU-PME.CI</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -107,12 +244,12 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
                 </div>
               </div>
 
-              {/* Bottom */}
+              {/* Bas */}
               <div className="space-y-1.5">
                 <p className="text-[8px] font-bold uppercase tracking-wide opacity-50 leading-tight">
                   Confédération Patronale Unique<br />des PME de Côte d'Ivoire
                 </p>
-                <div className="flex items-end justify-between">
+                <div className="flex items-end justify-between border-t border-white/20 pt-1.5">
                   <div>
                     <p className="text-[9px] opacity-60 uppercase tracking-wide">N° Membre</p>
                     <p className="text-xs font-bold">{numeroMembre || "—"}</p>
@@ -128,7 +265,7 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
         )}
       </div>
 
-      {/* Actions */}
+      {/* Bouton télécharger */}
       {!isLoading && (
         <div className="flex justify-center">
           <Button variant="outline" className="gap-2" onClick={handleDownload}>
