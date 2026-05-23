@@ -7,6 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -41,6 +48,9 @@ import {
   Camera,
   Save,
   X,
+  CreditCard,
+  User,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -48,6 +58,7 @@ import { TeamLimitIndicator } from "@/components/subscription/TeamLimitIndicator
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "@/lib/api";
+import { CarteMembre } from "@/components/dashboard/CarteMembre";
 
 interface Branch {
   id: string;
@@ -156,7 +167,7 @@ export default function MonEntreprise() {
 
   const [branches] = useState<Branch[]>(mockBranches);
   const [team] = useState<TeamMember[]>(mockTeam);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", phone: "", website_url: "" });
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -184,7 +195,7 @@ export default function MonEntreprise() {
       authApi.updateProfile(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["adhesion-profile"] });
-      setIsEditing(false);
+      setIsDialogOpen(false);
       toast({ title: "Profil mis à jour avec succès" });
     },
     onError: (err: Error) => {
@@ -212,7 +223,7 @@ export default function MonEntreprise() {
       phone: String(profile?.phone ?? ""),
       website_url: String(profile?.website_url ?? ""),
     });
-    setIsEditing(true);
+    setIsDialogOpen(true);
   }
 
   function handleSave() {
@@ -247,26 +258,21 @@ export default function MonEntreprise() {
   const siegeRegion = profile?.siegeRegion as Record<string, unknown> | undefined;
   const siegeCommune= profile?.siegeCommune as Record<string, unknown> | undefined;
 
-  function F({ label, value, icon: Icon, colSpan, editable, editValue, onEditChange }: {
+  function F({ label, value, icon: Icon, colSpan }: {
     label: string;
     value?: string | null;
     icon?: React.ElementType;
     colSpan?: boolean;
-    editable?: boolean;
-    editValue?: string;
-    onEditChange?: (v: string) => void;
   }) {
     return (
       <div className={cn("space-y-2", colSpan && "md:col-span-2")}>
-        <Label className="flex items-center gap-2">
+        <Label className="flex items-center gap-2 text-muted-foreground">
           {Icon && <Icon className="w-4 h-4" />}
           {label}
         </Label>
         {isLoadingProfile
           ? <Skeleton className="h-10 w-full rounded-md" />
-          : editable && isEditing
-            ? <Input value={editValue ?? ""} onChange={(e) => onEditChange?.(e.target.value)} />
-            : <Input readOnly value={value ?? "—"} className="bg-muted/40" />
+          : <Input readOnly value={value ?? "—"} className="bg-muted/40" />
         }
       </div>
     );
@@ -296,10 +302,10 @@ export default function MonEntreprise() {
               <Building2 className="w-4 h-4" />
               Profil
             </TabsTrigger>
-            {/* <TabsTrigger value="branches" className="gap-2">
-              <MapPin className="w-4 h-4" />
-              Sites & Branches
-            </TabsTrigger> */}
+            <TabsTrigger value="carte" className="gap-2">
+              <CreditCard className="w-4 h-4" />
+              Carte Membre
+            </TabsTrigger>
             <TabsTrigger value="team" className="gap-2">
               <Users className="w-4 h-4" />
               Équipes
@@ -324,26 +330,10 @@ export default function MonEntreprise() {
                       Informations publiques visibles sur le réseau CPU-PME
                     </CardDescription>
                   </div>
-                  {!isEditing ? (
-                    <Button variant="outline" size="sm" onClick={handleEditStart} className="gap-2 shrink-0">
-                      <Pencil className="w-4 h-4" />
-                      Modifier
-                    </Button>
-                  ) : (
-                    <div className="flex gap-2 shrink-0">
-                      <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} className="gap-2">
-                        <X className="w-4 h-4" />
-                        Annuler
-                      </Button>
-                      <Button size="sm" onClick={handleSave} disabled={updateProfileMutation.isPending} className="gap-2">
-                        {updateProfileMutation.isPending
-                          ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          : <Save className="w-4 h-4" />
-                        }
-                        Enregistrer
-                      </Button>
-                    </div>
-                  )}
+                  <Button variant="outline" size="sm" onClick={handleEditStart} className="gap-2 shrink-0">
+                    <Pencil className="w-4 h-4" />
+                    Modifier le profil
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-8">
@@ -389,13 +379,7 @@ export default function MonEntreprise() {
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground mb-4">IDENTITÉ</h3>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <F
-                      label="Nom complet"
-                      value={String(profile?.name ?? "")}
-                      editable
-                      editValue={editForm.name}
-                      onEditChange={(v) => setEditForm((f) => ({ ...f, name: v }))}
-                    />
+                    <F label="Nom complet" value={String(profile?.name ?? "")} />
                     <F label="Poste / Fonction" value={String(profile?.position ?? "")} />
                     <F label="Nom de l'organisation" value={String(profile?.organisationName ?? profile?.customOrganisationName ?? "")} />
                     <F label="Type d'organisation" value={String(profile?.organisationType ?? "")} />
@@ -412,24 +396,9 @@ export default function MonEntreprise() {
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground mb-4">COORDONNÉES</h3>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <F
-                      label="Téléphone"
-                      value={String(profile?.phone ?? "")}
-                      icon={Phone}
-                      editable
-                      editValue={editForm.phone}
-                      onEditChange={(v) => setEditForm((f) => ({ ...f, phone: v }))}
-                    />
+                    <F label="Téléphone" value={String(profile?.phone ?? "")} icon={Phone} />
                     <F label="Email" value={String(profile?.email ?? "")} icon={Mail} />
-                    <F
-                      label="Site web"
-                      value={String(profile?.website_url ?? "")}
-                      icon={Globe}
-                      colSpan
-                      editable
-                      editValue={editForm.website_url}
-                      onEditChange={(v) => setEditForm((f) => ({ ...f, website_url: v }))}
-                    />
+                    <F label="Site web" value={String(profile?.website_url ?? "")} icon={Globe} colSpan />
                   </div>
                 </div>
 
@@ -460,6 +429,18 @@ export default function MonEntreprise() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Carte Membre Tab */}
+          <TabsContent value="carte" className="space-y-8">
+            <CarteMembre
+              isLoading={isLoadingProfile}
+              name={String(profile?.name ?? "")}
+              orgName={String(profile?.customOrganisationName ?? profile?.organisationName ?? "")}
+              numeroMembre={String(profile?.numero_membre ?? "")}
+              plan={String((abonnement?.plan as string | undefined) ?? "basic")}
+              abonnementCreatedAt={String((abonnement?.createdAt as string | undefined) ?? "")}
+            />
           </TabsContent>
 
           {/* Branches Tab */}
@@ -771,6 +752,75 @@ export default function MonEntreprise() {
           </TabsContent>
         </Tabs>
       </div>
+      {/* Modal édition profil */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Modifier mon profil
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name" className="flex items-center gap-2 text-sm font-medium">
+                Nom complet
+              </Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Votre nom ou raison sociale"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone" className="flex items-center gap-2 text-sm font-medium">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                Téléphone
+              </Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+225 07 00 00 00 00"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-website" className="flex items-center gap-2 text-sm font-medium">
+                <Globe className="w-4 h-4 text-muted-foreground" />
+                Site web
+              </Label>
+              <Input
+                id="edit-website"
+                value={editForm.website_url}
+                onChange={(e) => setEditForm((f) => ({ ...f, website_url: e.target.value }))}
+                placeholder="https://www.monentreprise.ci"
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Seuls ces champs sont modifiables ici. Pour les autres informations, contactez le support.
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={updateProfileMutation.isPending}>
+              <X className="w-4 h-4 mr-2" />
+              Annuler
+            </Button>
+            <Button onClick={handleSave} disabled={updateProfileMutation.isPending}>
+              {updateProfileMutation.isPending
+                ? <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                : <Save className="w-4 h-4 mr-2" />
+              }
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
