@@ -46,7 +46,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: Home, label: "Accueil", href: "/" },
-  // { icon: Users, label: "Annuaire", href: "/annuaire", requiredFeature: "directory.read" },
+  { icon: Users, label: "Annuaire", href: "/annuaire", requiredFeature: "directory.read" },
   // { icon: Shield, label: "KYC & Conformité", href: "/kyc" },
   // { icon: Rocket, label: "Incubateur", href: "/incubateur", requiredFeature: "incubator.access" },
   // { icon: FileText, label: "Appels d'offres", href: "/appels-offres", badge: 3, requiredFeature: "ao.consultation" },

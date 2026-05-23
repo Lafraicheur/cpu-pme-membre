@@ -135,28 +135,7 @@ const mockTeam: TeamMember[] = [
     email: "amadou.diallo@entreprise.sn",
     role: "owner",
     status: "active",
-  },
-  {
-    id: "2",
-    name: "Fatou Ndiaye",
-    email: "fatou.ndiaye@entreprise.sn",
-    role: "admin",
-    status: "active",
-  },
-  {
-    id: "3",
-    name: "Moussa Sow",
-    email: "moussa.sow@entreprise.sn",
-    role: "commercial",
-    status: "active",
-  },
-  {
-    id: "4",
-    name: "Aïssatou Ba",
-    email: "aissatou.ba@entreprise.sn",
-    role: "comptable",
-    status: "pending",
-  },
+  }
 ];
 
 export default function MonEntreprise() {
