@@ -361,10 +361,10 @@ export default function Annuaire() {
                 </div>
               </div>
 
-              {/* Ligne 2 : filtres région + secteur */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Ligne 2 : 4 filtres sur la même ligne */}
+              <div className="flex flex-wrap gap-3">
                 <Select value={selectedRegionId} onValueChange={setSelectedRegionId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
                     <MapPin className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                     <SelectValue placeholder="Toutes les régions" />
                   </SelectTrigger>
@@ -382,7 +382,7 @@ export default function Annuaire() {
                 </Select>
 
                 <Select value={selectedSecteurId} onValueChange={setSelectedSecteurId}>
-                  <SelectTrigger>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
                     <Briefcase className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                     <SelectValue placeholder="Tous les secteurs" />
                   </SelectTrigger>
@@ -395,16 +395,13 @@ export default function Annuaire() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
 
-              {/* Ligne 3 : filière (conditionnelle) + taille */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Select
                   value={selectedFiliereId}
                   onValueChange={setSelectedFiliereId}
                   disabled={selectedSecteurId === "all"}
                 >
-                  <SelectTrigger className={selectedSecteurId === "all" ? "opacity-50" : ""}>
+                  <SelectTrigger className={`flex-1 min-w-[160px] ${selectedSecteurId === "all" ? "opacity-50" : ""}`}>
                     <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                     <SelectValue placeholder={selectedSecteurId === "all" ? "Choisir d'abord un secteur" : "Toutes les filières"} />
                   </SelectTrigger>
@@ -422,7 +419,7 @@ export default function Annuaire() {
                 </Select>
 
                 <Select value={selectedSize} onValueChange={setSelectedSize}>
-                  <SelectTrigger>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
                     <Users className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
                     <SelectValue placeholder="Toutes tailles" />
                   </SelectTrigger>

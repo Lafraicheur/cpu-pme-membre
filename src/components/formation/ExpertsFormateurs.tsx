@@ -296,6 +296,8 @@ export function ExpertsFormateurs() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState("all");
+  const [selectedMode, setSelectedMode] = useState("all");
+  const [selectedNiveau, setSelectedNiveau] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedFormateur, setSelectedFormateur] = useState<FormateurAvecFormations | null>(null);
   const ITEMS_PER_PAGE = 12;
@@ -310,7 +312,7 @@ export function ExpertsFormateurs() {
   };
 
   useEffect(() => { fetchFormateurs(); }, []);
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedDomain]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedDomain, selectedMode, selectedNiveau]);
 
   const allDomains = [...new Set(
     formateurs.flatMap((f) => f.formations.map((fo) => fo.category))
@@ -325,7 +327,13 @@ export function ExpertsFormateurs() {
     const matchesDomain =
       selectedDomain === "all" ||
       f.formations.some((fo) => fo.category === selectedDomain);
-    return matchesSearch && matchesDomain;
+    const matchesMode =
+      selectedMode === "all" ||
+      f.formations.some((fo) => fo.mode === selectedMode);
+    const matchesNiveau =
+      selectedNiveau === "all" ||
+      f.formations.some((fo) => fo.niveau === selectedNiveau);
+    return matchesSearch && matchesDomain && matchesMode && matchesNiveau;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
@@ -356,7 +364,7 @@ export function ExpertsFormateurs() {
       <Card className="rounded-sm">
         <CardContent className="p-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-0">
+            <div className="relative flex-1 min-w-[180px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
                 placeholder="Rechercher un formateur ou une formation..."
@@ -366,13 +374,35 @@ export function ExpertsFormateurs() {
               />
             </div>
             <Select value={selectedDomain} onValueChange={setSelectedDomain}>
-              <SelectTrigger className="w-[180px] h-9 text-sm rounded-sm flex-shrink-0">
+              <SelectTrigger className="w-[160px] h-9 text-sm rounded-sm flex-shrink-0">
                 <SelectValue placeholder="Domaine" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les domaines</SelectItem>
                 {allDomains.map((d) => (
                   <SelectItem key={d} value={d}>{d}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedMode} onValueChange={setSelectedMode}>
+              <SelectTrigger className="w-[160px] h-9 text-sm rounded-sm flex-shrink-0">
+                <SelectValue placeholder="Mode" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les modes</SelectItem>
+                {Object.entries(modeLabels).map(([key, { label }]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedNiveau} onValueChange={setSelectedNiveau}>
+              <SelectTrigger className="w-[150px] h-9 text-sm rounded-sm flex-shrink-0">
+                <SelectValue placeholder="Niveau" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les niveaux</SelectItem>
+                {Object.entries(niveauLabels).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
