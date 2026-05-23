@@ -2184,6 +2184,29 @@ export const authApi = {
     );
     return res?.data ?? (res as unknown as Record<string, unknown>);
   },
+
+  updateProfile: async (payload: {
+    email: string;
+    name?: string;
+    phone?: string;
+    website_url?: string;
+  }): Promise<Record<string, unknown>> => {
+    const res = await request<{ success: boolean; data: Record<string, unknown> } | Record<string, unknown>>(
+      "/api/adhesions/me/profile",
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return (res as { data: Record<string, unknown> }).data ?? (res as Record<string, unknown>);
+  },
+
+  updateLogo: async (email: string, logo: File): Promise<Record<string, unknown>> => {
+    const fd = new FormData();
+    fd.append("email", email);
+    fd.append("logo", logo);
+    const res = await requestMultipart<{ success: boolean; data: Record<string, unknown> } | Record<string, unknown>>(
+      "/api/adhesions/me/logo", fd, "PATCH"
+    );
+    return (res as { data: Record<string, unknown> }).data ?? (res as Record<string, unknown>);
+  },
 };
 
 // ── Certificats ───────────────────────────────────────────────────────────────
