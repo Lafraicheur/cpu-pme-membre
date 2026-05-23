@@ -4,6 +4,8 @@ import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Search,
@@ -55,7 +57,7 @@ interface Adhesion {
   profil: { name: string } | null;
   abonnement: { plan: string; libelle: string } | null;
   secteurPrincipal: { name: string } | null;
-  filiere: { name: string } | null;
+  filiere: { id: string; name: string } | null;
   activites: { name: string }[];
   siegeRegion: { name: string } | null;
   siegeCommune: { name: string } | null;
@@ -70,24 +72,65 @@ interface AdhesionsResponse {
   };
 }
 
+interface Region {
+  id: string;
+  name: string;
+  zone: string;
+}
+
+interface Secteur {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface Filiere {
+  id: string;
+  secteur_id: string;
+  name: string;
+}
+
+function decodeHtml(str: string): string {
+  return str
+    .replace(/&amp;#x27;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"');
+}
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  return res.json();
+}
+
 async function fetchAdhesions(params: {
   page: number;
   limit: number;
   search?: string;
   statut?: string;
+  siegeRegionId?: string;
+  secteurPrincipalId?: string;
 }): Promise<AdhesionsResponse> {
-  const token = getToken();
   const query = new URLSearchParams({ page: String(params.page), limit: String(params.limit) });
   if (params.search) query.set("search", params.search);
-  if (params.statut && params.statut !== "all") query.set("statut", params.statut);
+  if (params.statut) query.set("statut", params.statut);
+  if (params.siegeRegionId) query.set("siegeRegionId", params.siegeRegionId);
+  if (params.secteurPrincipalId) query.set("secteurPrincipalId", params.secteurPrincipalId);
 
+  const token = getToken();
   const res = await fetch(`${API_BASE}/api/adhesions/for-site-web?${query}`, {
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-
   if (!res.ok) throw new Error(`Erreur ${res.status}`);
   return res.json();
 }
@@ -101,6 +144,15 @@ const planBanners: Record<string, string> = {
   institutionnel: "bg-gradient-to-br from-red-400 via-rose-500 to-red-600",
 };
 
+const planLabels: Record<string, string> = {
+  basic: "Basic",
+  silver: "Argent",
+  gold: "Or",
+  federation: "Fédération",
+  organisation: "Organisation",
+  institutionnel: "Institutionnel",
+};
+
 const planPills: Record<string, string> = {
   basic: "border-slate-300 text-slate-600 bg-slate-50",
   silver: "border-gray-300 text-gray-600 bg-gray-50",
@@ -110,19 +162,29 @@ const planPills: Record<string, string> = {
   institutionnel: "border-red-300 text-red-700 bg-red-50",
 };
 
-const statutColors: Record<string, string> = {
-  approved: "bg-green-100 text-green-700 border-green-200",
-  pending: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  in_review: "bg-blue-100 text-blue-700 border-blue-200",
-  rejected: "bg-red-100 text-red-700 border-red-200",
-};
+const employeeSizes = [
+  { value: "all", label: "Toutes tailles" },
+  { value: "1-5", label: "1-5 employés" },
+  { value: "5-10", label: "5-10 employés" },
+  { value: "10-50", label: "10-50 employés" },
+  { value: "50-100", label: "50-100 employés" },
+  { value: "100+", label: "100+ employés" },
+];
 
-const statutLabels: Record<string, string> = {
-  approved: "Approuvé",
-  pending: "En attente",
-  in_review: "En révision",
-  rejected: "Rejeté",
-};
+function parseRange(value: string): [number, number] {
+  if (!value) return [0, Infinity];
+  if (value.endsWith("+")) return [parseInt(value), Infinity];
+  const parts = value.split("-").map(Number);
+  return parts.length === 2 ? [parts[0], parts[1]] : [parts[0], parts[0]];
+}
+
+function matchesEmployeeSize(nombreEmployee: string | null, filter: string): boolean {
+  if (filter === "all" || !nombreEmployee) return true;
+  const [fMin, fMax] = parseRange(filter);
+  const [eMin, eMax] = parseRange(nombreEmployee);
+  return eMin <= fMax && eMax >= fMin;
+}
+
 
 function displayName(member: Adhesion): string {
   return member.customOrganisationName || member.name;
@@ -131,6 +193,10 @@ function displayName(member: Adhesion): string {
 export default function Annuaire() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [selectedRegionId, setSelectedRegionId] = useState("all");
+  const [selectedSecteurId, setSelectedSecteurId] = useState("all");
+  const [selectedFiliereId, setSelectedFiliereId] = useState("all");
+  const [selectedSize, setSelectedSize] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [page, setPage] = useState(1);
   const [selectedMember, setSelectedMember] = useState<Adhesion | null>(null);
@@ -145,13 +211,59 @@ export default function Annuaire() {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  // Reset filière quand le secteur change
+  useEffect(() => {
+    setSelectedFiliereId("all");
+  }, [selectedSecteurId]);
+
+  // Reset page quand les filtres changent
+  useEffect(() => {
+    setPage(1);
+  }, [selectedRegionId, selectedSecteurId, selectedFiliereId]);
+
+  const { data: regionsData } = useQuery({
+    queryKey: ["regions"],
+    queryFn: () => apiFetch<{ success: boolean; data: Region[] }>("/api/regions"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: secteursData } = useQuery({
+    queryKey: ["secteurs"],
+    queryFn: () => apiFetch<{ success: boolean; data: Secteur[] }>("/api/secteurs"),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: filieresData } = useQuery({
+    queryKey: ["filieres"],
+    queryFn: () => apiFetch<{ success: boolean; data: Filiere[] }>("/api/filieres"),
+    staleTime: 5 * 60_000,
+  });
+
+  const regions = regionsData?.data ?? [];
+  const secteurs = secteursData?.data ?? [];
+  const allFilieres = filieresData?.data ?? [];
+  const filieresFiltrees = selectedSecteurId !== "all"
+    ? allFilieres.filter((f) => f.secteur_id === selectedSecteurId)
+    : [];
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["annuaire-membres", page, search],
-    queryFn: () => fetchAdhesions({ page, limit: LIMIT, search: search || undefined, statut: "approved" }),
+    queryKey: ["annuaire-membres", page, search, selectedRegionId, selectedSecteurId],
+    queryFn: () => fetchAdhesions({
+      page,
+      limit: LIMIT,
+      search: search || undefined,
+      statut: "approved",
+      siegeRegionId: selectedRegionId !== "all" ? selectedRegionId : undefined,
+      secteurPrincipalId: selectedSecteurId !== "all" ? selectedSecteurId : undefined,
+    }),
     staleTime: 30_000,
   });
 
-  const members = data?.data?.data ?? [];
+  const rawMembers = data?.data?.data ?? [];
+  const members = rawMembers.filter((m) =>
+    matchesEmployeeSize(m.nombre_employee, selectedSize) &&
+    (selectedFiliereId === "all" || m.filiere?.id === selectedFiliereId)
+  );
   const meta = data?.data?.meta;
 
   return (
@@ -219,8 +331,9 @@ export default function Annuaire() {
         {/* Search and Filters */}
         <Card className="border-border/50">
           <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-4 lg:flex-row">
+            <div className="flex flex-col gap-3">
+              {/* Ligne 1 : recherche + toggle vue */}
+              <div className="flex flex-col gap-3 lg:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -230,7 +343,7 @@ export default function Annuaire() {
                     className="pl-10"
                   />
                 </div>
-<div className="flex gap-2">
+                <div className="flex gap-2 flex-shrink-0">
                   <Button
                     variant={viewMode === "grid" ? "default" : "outline"}
                     size="icon"
@@ -247,6 +360,130 @@ export default function Annuaire() {
                   </Button>
                 </div>
               </div>
+
+              {/* Ligne 2 : filtres région + secteur */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Select value={selectedRegionId} onValueChange={setSelectedRegionId}>
+                  <SelectTrigger>
+                    <MapPin className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Toutes les régions" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les régions</SelectItem>
+                    {regions
+                      .slice()
+                      .sort((a, b) => decodeHtml(a.name).localeCompare(decodeHtml(b.name), "fr"))
+                      .map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {decodeHtml(r.name)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedSecteurId} onValueChange={setSelectedSecteurId}>
+                  <SelectTrigger>
+                    <Briefcase className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Tous les secteurs" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les secteurs</SelectItem>
+                    {secteurs.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {decodeHtml(s.name)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ligne 3 : filière (conditionnelle) + taille */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Select
+                  value={selectedFiliereId}
+                  onValueChange={setSelectedFiliereId}
+                  disabled={selectedSecteurId === "all"}
+                >
+                  <SelectTrigger className={selectedSecteurId === "all" ? "opacity-50" : ""}>
+                    <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder={selectedSecteurId === "all" ? "Choisir d'abord un secteur" : "Toutes les filières"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Toutes les filières</SelectItem>
+                    {filieresFiltrees
+                      .slice()
+                      .sort((a, b) => a.name.localeCompare(b.name, "fr"))
+                      .map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {decodeHtml(f.name)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={selectedSize} onValueChange={setSelectedSize}>
+                  <SelectTrigger>
+                    <Users className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Toutes tailles" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employeeSizes.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtres actifs */}
+              {(selectedRegionId !== "all" || selectedSecteurId !== "all" || selectedFiliereId !== "all" || selectedSize !== "all") && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Filtres actifs :</span>
+                  {selectedRegionId !== "all" && (
+                    <button
+                      onClick={() => setSelectedRegionId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(regions.find((r) => r.id === selectedRegionId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedSecteurId !== "all" && (
+                    <button
+                      onClick={() => setSelectedSecteurId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(secteurs.find((s) => s.id === selectedSecteurId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedFiliereId !== "all" && (
+                    <button
+                      onClick={() => setSelectedFiliereId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(allFilieres.find((f) => f.id === selectedFiliereId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedSize !== "all" && (
+                    <button
+                      onClick={() => setSelectedSize("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {employeeSizes.find((s) => s.value === selectedSize)?.label}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setSelectedRegionId("all"); setSelectedSecteurId("all"); setSelectedFiliereId("all"); setSelectedSize("all"); }}
+                    className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+                  >
+                    Tout effacer
+                  </button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -302,12 +539,9 @@ export default function Annuaire() {
                     <div className="flex items-center gap-1.5 mb-1">
                       {member.abonnement && (
                         <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${planPills[member.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
-                          {member.abonnement.plan.charAt(0).toUpperCase() + member.abonnement.plan.slice(1)}
+                          {planLabels[member.abonnement.plan] ?? member.abonnement.plan}
                         </span>
                       )}
-                      <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${statutColors[member.statut] ?? "border-border"}`}>
-                        {statutLabels[member.statut] ?? member.statut}
-                      </span>
                     </div>
                   </div>
 
@@ -395,12 +629,9 @@ export default function Annuaire() {
                     </h3>
                     {member.abonnement && (
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${planPills[member.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
-                        {member.abonnement.plan.charAt(0).toUpperCase() + member.abonnement.plan.slice(1)}
+                        {planLabels[member.abonnement.plan] ?? member.abonnement.plan}
                       </span>
                     )}
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statutColors[member.statut] ?? "border-border"}`}>
-                      {statutLabels[member.statut] ?? member.statut}
-                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
                     {[member.secteurPrincipal?.name, member.filiere?.name].filter(Boolean).join(" · ")}
@@ -468,67 +699,49 @@ export default function Annuaire() {
           </div>
         )}
 
-        {/* Member Detail Modal */}
-        {selectedMember && (
-          <div
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-            onClick={() => setSelectedMember(null)}
-          >
-            <div
-              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-card shadow-2xl animate-in zoom-in-95 duration-200 border border-border/60"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header coloré */}
-              <div className={`relative h-28 rounded-t-2xl ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-gradient-to-br from-slate-400 to-slate-600"}`}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSelectedMember(null)}
-                  className="absolute top-3 right-3 bg-black/20 hover:bg-black/40 text-white rounded-full h-8 w-8"
-                >
-                  <span className="text-lg leading-none">×</span>
-                </Button>
-              </div>
+        {/* Member Detail Sheet */}
+        <Sheet open={!!selectedMember} onOpenChange={(open) => { if (!open) setSelectedMember(null); }}>
+          <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0">
+            {selectedMember && (
+              <>
+                <SheetHeader className="sr-only">
+                  <SheetTitle>{displayName(selectedMember)}</SheetTitle>
+                </SheetHeader>
 
-              {/* Avatar en overlap */}
-              <div className="px-6 pb-6">
-                <div className="flex items-end justify-between -mt-10 mb-4">
-                  <Avatar className="h-20 w-20 ring-4 ring-card shadow-lg">
-                    <AvatarImage src={selectedMember.logo || undefined} />
-                    <AvatarFallback className={`font-bold text-2xl text-white ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-slate-400"}`}>
-                      {displayName(selectedMember).slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex items-center gap-2 mb-1">
+                {/* Bandeau coloré + avatar */}
+                <div className={`relative h-28 ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-gradient-to-br from-slate-400 to-slate-600"}`} />
+                <div className="px-6 pb-6">
+                  <div className="flex items-end justify-between -mt-10 mb-4">
+                    <Avatar className="h-20 w-20 ring-4 ring-card shadow-lg">
+                      <AvatarImage src={selectedMember.logo || undefined} />
+                      <AvatarFallback className={`font-bold text-2xl text-white ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-slate-400"}`}>
+                        {displayName(selectedMember).slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                     {selectedMember.abonnement && (
-                      <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${planPills[selectedMember.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
-                        {selectedMember.abonnement.libelle || selectedMember.abonnement.plan}
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full border mb-1 ${planPills[selectedMember.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
+                        {selectedMember.abonnement.libelle || planLabels[selectedMember.abonnement.plan] || selectedMember.abonnement.plan}
                       </span>
                     )}
-                    <span className={`text-xs font-medium px-3 py-1 rounded-full border ${statutColors[selectedMember.statut] ?? "border-border"}`}>
-                      {statutLabels[selectedMember.statut] ?? selectedMember.statut}
-                    </span>
                   </div>
-                </div>
 
-                <h2 className="text-xl font-bold leading-tight">{displayName(selectedMember)}</h2>
-                {selectedMember.position && (
-                  <p className="text-sm text-muted-foreground mt-0.5">{selectedMember.position}</p>
-                )}
-                {(selectedMember.typeMembre || selectedMember.profil) && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {[selectedMember.typeMembre?.name, selectedMember.profil?.name].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-
-                <div className="mt-6 space-y-5">
-                  {selectedMember.message && (
-                    <div className="rounded-xl bg-muted/50 p-4">
-                      <p className="text-sm text-muted-foreground leading-relaxed">{selectedMember.message}</p>
-                    </div>
+                  <h2 className="text-xl font-bold leading-tight">{displayName(selectedMember)}</h2>
+                  {selectedMember.position && (
+                    <p className="text-sm text-muted-foreground mt-0.5">{selectedMember.position}</p>
+                  )}
+                  {(selectedMember.typeMembre || selectedMember.profil) && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {[selectedMember.typeMembre?.name, selectedMember.profil?.name].filter(Boolean).join(" · ")}
+                    </p>
                   )}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="mt-6 space-y-5">
+                    {selectedMember.message && (
+                      <div className="rounded-xl bg-muted/50 p-4">
+                        <p className="text-sm text-muted-foreground leading-relaxed">{selectedMember.message}</p>
+                      </div>
+                    )}
+
                     {/* Coordonnées */}
                     <div className="rounded-xl border border-border/60 p-4 space-y-2.5">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Coordonnées</h4>
@@ -557,7 +770,7 @@ export default function Annuaire() {
                       )}
                     </div>
 
-                    {/* Infos entreprise */}
+                    {/* Infos */}
                     <div className="rounded-xl border border-border/60 p-4 space-y-2.5">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Informations</h4>
                       {selectedMember.nombre_employee && (
@@ -579,40 +792,40 @@ export default function Annuaire() {
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {selectedMember.activites.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Activités</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMember.activites.map((a) => (
-                          <span key={a.name} className="text-xs px-3 py-1 rounded-lg bg-muted border border-border/60 text-muted-foreground">
-                            {a.name}
-                          </span>
-                        ))}
+                    {selectedMember.activites.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Activités</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedMember.activites.map((a) => (
+                            <span key={a.name} className="text-xs px-3 py-1 rounded-lg bg-muted border border-border/60 text-muted-foreground">
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <div className="flex gap-3 pt-2">
-                    <Button className="flex-1 rounded-xl" asChild>
-                      <a href={`mailto:${selectedMember.email}`}>
-                        <Mail className="h-4 w-4 mr-2" />
-                        Envoyer un email
-                      </a>
-                    </Button>
-                    <Button variant="outline" className="flex-1 rounded-xl" asChild>
-                      <a href={`tel:${selectedMember.phone}`}>
-                        <Phone className="h-4 w-4 mr-2" />
-                        Appeler
-                      </a>
-                    </Button>
+                    <div className="flex gap-3 pt-2">
+                      <Button className="flex-1 rounded-xl" asChild>
+                        <a href={`mailto:${selectedMember.email}`}>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Envoyer un email
+                        </a>
+                      </Button>
+                      <Button variant="outline" className="flex-1 rounded-xl" asChild>
+                        <a href={`tel:${selectedMember.phone}`}>
+                          <Phone className="h-4 w-4 mr-2" />
+                          Appeler
+                        </a>
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </DashboardLayout>
   );
