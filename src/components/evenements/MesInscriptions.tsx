@@ -234,9 +234,9 @@ export function MesInscriptions() {
           {/* Action */}
           <div className="pt-1">
             {isPast ? (
-              <Button variant="outline" size="sm" className="w-full">
-                Laisser un avis
-              </Button>
+              <div className="w-full h-8 flex items-center justify-center rounded-md border border-muted-foreground/20 bg-muted/40 text-xs text-muted-foreground font-medium">
+                Terminé
+              </div>
             ) : reg.statut_paiement === "en_attente" ? (
               <Button
                 className="w-full gap-2"
