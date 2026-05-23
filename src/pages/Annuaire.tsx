@@ -197,6 +197,7 @@ export default function Annuaire() {
   const [selectedSecteurId, setSelectedSecteurId] = useState("all");
   const [selectedFiliereId, setSelectedFiliereId] = useState("all");
   const [selectedSize, setSelectedSize] = useState("all");
+  const [selectedPlan, setSelectedPlan] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [page, setPage] = useState(1);
   const [selectedMember, setSelectedMember] = useState<Adhesion | null>(null);
@@ -219,7 +220,7 @@ export default function Annuaire() {
   // Reset page quand les filtres changent
   useEffect(() => {
     setPage(1);
-  }, [selectedRegionId, selectedSecteurId, selectedFiliereId]);
+  }, [selectedRegionId, selectedSecteurId, selectedFiliereId, selectedPlan]);
 
   const { data: regionsData } = useQuery({
     queryKey: ["regions"],
@@ -246,11 +247,13 @@ export default function Annuaire() {
     ? allFilieres.filter((f) => f.secteur_id === selectedSecteurId)
     : [];
 
+  const effectiveLimit = selectedPlan !== "all" ? 200 : LIMIT;
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["annuaire-membres", page, search, selectedRegionId, selectedSecteurId],
+    queryKey: ["annuaire-membres", page, search, selectedRegionId, selectedSecteurId, selectedPlan],
     queryFn: () => fetchAdhesions({
-      page,
-      limit: LIMIT,
+      page: selectedPlan !== "all" ? 1 : page,
+      limit: effectiveLimit,
       search: search || undefined,
       statut: "approved",
       siegeRegionId: selectedRegionId !== "all" ? selectedRegionId : undefined,
@@ -262,7 +265,8 @@ export default function Annuaire() {
   const rawMembers = data?.data?.data ?? [];
   const members = rawMembers.filter((m) =>
     matchesEmployeeSize(m.nombre_employee, selectedSize) &&
-    (selectedFiliereId === "all" || m.filiere?.id === selectedFiliereId)
+    (selectedFiliereId === "all" || m.filiere?.id === selectedFiliereId) &&
+    (selectedPlan === "all" || m.abonnement?.plan?.toLowerCase() === selectedPlan)
   );
   const meta = data?.data?.meta;
 
@@ -431,10 +435,23 @@ export default function Annuaire() {
                     ))}
                   </SelectContent>
                 </Select>
+
+                <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
+                    <Award className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Tous les abonnements" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les abonnements</SelectItem>
+                    {Object.entries(planLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Filtres actifs */}
-              {(selectedRegionId !== "all" || selectedSecteurId !== "all" || selectedFiliereId !== "all" || selectedSize !== "all") && (
+              {(selectedRegionId !== "all" || selectedSecteurId !== "all" || selectedFiliereId !== "all" || selectedSize !== "all" || selectedPlan !== "all") && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted-foreground">Filtres actifs :</span>
                   {selectedRegionId !== "all" && (
@@ -473,8 +490,17 @@ export default function Annuaire() {
                       <span className="ml-0.5 font-bold">×</span>
                     </button>
                   )}
+                  {selectedPlan !== "all" && (
+                    <button
+                      onClick={() => setSelectedPlan("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {planLabels[selectedPlan]}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
                   <button
-                    onClick={() => { setSelectedRegionId("all"); setSelectedSecteurId("all"); setSelectedFiliereId("all"); setSelectedSize("all"); }}
+                    onClick={() => { setSelectedRegionId("all"); setSelectedSecteurId("all"); setSelectedFiliereId("all"); setSelectedSize("all"); setSelectedPlan("all"); }}
                     className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
                   >
                     Tout effacer
