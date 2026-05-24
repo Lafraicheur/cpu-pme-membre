@@ -356,6 +356,7 @@ export const clapayApi = {
       phone: string;
       typeMembreId: string;
       abonnementId: string;
+      modalite_abonnement: "abonnement_mensuel" | "abonnement_annuel";
     };
     customerFirstname: string;
     customerLastname: string;

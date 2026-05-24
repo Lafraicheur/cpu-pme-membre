@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import {
   Check, X, Crown, Star, Sparkles, CreditCard,
   Building2, Users, Landmark, ArrowUpCircle, Loader2,
-  CalendarDays, CheckCircle2, Clock, AlertCircle,
+  CalendarDays, CheckCircle2, Clock, AlertCircle, RefreshCw, Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { TIER_CONFIGS } from "@/lib/permissions";
+import type { SubscriptionTier } from "@/types/subscription";
 import { abonnementsApi, paymentsApi, type AbonnementAPI, type Payment } from "@/lib/api";
 import { UpgradeSubscriptionModal } from "@/components/subscription/UpgradeSubscriptionModal";
 
@@ -72,6 +73,41 @@ function planColors(libelle: string): { color: string; textColor: string; border
   return { color: "bg-muted", textColor: "text-muted-foreground", borderColor: "border-muted" };
 }
 
+// ── Règles d'évolution d'abonnement ───────────────────────────────────────────
+
+// Tiers qui ne peuvent que se renouveler (pas de changement de type possible)
+const RENEWAL_ONLY_TIERS = ["ME_OR", "ORGANISATION", "FEDERATION", "INSTITUTIONNEL"];
+
+// Ordre des libellés pour le classement (doit correspondre à l'ordre dans le modal)
+const LIBELLE_TIER_ORDER = [
+  "basic individuel",
+  "argent professionnel",
+  "or professionnel",
+  "basic entreprise",
+  "argent entreprise",
+  "or entreprise",
+  "association",
+  "fédération",
+  "institutionnel",
+];
+
+function getPlanRank(libelle: string): number {
+  const n = normLibelle(libelle).toLowerCase();
+  const idx = LIBELLE_TIER_ORDER.findIndex((t) => n.includes(t));
+  return idx === -1 ? 99 : idx;
+}
+
+function getPlanCategory(libelle: string): "collective" | "entreprise" | "individual" {
+  const n = normLibelle(libelle).toLowerCase();
+  if (
+    n.includes("institutionnel") ||
+    n.includes("fédération") || n.includes("federation") ||
+    n.includes("association") || n.includes("coopérative") || n.includes("organisation")
+  ) return "collective";
+  if (n.includes("entreprise")) return "entreprise";
+  return "individual";
+}
+
 function paymentStatusBadge(status: string) {
   switch (status?.toLowerCase()) {
     case "success": case "successful": case "paid":
@@ -99,8 +135,12 @@ export default function Abonnement() {
 
   // Tier actuel
   const currentTier = user?.subscription?.tier ?? "ME_ARGENT";
-  const tierConfig = TIER_CONFIGS[currentTier];
+  const tierConfig = TIER_CONFIGS[currentTier as SubscriptionTier] ?? TIER_CONFIGS["ME_ARGENT"];
   const currentLibelle = user?.planLibelle ?? tierConfig.name;
+
+  // Règles d'évolution
+  const isRenewalOnly = RENEWAL_ONLY_TIERS.includes(currentTier);
+  const currentRank = getPlanRank(currentLibelle);
 
   useEffect(() => {
     abonnementsApi.getAll()
@@ -127,6 +167,40 @@ export default function Abonnement() {
 
   const isCurrentPlan = (p: AbonnementAPI) =>
     normLibelle(p.libelle).toLowerCase() === normLibelle(currentLibelle).toLowerCase();
+
+  // Plan API correspondant à l'abonnement actuel (pour le renouvellement)
+  const currentApiPlan = plans.find((p) => isCurrentPlan(p)) ?? null;
+
+  // Détermine si un plan est une évolution valide pour l'utilisateur
+  function isValidUpgrade(plan: AbonnementAPI): boolean {
+    if (isCurrentPlan(plan)) return false;
+    if (isRenewalOnly) return false;
+
+    const planCat = getPlanCategory(normLibelle(plan.libelle));
+    if (planCat === "collective") return false; // personne ne peut aller vers collectif depuis autre chose
+
+    const planRankVal = getPlanRank(normLibelle(plan.libelle));
+
+    if (tierConfig.category === "entreprise") {
+      // Entreprise → uniquement montée en gamme dans entreprise
+      return planCat === "entreprise" && planRankVal > currentRank;
+    }
+
+    // Individuel → individuel + entreprise avec rang supérieur
+    return planRankVal > currentRank;
+  }
+
+  // Groupes filtrés selon les règles d'évolution
+  const visibleGrouped = Object.entries(grouped).reduce<Record<string, AbonnementAPI[]>>(
+    (acc, [typeName, typePlans]) => {
+      if (isRenewalOnly) return acc; // aucun plan disponible pour changement
+
+      const validPlans = typePlans.filter((p) => isCurrentPlan(p) || isValidUpgrade(p));
+      if (validPlans.length > 0) acc[typeName] = validPlans;
+      return acc;
+    },
+    {}
+  );
 
   // Icône/couleurs du plan actuel
   const CurrentIcon = planIcon(currentLibelle);
@@ -181,15 +255,27 @@ export default function Abonnement() {
               <Badge className="bg-green-500/10 text-green-600 border-green-500/30">
                 <CheckCircle2 className="w-3 h-3 mr-1" /> Actif
               </Badge>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1.5"
-                onClick={() => { setSelectedPlanForUpgrade(null); setUpgradeOpen(true); }}
-              >
-                <ArrowUpCircle className="w-3.5 h-3.5" />
-                Changer de plan
-              </Button>
+              {isRenewalOnly ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => { setSelectedPlanForUpgrade(currentApiPlan); setUpgradeOpen(true); }}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Renouveler l'abonnement
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => { setSelectedPlanForUpgrade(null); setUpgradeOpen(true); }}
+                >
+                  <ArrowUpCircle className="w-3.5 h-3.5" />
+                  Changer de plan
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -224,8 +310,39 @@ export default function Abonnement() {
           <div className="flex justify-center py-10">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
+        ) : isRenewalOnly ? (
+          /* ── Tiers à renouvellement uniquement ───────────────── */
+          <Card className="border-dashed border-2">
+            <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <Lock className="w-5 h-5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">Abonnement fixe</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md">
+                    Votre abonnement <span className="font-medium">{normLibelle(currentLibelle)}</span> est un
+                    type unique. Il ne peut pas être changé pour un autre type — vous pouvez uniquement
+                    le renouveler (mensuel ou annuel).
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="gap-1.5 shrink-0"
+                onClick={() => { setSelectedPlanForUpgrade(currentApiPlan); setUpgradeOpen(true); }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Renouveler
+              </Button>
+            </CardContent>
+          </Card>
+        ) : Object.keys(visibleGrouped).length === 0 ? (
+          <p className="text-center text-muted-foreground py-6 text-sm">
+            Aucun plan supérieur disponible pour votre catégorie.
+          </p>
         ) : (
-          Object.entries(grouped).map(([typeName, typePlans]) => (
+          Object.entries(visibleGrouped).map(([typeName, typePlans]) => (
             <div key={typeName} className="space-y-3">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{typeName}</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

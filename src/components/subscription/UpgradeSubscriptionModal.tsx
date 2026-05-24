@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { abonnementsApi, clapayApi, type AbonnementAPI, type CountryData, type OperatorData } from "@/lib/api";
+import { TIER_CONFIGS } from "@/lib/permissions";
+import type { SubscriptionTier } from "@/types/subscription";
 
 type Step = "plan" | "payment" | "redirect";
 type PayStatus = "pending" | "success" | "failed";
@@ -37,6 +39,20 @@ function planRank(libelle: string): number {
   return idx === -1 ? 99 : idx;
 }
 
+// Tiers qui ne peuvent que se renouveler (pas de changement de type)
+const RENEWAL_ONLY_TIERS = ["ME_OR", "ORGANISATION", "FEDERATION", "INSTITUTIONNEL"];
+
+function getPlanCategory(libelle: string): "collective" | "entreprise" | "individual" {
+  const n = normLibelle(libelle).toLowerCase();
+  if (
+    n.includes("institutionnel") ||
+    n.includes("fédération") || n.includes("federation") ||
+    n.includes("association") || n.includes("coopérative") || n.includes("organisation")
+  ) return "collective";
+  if (n.includes("entreprise")) return "entreprise";
+  return "individual";
+}
+
 function normLibelle(raw: string): string {
   return raw.replace(/&amp;/g, "&").replace(/&#x2F;/gi, "/").replace(/&#x27;/gi, "'");
 }
@@ -58,6 +74,9 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
   const [plans, setPlans] = useState<AbonnementAPI[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<AbonnementAPI | null>(null);
+
+  // Choix mensuel / annuel (disponible à l'étape paiement)
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
 
   // Step 2
   const [countries, setCountries] = useState<CountryData[]>([]);
@@ -140,6 +159,7 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
     setSignature(null);
     setPayError(null);
     setPayStatus("pending");
+    setBillingCycle("monthly");
     stopPolling();
 
     if (initialPlan) {
@@ -158,8 +178,30 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
         const active = data.filter((p) => p.isActive && !p.surDevis);
         const currentLibelle = user?.planLibelle ?? "";
         const currentRank = planRank(currentLibelle);
-        const upgrades = active.filter((p) => planRank(normLibelle(p.libelle)) > currentRank);
-        setPlans(upgrades.length > 0 ? upgrades : active);
+        const tier = user?.subscription?.tier ?? "";
+        const tierConfig = TIER_CONFIGS[tier as SubscriptionTier];
+        const category = tierConfig?.category;
+
+        let available: AbonnementAPI[];
+
+        if (RENEWAL_ONLY_TIERS.includes(tier) || !tier) {
+          // Pas de changement possible, on n'affiche rien
+          available = [];
+        } else if (category === "entreprise") {
+          // Entreprise → uniquement montée en gamme entreprise
+          available = active.filter((p) => {
+            const planCat = getPlanCategory(normLibelle(p.libelle));
+            return planCat === "entreprise" && planRank(normLibelle(p.libelle)) > currentRank;
+          });
+        } else {
+          // Individuel → individuel + entreprise avec rang supérieur, jamais collectif
+          available = active.filter((p) => {
+            const planCat = getPlanCategory(normLibelle(p.libelle));
+            return planCat !== "collective" && planRank(normLibelle(p.libelle)) > currentRank;
+          });
+        }
+
+        setPlans(available);
       })
       .catch(() => setPlans([]))
       .finally(() => setPlansLoading(false));
@@ -199,8 +241,9 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
       const lastname = nameParts.slice(1).join(" ") || firstname;
       const localPhone = phone.replace(/\s/g, "");
 
+      const tarif = billingCycle === "monthly" ? selectedPlan.tarifMensuel : selectedPlan.tarifAnnuel;
       const res = await clapayApi.initSubscriptionPayment({
-        amount: Math.round(parseFloat(selectedPlan.tarifMensuel)),
+        amount: Math.round(parseFloat(tarif)),
         currency: selectedCountry.currency,
         countryCode: selectedCountry.code,
         operatorsCode: [selectedOperator.codeoperator],
@@ -212,6 +255,7 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
           phone: localPhone,
           typeMembreId: selectedPlan.typeMembreId,
           abonnementId: selectedPlan.id,
+          modalite_abonnement: billingCycle === "monthly" ? "abonnement_mensuel" : "abonnement_annuel",
         },
         customerFirstname: firstname,
         customerLastname: lastname,
@@ -328,6 +372,37 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
         {/* ── STEP 2 : Paiement ──────────────────────────────────── */}
         {step === "payment" && selectedPlan && (
           <div className="space-y-5 py-2">
+            {/* Toggle mensuel / annuel */}
+            <div className="flex justify-center">
+              <div className="inline-flex items-center gap-1 bg-muted p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("monthly")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+                    billingCycle === "monthly"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Mensuel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle("yearly")}
+                  className={cn(
+                    "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+                    billingCycle === "yearly"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Annuel
+                  <Badge className="ml-2 bg-secondary text-secondary-foreground text-[10px] px-1.5">-17%</Badge>
+                </button>
+              </div>
+            </div>
+
             <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground">Plan sélectionné</p>
@@ -335,9 +410,13 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
               </div>
               <div className="text-right">
                 <p className="text-xl font-bold text-primary">
-                  {parseInt(selectedPlan.tarifMensuel).toLocaleString("fr-FR")} FCFA
+                  {parseInt(
+                    billingCycle === "monthly" ? selectedPlan.tarifMensuel : selectedPlan.tarifAnnuel
+                  ).toLocaleString("fr-FR")} FCFA
                 </p>
-                <p className="text-xs text-muted-foreground">/ mois</p>
+                <p className="text-xs text-muted-foreground">
+                  / {billingCycle === "monthly" ? "mois" : "an"}
+                </p>
               </div>
             </div>
 
@@ -429,7 +508,10 @@ export function UpgradeSubscriptionModal({ open, onOpenChange, featureLabel, ini
               onClick={handlePay}
             >
               {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpCircle className="w-4 h-4" />}
-              {paying ? "Initialisation..." : `Payer ${parseInt(selectedPlan.tarifMensuel).toLocaleString("fr-FR")} FCFA`}
+              {paying
+                ? "Initialisation..."
+                : `Payer ${parseInt(billingCycle === "monthly" ? selectedPlan.tarifMensuel : selectedPlan.tarifAnnuel).toLocaleString("fr-FR")} FCFA`
+              }
             </Button>
           </div>
         )}
