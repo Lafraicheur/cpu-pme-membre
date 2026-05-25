@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { UpgradeSubscriptionModal } from "@/components/subscription/UpgradeSubscriptionModal";
 import { abonnementsApi, type AbonnementAPI } from "@/lib/api";
+import { TIER_CONFIGS } from "@/lib/permissions";
+import type { SubscriptionTier } from "@/types/subscription";
 
 const statutLabel: Record<string, string> = {
   approved: "Approuvé",
@@ -52,6 +54,7 @@ function AbonnementKPICard({
   planLibelle,
   onRenew,
   onUpgrade,
+  showUpgrade,
 }: {
   startDate: string;
   period: "mensuel" | "annuel";
@@ -59,6 +62,7 @@ function AbonnementKPICard({
   planLibelle: string;
   onRenew: () => void;
   onUpgrade: () => void;
+  showUpgrade: boolean;
 }) {
   const endDate = computeEndDate(startDate, period, endDateApi);
   const [timeLeft, setTimeLeft] = useState(computeTimeLeft(endDate));
@@ -131,9 +135,11 @@ function AbonnementKPICard({
         <button onClick={onRenew} className="px-2.5 py-1 text-xs font-medium text-primary rounded-sm border border-primary/20 hover:scale-105 transition-all">
           Renouveler
         </button>
-        <button onClick={onUpgrade} className="px-2.5 py-1 text-xs font-medium text-primary rounded-sm border border-primary/20 hover:scale-105 transition-all">
-          Upgrader
-        </button>
+        {showUpgrade && (
+          <button onClick={onUpgrade} className="px-2.5 py-1 text-xs font-medium text-primary rounded-sm border border-primary/20 hover:scale-105 transition-all">
+            Upgrader
+          </button>
+        )}
       </div>
     </div>
   );
@@ -226,6 +232,13 @@ const Index = () => {
 
   const showCountdown = !!(user?.abonnementStartDate);
 
+  // Le bouton "Upgrader" n'est visible que si l'utilisateur peut changer de plan
+  const RENEWAL_ONLY_TIERS = ["ME_OR", "ORGANISATION", "FEDERATION", "INSTITUTIONNEL"];
+  const currentTier = user?.subscription?.tier ?? "";
+  const tierConfig  = TIER_CONFIGS[currentTier as SubscriptionTier];
+  const isRenewalOnly = RENEWAL_ONLY_TIERS.includes(currentTier) || !tierConfig;
+  const showUpgrade = !isRenewalOnly;
+
   // Sépare le préfixe "Bienvenue, " du nom pour colorer uniquement le nom
   const WELCOME_PREFIX = "Bienvenue, ";
   const isWelcomeMsg = displayed.startsWith(WELCOME_PREFIX);
@@ -276,6 +289,7 @@ const Index = () => {
               planLibelle={plan}
               onRenew={handleRenew}
               onUpgrade={handleUpgrade}
+              showUpgrade={showUpgrade}
             />
           ) : (
             <KPICard
@@ -285,7 +299,10 @@ const Index = () => {
               icon={CreditCard}
               variant="primary"
               className="h-full"
-              actions={[{ label: "Renouveler" }, { label: "Upgrader" }]}
+              actions={[
+                { label: "Renouveler" },
+                ...(showUpgrade ? [{ label: "Upgrader" }] : []),
+              ]}
             />
           )}
         </div>

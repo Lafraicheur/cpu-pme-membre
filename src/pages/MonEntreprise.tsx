@@ -419,6 +419,7 @@ export default function MonEntreprise() {
               numeroMembre={String(profile?.numero_membre ?? "")}
               plan={String((abonnement?.plan as string | undefined) ?? "basic")}
               abonnementCreatedAt={String((abonnement?.createdAt as string | undefined) ?? "")}
+              typeMembreNom={String(typeMembre?.name ?? "")}
             />
           </TabsContent>
 

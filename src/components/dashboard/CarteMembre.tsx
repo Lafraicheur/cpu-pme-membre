@@ -1,4 +1,4 @@
-import { CreditCard, User, Building2, Download } from "lucide-react";
+import { CreditCard, User, Building2, Download, Users, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import logoCpuPme from "@/assets/logo-cpu-pme.png";
@@ -10,15 +10,39 @@ interface Props {
   numeroMembre: string;
   plan: string;
   abonnementCreatedAt: string;
+  typeMembreNom?: string;
 }
 
-const PLAN_CONFIG: Record<string, { from: string; to: string; label: string }> = {
-  basic:  { from: "#F97316", to: "#C2410C", label: "Basic"  },
-  argent: { from: "#6B7280", to: "#374151", label: "Argent" },
-  silver: { from: "#6B7280", to: "#374151", label: "Argent" },
-  gold:   { from: "#D97706", to: "#92400E", label: "Or"     },
-  or:     { from: "#D97706", to: "#92400E", label: "Or"     },
+type PlanConfig = {
+  from: string;
+  to: string;
+  label: string;
+  type: "individual" | "entreprise" | "federation" | "organisation" | "institutionnel";
 };
+
+const PLAN_CONFIG: Record<string, PlanConfig> = {
+  // Individuel / Entreprise
+  basic:          { from: "#F97316", to: "#C2410C", label: "Basic",          type: "individual"    },
+  argent:         { from: "#6B7280", to: "#374151", label: "Argent",         type: "individual"    },
+  silver:         { from: "#6B7280", to: "#374151", label: "Argent",         type: "individual"    },
+  gold:           { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
+  or:             { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
+  // Collectifs
+  federation:     { from: "#7C3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
+  fédération:     { from: "#7C3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
+  organisation:   { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
+  association:    { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
+  "coopérative":  { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
+  institutionnel: { from: "#B45309", to: "#451A03", label: "Institutionnel", type: "institutionnel" },
+};
+
+function resolveConfig(plan: string, typeMembreNom: string): PlanConfig {
+  const t = typeMembreNom.toLowerCase();
+  if (t.includes("institutionnel"))                                         return PLAN_CONFIG.institutionnel;
+  if (t.includes("fédération") || t.includes("federation"))                return PLAN_CONFIG.federation;
+  if (t.includes("organisation") || t.includes("association") || t.includes("coopérative")) return PLAN_CONFIG.organisation;
+  return PLAN_CONFIG[plan.toLowerCase()] ?? PLAN_CONFIG.basic;
+}
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 
@@ -57,10 +81,12 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt }: Props) {
-  const planKey = plan.toLowerCase();
-  const config = PLAN_CONFIG[planKey] ?? PLAN_CONFIG.basic;
+export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt, typeMembreNom = "" }: Props) {
+  const config = resolveConfig(plan, typeMembreNom);
   const expirationDate = formatExpiration(abonnementCreatedAt);
+
+  const isCollective = config.type === "federation" || config.type === "organisation" || config.type === "institutionnel";
+  const CardIcon      = config.type === "institutionnel" ? Landmark : config.type === "federation" ? Users : Building2;
 
   async function handleDownload() {
     // Dimensions carte bancaire standard ×10
@@ -120,7 +146,7 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
     ctx.textAlign = "left";
     ctx.fillText("⊟  Pass PME", PAD + 16, PAD + 19);
 
-    // ── Badge plan (haut droit) ───────────────────────────────
+    // ── Badge type/plan (haut droit) ─────────────────────────
     ctx.font = `bold 17px ${FONT}`;
     const planW = ctx.measureText(config.label).width + 36;
     ctx.fillStyle = "rgba(255,255,255,0.25)";
@@ -235,7 +261,10 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
               <div className="space-y-0.5">
                 <p className="text-[10px] tracking-widest opacity-70 uppercase">CPU-PME.CI</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <User className="w-5 h-5 opacity-80 shrink-0" />
+                  {isCollective
+                    ? <CardIcon className="w-5 h-5 opacity-80 shrink-0" />
+                    : <User className="w-5 h-5 opacity-80 shrink-0" />
+                  }
                   <span className="text-lg font-bold leading-tight truncate">{name || "—"}</span>
                 </div>
                 <div className="flex items-center gap-2">
