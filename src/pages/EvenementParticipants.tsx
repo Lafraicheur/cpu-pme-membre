@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import jsPDF from "jspdf";
@@ -419,9 +419,8 @@ export default function EvenementParticipants() {
                         const isExpanded = expandedRows.has(r.id);
 
                         return (
-                          <>
+                          <Fragment key={r.id}>
                             <tr
-                              key={r.id}
                               className={`border-b border-border transition-colors ${hasTickets ? "cursor-pointer hover:bg-muted/30" : "hover:bg-muted/20"} ${isExpanded ? "bg-muted/20" : ""}`}
                               onClick={() => hasTickets && toggleRow(r.id)}
                             >
@@ -532,7 +531,7 @@ export default function EvenementParticipants() {
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </Fragment>
                         );
                       })}
                     </tbody>

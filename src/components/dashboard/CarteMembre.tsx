@@ -28,7 +28,7 @@ const PLAN_CONFIG: Record<string, PlanConfig> = {
   gold:           { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
   or:             { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
   // Collectifs
-  federation:     { from: "#7C3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
+  federation:     { from: "#7D3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
   fédération:     { from: "#7C3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
   organisation:   { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
   association:    { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
