@@ -10,6 +10,7 @@ interface Props {
   numeroMembre: string;
   plan: string;
   abonnementCreatedAt: string;
+  modaliteAbonnement?: "abonnement_mensuel" | "abonnement_annuel";
   typeMembreNom?: string;
 }
 
@@ -28,8 +29,8 @@ const PLAN_CONFIG: Record<string, PlanConfig> = {
   gold:           { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
   or:             { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
   // Collectifs
-  federation:     { from: "#7D3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
-  fédération:     { from: "#7C3AED", to: "#3B0764", label: "Fédération",     type: "federation"    },
+  federation:     { from: "#5399F9", to: "#4568EE", label: "Fédération",     type: "federation"    },
+  fédération:     { from: "#5399F9", to: "#4568EE", label: "Fédération",     type: "federation"    },
   organisation:   { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
   association:    { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
   "coopérative":  { from: "#2563EB", to: "#1E3A8A", label: "Organisation",   type: "organisation"  },
@@ -46,11 +47,15 @@ function resolveConfig(plan: string, typeMembreNom: string): PlanConfig {
 
 const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif";
 
-function formatExpiration(createdAt: string): string {
+function formatExpiration(createdAt: string, modalite?: "abonnement_mensuel" | "abonnement_annuel"): string {
   if (!createdAt) return "—";
   const d = new Date(createdAt);
   if (isNaN(d.getTime())) return "—";
-  d.setFullYear(d.getFullYear() + 1);
+  if (modalite === "abonnement_mensuel") {
+    d.setMonth(d.getMonth() + 1);
+  } else {
+    d.setFullYear(d.getFullYear() + 1);
+  }
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
@@ -81,9 +86,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt, typeMembreNom = "" }: Props) {
+export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt, modaliteAbonnement, typeMembreNom = "" }: Props) {
   const config = resolveConfig(plan, typeMembreNom);
-  const expirationDate = formatExpiration(abonnementCreatedAt);
+  const expirationDate = formatExpiration(abonnementCreatedAt, modaliteAbonnement);
 
   const isCollective = config.type === "federation" || config.type === "organisation" || config.type === "institutionnel";
   const CardIcon      = config.type === "institutionnel" ? Landmark : config.type === "federation" ? Users : Building2;

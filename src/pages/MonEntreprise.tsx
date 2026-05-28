@@ -285,10 +285,10 @@ export default function MonEntreprise() {
               <CreditCard className="w-4 h-4" />
               Carte Membre
             </TabsTrigger>
-            <TabsTrigger value="team" className="gap-2">
+            {/* <TabsTrigger value="team" className="gap-2">
               <Users className="w-4 h-4" />
               Équipes
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
 
           {/* Profile Tab */}
@@ -418,7 +418,8 @@ export default function MonEntreprise() {
               orgName={String(profile?.customOrganisationName ?? profile?.organisationName ?? "")}
               numeroMembre={String(profile?.numero_membre ?? "")}
               plan={String((abonnement?.plan as string | undefined) ?? "basic")}
-              abonnementCreatedAt={String((abonnement?.createdAt as string | undefined) ?? "")}
+              abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
+              modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
               typeMembreNom={String(typeMembre?.name ?? "")}
             />
           </TabsContent>

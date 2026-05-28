@@ -148,19 +148,14 @@ function mapProfileToUser(profile: Record<string, unknown>): User {
     typeMembre:        get<string>(typeMembreObj, "name")    || undefined,
     interventionScope: (profile.interventionScope as string) || undefined,
     ...(() => {
-      const libelleNorm = ((abonnement?.libelle as string) || "").toLowerCase();
-      const periodeRaw  = ((abonnement?.periode as string) || (abonnement?.interval as string) || "").toLowerCase();
-      const isAnnuel    = periodeRaw.includes("annuel") || periodeRaw.includes("annual")
-                       || libelleNorm.includes("annuel") || libelleNorm.includes("/an");
+      const modalite = (profile.modalite_abonnement as string) || "";
+      const isAnnuel = modalite === "abonnement_annuel";
       return {
         abonnementPeriod:    (isAnnuel ? "annuel" : "mensuel") as "mensuel" | "annuel",
-        abonnementStartDate: (abonnement?.created_at as string)
-                          || (abonnement?.startDate as string)
+        abonnementStartDate: (profile.date_debut_abonnement as string)
                           || (profile.created_at as string)
                           || undefined,
-        abonnementEndDate:   (abonnement?.dateExpiration as string)
-                          || (abonnement?.date_expiration as string)
-                          || (abonnement?.date_fin as string)
+        abonnementEndDate:   (profile.date_fin_abonnement as string)
                           || undefined,
       };
     })(),

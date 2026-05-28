@@ -44,7 +44,7 @@ function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 }
 
-const CATALOGUE_URL = "https://devformation.cpupme.ci/catalogue";
+const CATALOGUE_URL = "https://formation.cpupme.ci/catalogue";
 
 function toFormationUrl(title: string): string {
   const slug = title
@@ -54,7 +54,7 @@ function toFormationUrl(title: string): string {
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
     .replace(/\s+/g, "-");
-  return `https://devformation.cpupme.ci/formations/${slug}`;
+  return `https://formation.cpupme.ci/formations/${slug}`;
 }
 
 interface Formation {
