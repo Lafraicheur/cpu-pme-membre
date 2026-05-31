@@ -62,7 +62,9 @@ function EventCard({ event }: { event: Evenement }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-0.5">
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />
-              {formatDate(event.date_debut)}
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
             </span>
             {event.lieu && (
               <span className="flex items-center gap-1">

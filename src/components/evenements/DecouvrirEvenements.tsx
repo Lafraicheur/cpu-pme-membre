@@ -163,9 +163,17 @@ function EventCardGrid({ event, tickets }: { event: Evenement; tickets: TicketTy
         <div className="flex-1 space-y-1.5 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span>{formatDate(event.date_debut)}</span>
+            <span>
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
+            </span>
             <Clock className="w-3.5 h-3.5 text-primary ml-auto shrink-0" />
-            <span>{event.heure_debut}</span>
+            <span>
+              {event.heure_fin && event.heure_fin !== event.heure_debut
+                ? `${event.heure_debut} → ${event.heure_fin}`
+                : event.heure_debut}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -244,11 +252,15 @@ function EventCardList({ event, tickets }: { event: Evenement; tickets: TicketTy
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {formatDate(event.date_debut)}
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              {event.heure_debut}
+              {event.heure_fin && event.heure_fin !== event.heure_debut
+                ? `${event.heure_debut} → ${event.heure_fin}`
+                : event.heure_debut}
             </span>
           </div>
           {tickets.length > 0 ? (

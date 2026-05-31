@@ -157,9 +157,17 @@ function MonEvenementCard({
         <div className="space-y-1 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="w-3.5 h-3.5 shrink-0" />
-            <span>{formatDate(event.date_debut)}</span>
+            <span>
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
+            </span>
             <Clock className="w-3.5 h-3.5 ml-auto shrink-0" />
-            <span>{event.heure_debut}</span>
+            <span>
+              {event.heure_fin && event.heure_fin !== event.heure_debut
+                ? `${event.heure_debut} → ${event.heure_fin}`
+                : event.heure_debut}
+            </span>
           </div>
           {event.lieu && (
             <div className="flex items-center gap-2">

@@ -82,11 +82,11 @@ export interface Evenement {
   titre: string;
   description: string;
   date_debut: string;
-  date_fin: string;
+  date_fin: string | null;
   image_flayer: string | null;
   lieu: string | null;
   heure_debut: string;
-  heure_fin: string;
+  heure_fin: string | null;
   format: string;
   prix: string | null;
   prix_membre: string | null;

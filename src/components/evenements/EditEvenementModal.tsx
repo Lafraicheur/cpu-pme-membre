@@ -11,7 +11,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  typeEvenementsApi, regionsApi, filieresApi, publicCiblesApi,
+  typeEvenementsApi, regionsApi, filieresApi,
   evenementsApi, type Evenement,
 } from "@/lib/api";
 import {
@@ -104,7 +104,6 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
   const { data: typeEvenements = [] } = useQuery({ queryKey: ["type-evenements"], queryFn: () => typeEvenementsApi.getAll(), staleTime: 10 * 60 * 1000, enabled: open });
   const { data: regions = [] }        = useQuery({ queryKey: ["regions"],         queryFn: regionsApi.getAll,  staleTime: 10 * 60 * 1000, enabled: open });
   const { data: filieres = [] }       = useQuery({ queryKey: ["filieres"],        queryFn: filieresApi.getAll, staleTime: 10 * 60 * 1000, enabled: open });
-  const { data: publicCibles = [] }   = useQuery({ queryKey: ["public-cibles"],   queryFn: publicCiblesApi.getAll, staleTime: 10 * 60 * 1000, enabled: open });
 
   // ── Étape 1 ─────────────────────────────────────────────────────────────────
   const [titre, setTitre]                             = useState("");
@@ -115,7 +114,7 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
   const [regionId, setRegionId]                       = useState("");
   const [filiereId, setFiliereId]                     = useState("");
   const [filiereConcerner, setFiliereConcerner]       = useState<ObjectifRow[]>([emptyObjectif()]);
-  const [publicCibleIds, setPublicCibleIds]           = useState<string[]>([]);
+  const [audience, setAudience]                       = useState("");
   const [imageFile, setImageFile]                     = useState<File | null>(null);
   const [imagePreview, setImagePreview]               = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -158,6 +157,7 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
 
     const fc = safeParseArray<string>(event.filiere_concerner, []);
     setFiliereConcerner(fc.length > 0 ? fc.map((t) => ({ texte: t })) : [emptyObjectif()]);
+    setAudience(event.type_audience ?? "");
 
     // Étape 2
     setDateDebut(toDatetimeLocal(event.date_debut, event.heure_debut));
@@ -174,9 +174,15 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
     const ip = safeParseObj<InfosPratiques>(event.informations_pratiques, emptyInfosPratiques());
     setInformationsPratiques({ parking: ip.parking ?? "", restauration: ip.restauration ?? "", accessibilite: ip.accessibilite ?? "" });
 
-    const ivRaw = safeParseArray<{ nom_complet?: string; titre_fonction?: string; entreprise_organisation?: string }>(event.intervenants, []);
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    const ivRaw = safeParseArray<{ nom_complet?: string; titre_fonction?: string; entreprise_organisation?: string; image?: string | null }>(event.intervenants, []);
     setIntervenants(ivRaw.length > 0
-      ? ivRaw.map((iv) => ({ nom_complet: iv.nom_complet ?? "", titre_fonction: iv.titre_fonction ?? "", entreprise_organisation: iv.entreprise_organisation ?? "", imageFile: null, imagePreview: null }))
+      ? ivRaw.map((iv) => {
+          const imgUrl = iv.image
+            ? iv.image.startsWith("http") ? iv.image : `${apiUrl}${iv.image}`
+            : null;
+          return { nom_complet: iv.nom_complet ?? "", titre_fonction: iv.titre_fonction ?? "", entreprise_organisation: iv.entreprise_organisation ?? "", imageFile: null, imagePreview: imgUrl };
+        })
       : [emptyIntervenant()]
     );
 
@@ -191,16 +197,6 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
 
   }, [event, open]);
 
-  // ── Pré-remplissage publicCibleIds (dépend du chargement de publicCibles) ───
-  useEffect(() => {
-    if (!event || publicCibles.length === 0) return;
-    const audience = event.type_audience ?? "";
-    if (!audience) { setPublicCibleIds([]); return; }
-    const labels = audience.split(",").map((s) => s.trim().toLowerCase());
-    const ids = publicCibles.filter((pc) => pc.libelle && labels.includes(pc.libelle.toLowerCase())).map((pc) => pc.id);
-    setPublicCibleIds(ids);
-  }, [event, publicCibles]);
-
   // ── Mutation sauvegarde ──────────────────────────────────────────────────────
   const { mutate, isPending } = useMutation({
     mutationFn: async () => {
@@ -208,8 +204,7 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
       const validObjectifs  = objectifs.filter((o) => o.texte.trim()).map((o) => o.texte);
       const validProgramme  = programme.filter((r) => r.heure.trim() || r.activite.trim());
       const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim()).map((o) => o.texte);
-      const selectedPc      = publicCibles.filter((p) => publicCibleIds.includes(p.id));
-      const typeAudience    = selectedPc.length > 0 ? selectedPc.map((p) => p.libelle).join(", ") : null;
+      const typeAudience    = audience.trim() || null;
       const infoPratiques   = (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite)
         ? informationsPratiques : null;
       const intervenantsData = intervenants
@@ -431,30 +426,13 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
                       </div>
                     </div>
                     <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Public cible
-                        {publicCibleIds.length > 0 && (
-                          <span className="ml-2 normal-case font-normal text-primary">{publicCibleIds.length} sélectionné{publicCibleIds.length > 1 ? "s" : ""}</span>
-                        )}
-                      </Label>
-                      <div className="flex flex-wrap gap-2">
-                        {publicCibles.map((pc) => {
-                          const selected = publicCibleIds.includes(pc.id);
-                          return (
-                            <button key={pc.id} type="button"
-                              onClick={() => setPublicCibleIds((prev) => selected ? prev.filter((id) => id !== pc.id) : [...prev, pc.id])}
-                              className={cn(
-                                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-all",
-                                selected
-                                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                  : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-                              )}>
-                              {selected && <CheckCircle className="w-3 h-3 shrink-0" />}
-                              {pc.libelle}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Audience</Label>
+                      <Input
+                        value={audience}
+                        onChange={(e) => setAudience(e.target.value)}
+                        placeholder="Ex : PME, startups, investisseurs, entrepreneurs…"
+                        className="h-11"
+                      />
                     </div>
                   </div>
                 </SectionCard>

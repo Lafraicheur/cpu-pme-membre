@@ -24,14 +24,12 @@ import {
   typeEvenementsApi,
   regionsApi,
   filieresApi,
-  publicCiblesApi,
   ticketTypesApi,
   createEvenementApi,
   createEvenementApiJson,
   TypeEvenement,
   Region,
   Filiere,
-  PublicCible,
 } from "@/lib/api";
 import {
   PlusCircle,
@@ -241,12 +239,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
     queryFn: filieresApi.getAll,
     staleTime: 10 * 60 * 1000,
   });
-  const { data: publicCibles = [] } = useQuery({
-    queryKey: ["public-cibles"],
-    queryFn: publicCiblesApi.getAll,
-    staleTime: 10 * 60 * 1000,
-  });
-
   const [step, setStep] = useState(0);
 
   // Étape 1
@@ -258,7 +250,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const [regionId, setRegionId]             = useState("");
   const [filiereId, setFiliereId]           = useState("");
   const [filiereConcerner, setFiliereConcerner] = useState<ObjectifRow[]>([emptyObjectif()]);
-  const [publicCibleIds, setPublicCibleIds] = useState<string[]>([]);
+  const [audience, setAudience]             = useState("");
   const [imageFile, setImageFile]           = useState<File | null>(null);
   const [imagePreview, setImagePreview]     = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -356,8 +348,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
       const validProgramme  = programme.filter((r) => r.heure.trim() || r.activite.trim());
       const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim()).map((o) => o.texte);
       const validCequiInclu = cequiInclu.filter((o) => o.texte.trim()).map((o) => o.texte);
-      const selectedPc      = publicCibles.filter((p) => publicCibleIds.includes(p.id));
-      const typeAudience    = selectedPc.length > 0 ? selectedPc.map((p) => p.libelle).join(", ") : null;
+      const typeAudience    = audience.trim() || null;
       const infoPratiques   = (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite)
         ? informationsPratiques : null;
       const intervenantsData = intervenants
@@ -481,7 +472,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const reset = () => {
     setStep(0); setTitre(""); setDescription(""); setFormat("presentiel");
     setDescriptionTypeFormat(""); setFiliereConcerner([emptyObjectif()]);
-    setTypeEvenementId(""); setRegionId(""); setFiliereId(""); setPublicCibleIds([]);
+    setTypeEvenementId(""); setRegionId(""); setFiliereId(""); setAudience("");
     setImageFile(null); setImagePreview(null);
     setDateDebut(""); setDateFin("");
     setObjectifs([emptyObjectif()]); setProgramme([emptyProgrammeRow()]); setInformationsPratiques(emptyInfosPratiques());
@@ -629,35 +620,13 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
                 </div>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Public cible
-                  {publicCibleIds.length > 0 && (
-                    <span className="ml-2 normal-case font-normal text-primary">{publicCibleIds.length} sélectionné{publicCibleIds.length > 1 ? "s" : ""}</span>
-                  )}
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {publicCibles.map((pc) => {
-                    const selected = publicCibleIds.includes(pc.id);
-                    return (
-                      <button
-                        key={pc.id}
-                        type="button"
-                        onClick={() => setPublicCibleIds((prev) =>
-                          selected ? prev.filter((id) => id !== pc.id) : [...prev, pc.id]
-                        )}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-all",
-                          selected
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-                        )}
-                      >
-                        {selected && <CheckCircle className="w-3 h-3 shrink-0" />}
-                        {pc.libelle}
-                      </button>
-                    );
-                  })}
-                </div>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Audience</Label>
+                <Input
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                  placeholder="Ex : PME, startups, investisseurs, entrepreneurs…"
+                  className="h-11"
+                />
               </div>
             </div>
           </SectionCard>
