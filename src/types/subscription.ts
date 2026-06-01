@@ -45,6 +45,7 @@ export type Feature =
 
   // Affiliation
   | 'affiliation.access'
+  | 'members.management'
 
   // Financement
   | 'financing.requests'

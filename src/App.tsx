@@ -20,6 +20,7 @@ import Evenements from "./pages/Evenements";
 import Formation from "./pages/Formation";
 import Affiliation from "./pages/Affiliation";
 import DataHub from "./pages/DataHub";
+import Membres from "./pages/Membres";
 import Support from "./pages/Support";
 import Historique from "./pages/Historique";
 import Parametres from "./pages/Parametres";
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="/formation" element={<Formation />} />
               <Route path="/affiliation" element={<Affiliation />} />
               <Route path="/data-hub" element={<DataHub />} />
+              <Route path="/membres" element={<Membres />} />
               <Route path="/support" element={<Support />} />
               <Route path="/historique" element={<Historique />} />
               <Route path="/parametres" element={<Parametres />} />

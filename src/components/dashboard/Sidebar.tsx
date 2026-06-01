@@ -42,19 +42,21 @@ interface NavItem {
   href: string;
   badge?: number;
   requiredFeature?: Feature;
+  hideWhenLocked?: boolean;
+  hideForFeature?: Feature;
 }
 
 const navItems: NavItem[] = [
   { icon: Home, label: "Accueil", href: "/" },
   { icon: Users, label: "Annuaire", href: "/annuaire", requiredFeature: "directory.read" },
-  // { icon: Users, label: "Membres", href: "/membres", requiredFeature: "directory.read" },
+  { icon: Users, label: "Membres", href: "/membres", requiredFeature: "members.management", hideWhenLocked: true },
   // { icon: Shield, label: "KYC & Conformité", href: "/kyc" },
   // { icon: Rocket, label: "Incubateur", href: "/incubateur", requiredFeature: "incubator.access" },
   // { icon: FileText, label: "Appels d'offres", href: "/appels-offres", badge: 3, requiredFeature: "ao.consultation" },
   { icon: GraduationCap, label: "Formation", href: "/formation", requiredFeature: "formation.learner" },
   // { icon: ShoppingCart, label: "Marketplace", href: "/marketplace", requiredFeature: "marketplace.buyer" },
   // { icon: Wallet, label: "Financement", href: "/financement", requiredFeature: "financing.requests" },
-  // { icon: Building2, label: "Affiliation", href: "/affiliation", requiredFeature: "affiliation.access" },
+  // { icon: Building2, label: "Affiliation", href: "/affiliation", hideForFeature: "members.management" },
   // { icon: BarChart3, label: "Data Hub", href: "/data-hub", requiredFeature: "datahub.access" },
   { icon: Calendar, label: "Événements", href: "/evenements", requiredFeature: "events.participation" },
   // { icon: HeadphonesIcon, label: "Support", href: "/support" },
@@ -136,6 +138,8 @@ export function Sidebar({ collapsed, onToggle, mobileOpen = false, onMobileClose
           {navItems.map((item) => {
             const isActive = location.pathname === item.href;
             const isLocked = item.requiredFeature ? !canAccess(item.requiredFeature) : false;
+            if (isLocked && item.hideWhenLocked) return null;
+            if (item.hideForFeature && canAccess(item.hideForFeature)) return null;
             const requiredTier = item.requiredFeature ? getRequiredTier(item.requiredFeature) : null;
             const requiredTierName = requiredTier ? TIER_CONFIGS[requiredTier].name : null;
 

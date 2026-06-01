@@ -828,10 +828,60 @@ export const typeEvenementsApi = {
   },
 };
 
+export interface Secteur {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export const secteursApi = {
+  getAll: async (): Promise<Secteur[]> => {
+    const res = await request<{ success: boolean; data: Secteur[] } | Secteur[]>("/api/secteurs");
+    return Array.isArray(res) ? res : ((res as { data: Secteur[] }).data ?? []);
+  },
+};
+
 export const regionsApi = {
   getAll: async (): Promise<Region[]> => {
     const res = await request<Region[]>("/api/regions");
     return Array.isArray(res) ? res : (res as { data: Region[] }).data ?? [];
+  },
+};
+
+export interface Commune {
+  id: string;
+  name: string;
+  ville_id: string;
+}
+
+export const communesApi = {
+  getAll: async (regionId?: string): Promise<Commune[]> => {
+    const qs = regionId ? `?regionId=${encodeURIComponent(regionId)}` : "";
+    const res = await request<{ success: boolean; data: Commune[] } | Commune[]>(
+      `/api/communes${qs}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: Commune[] }).data ?? []);
+  },
+};
+
+export interface Ville {
+  id: string;
+  name: string;
+  region_id: string;
+  isActive: boolean;
+  communes?: { id: string; name: string; ville_id: string; isActive: boolean }[];
+}
+
+export const villesApi = {
+  getAll: async (): Promise<Ville[]> => {
+    const res = await request<{ success: boolean; data: Ville[] } | Ville[]>("/api/villes");
+    const list = Array.isArray(res) ? res : ((res as { success: boolean; data: Ville[] }).data ?? []);
+    return list.filter((v) => v.isActive);
+  },
+
+  getById: async (id: string): Promise<Ville> => {
+    const res = await request<{ success: boolean; data: Ville }>(`/api/villes/${encodeURIComponent(id)}`);
+    return res.data;
   },
 };
 
@@ -2378,4 +2428,178 @@ export const racApi = {
       reader.onerror = () => reject(new Error(`Impossible de lire le fichier : ${file.name}`));
       reader.readAsDataURL(file);
     }),
+};
+
+export interface AdhesionMembre {
+  id: string;
+  name: string;
+  position: string | null;
+  numero_membre: string | null;
+  email: string;
+  phone: string;
+  hasAffiliation: boolean;
+  organisationName: string | null;
+  customOrganisationName: string | null;
+  organisationType: string | null;
+  statut: string;
+  logo: string | null;
+  nombre_employee: string | null;
+  website_url: string | null;
+  secteurPrincipal: { id: string; name: string } | null;
+  filiere: { id: string; name: string } | null;
+  siegeRegion: { id: string; name: string } | null;
+  typeMembre: { id: string; name: string } | null;
+  profil: { id: string; name: string } | null;
+  abonnement: { id: string; plan: string; libelle: string } | null;
+  created_at: string;
+  activites: { id: string; name: string; sousFiliere?: { name: string } | null }[];
+}
+
+export interface AdhesionsMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+export interface AdhesionDetail extends AdhesionMembre {
+  message: string | null;
+  filiere: { id: string; name: string } | null;
+  sousFilieres: { id: string; name: string }[];
+  activites: { id: string; name: string; sousFiliere?: { name: string } | null }[];
+  siegeCommune: { id: string; name: string } | null;
+  siegeQuartier: { id: string; name: string; type: string } | null;
+  siegeVille: string | null;
+  siegeVillage: string | null;
+  hasBureauCI: boolean;
+  hasFinancingProject: boolean | null;
+  isCompetitionSubcontractor: boolean | null;
+  interventionScope: string | null;
+  internationalAddress: string | null;
+  internationalCity: string | null;
+  internationalCountry: string | null;
+  date_debut_abonnement: string | null;
+  date_fin_abonnement: string | null;
+  modaliteAbonnement: string | null;
+}
+
+export const adhesionsApi = {
+  getForSiteWeb: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<{ data: AdhesionMembre[]; meta: AdhesionsMeta }> => {
+    const qs = new URLSearchParams();
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 100));
+    if (params?.search) qs.set("search", params.search);
+    const res = await request<{ success: boolean; data: { data: AdhesionMembre[]; meta: AdhesionsMeta } }>(
+      `/api/adhesions/for-site-web?${qs.toString()}`
+    );
+    return res.data;
+  },
+
+  getById: async (id: string): Promise<AdhesionDetail> => {
+    const res = await request<{ success: boolean; data: AdhesionDetail }>(
+      `/api/adhesions/${encodeURIComponent(id)}`
+    );
+    return res.data;
+  },
+
+  changeStatut: async (
+    id: string,
+    statut: "pending" | "in_review" | "approved" | "rejected" | "completed",
+    notes?: string,
+    clientBaseUrl = "https://membre.cpupme.ci/"
+  ): Promise<AdhesionDetail> => {
+    const qs = new URLSearchParams({ statut, clientBaseUrl });
+    if (notes) qs.set("notes", notes);
+    const res = await request<{ success: boolean; data: AdhesionDetail }>(
+      `/api/adhesions/${encodeURIComponent(id)}/statut?${qs.toString()}`,
+      { method: "PATCH" }
+    );
+    return res.data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await request<void>(`/api/adhesions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
+  update: async (id: string, payload: {
+    name?: string;
+    position?: string;
+    email?: string;
+    phone?: string;
+    message?: string;
+    nombre_employee?: string;
+    website_url?: string;
+    customOrganisationName?: string;
+    organisationName?: string;
+    organisationType?: string;
+    siegeRegionId?: string;
+    siegeCommuneId?: string;
+    siegeVille?: string;
+    siegeVillage?: string;
+    interventionScope?: string;
+    internationalAddress?: string;
+    internationalCity?: string;
+    internationalCountry?: string;
+    hasBureauCI?: boolean;
+    hasAffiliation?: boolean;
+    isCompetitionSubcontractor?: boolean;
+    hasFinancingProject?: boolean;
+    logo?: File | null;
+  }): Promise<AdhesionDetail> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const fd = new FormData();
+    const append = (key: string, val: string | undefined | null) => {
+      if (val !== undefined && val !== null) fd.append(key, val);
+    };
+    append("name",                   payload.name);
+    append("position",               payload.position);
+    append("email",                  payload.email);
+    append("phone",                  payload.phone);
+    append("message",                payload.message);
+    append("nombre_employee",        payload.nombre_employee);
+    append("website_url",            payload.website_url);
+    append("customOrganisationName", payload.customOrganisationName);
+    append("organisationName",       payload.organisationName);
+    append("organisationType",       payload.organisationType);
+    append("siegeRegionId",          payload.siegeRegionId);
+    append("siegeCommuneId",         payload.siegeCommuneId);
+    append("siegeVille",             payload.siegeVille);
+    append("siegeVillage",           payload.siegeVillage);
+    append("interventionScope",      payload.interventionScope);
+    if (payload.hasBureauCI             !== undefined) fd.append("hasBureauCI",             String(payload.hasBureauCI));
+    if (payload.hasAffiliation          !== undefined) fd.append("hasAffiliation",          String(payload.hasAffiliation));
+    if (payload.isCompetitionSubcontractor !== undefined) fd.append("isCompetitionSubcontractor", String(payload.isCompetitionSubcontractor));
+    if (payload.hasFinancingProject     !== undefined) fd.append("hasFinancingProject",     String(payload.hasFinancingProject));
+    if (payload.logo) fd.append("logo", payload.logo);
+
+    const res = await fetch(`${API_BASE}/api/adhesions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers,
+      body: fd,
+    });
+
+    if (!res.ok) {
+      let message = `Erreur ${res.status}`;
+      try {
+        const body = await res.json();
+        if (typeof body?.message === "string") message = body.message;
+        else if (typeof body?.error === "string") message = body.error;
+      } catch { /* ignore */ }
+      const error = new Error(message) as Error & { status: number };
+      error.status = res.status;
+      throw error;
+    }
+
+    const json = await res.json();
+    return (json as { data: AdhesionDetail }).data ?? (json as AdhesionDetail);
+  },
 };

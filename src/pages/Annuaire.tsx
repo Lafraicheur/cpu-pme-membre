@@ -222,27 +222,32 @@ export default function Annuaire() {
     setPage(1);
   }, [selectedRegionId, selectedSecteurId, selectedFiliereId, selectedPlan]);
 
-  const { data: regionsData } = useQuery({
+  const { data: regions = [] } = useQuery({
     queryKey: ["regions"],
-    queryFn: () => apiFetch<{ success: boolean; data: Region[] }>("/api/regions"),
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Region[] } | Region[]>("/api/regions");
+      return Array.isArray(res) ? res : ((res as { data: Region[] }).data ?? []);
+    },
     staleTime: 5 * 60_000,
   });
 
-  const { data: secteursData } = useQuery({
+  const { data: secteurs = [] } = useQuery({
     queryKey: ["secteurs"],
-    queryFn: () => apiFetch<{ success: boolean; data: Secteur[] }>("/api/secteurs"),
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Secteur[] } | Secteur[]>("/api/secteurs");
+      return Array.isArray(res) ? res : ((res as { data: Secteur[] }).data ?? []);
+    },
     staleTime: 5 * 60_000,
   });
 
-  const { data: filieresData } = useQuery({
+  const { data: allFilieres = [] } = useQuery({
     queryKey: ["filieres"],
-    queryFn: () => apiFetch<{ success: boolean; data: Filiere[] }>("/api/filieres"),
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Filiere[] } | Filiere[]>("/api/filieres");
+      return Array.isArray(res) ? res : ((res as { data: Filiere[] }).data ?? []);
+    },
     staleTime: 5 * 60_000,
   });
-
-  const regions = regionsData?.data ?? [];
-  const secteurs = secteursData?.data ?? [];
-  const allFilieres = filieresData?.data ?? [];
   const filieresFiltrees = selectedSecteurId !== "all"
     ? allFilieres.filter((f) => f.secteur_id === selectedSecteurId)
     : [];
