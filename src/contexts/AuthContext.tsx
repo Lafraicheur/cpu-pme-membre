@@ -36,8 +36,10 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  checkEmail: (email: string) => Promise<{ found: boolean; is_staff: boolean; nextStep: string; profile?: Record<string, unknown> }>;
   sendOtp: (email: string) => Promise<void>;
   login: (email: string, code: string) => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (requiredRoles: UserRole[]) => boolean;
   canAccess: (feature: Feature) => boolean;
@@ -223,12 +225,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [user]);
 
+  const checkEmail = async (email: string) => {
+    return authApi.checkEmail(email);
+  };
+
   const sendOtp = async (email: string) => {
     await authApi.sendOtp(email);
   };
 
   const login = async (email: string, code: string) => {
     const { access_token, refresh_token, expires_in, adhesion } = await authApi.verifyOtp(email, code);
+
+    localStorage.setItem("cpu-access-token", access_token);
+    setCookie("cpu-access-token", access_token);
+
+    if (refresh_token) {
+      localStorage.setItem("cpu-refresh-token", refresh_token);
+      setCookie("cpu-refresh-token", refresh_token);
+    }
+
+    if (expires_in !== undefined) {
+      localStorage.setItem("cpu-expires-in", String(expires_in));
+      setCookie("cpu-expires-in", String(expires_in));
+    }
+
+    if (adhesion) {
+      localStorage.setItem("cpu-adhesion", JSON.stringify(adhesion));
+      setCookie("cpu-adhesion", JSON.stringify(adhesion));
+    }
+
+    const profile = adhesion ?? { email };
+    const mappedUser = mapProfileToUser(profile);
+    localStorage.setItem("cpu-pme-user", JSON.stringify(mappedUser));
+    setCookie("cpu-pme-user", JSON.stringify(mappedUser));
+    setUser(mappedUser);
+  };
+
+  const loginWithPassword = async (email: string, password: string) => {
+    const { access_token, refresh_token, expires_in, adhesion } = await authApi.loginWithPassword(email, password);
 
     localStorage.setItem("cpu-access-token", access_token);
     setCookie("cpu-access-token", access_token);
@@ -331,8 +365,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        checkEmail,
         sendOtp,
         login,
+        loginWithPassword,
         logout,
         hasPermission,
         canAccess,
