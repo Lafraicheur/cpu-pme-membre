@@ -2197,6 +2197,47 @@ export const questionsApi = {
 };
 
 export const authApi = {
+  checkEmail: async (email: string): Promise<{
+    message: string;
+    found: boolean;
+    is_staff: boolean;
+    nextStep: string;
+    profile?: Record<string, unknown>;
+  }> => {
+    return request<{
+      message: string;
+      found: boolean;
+      is_staff: boolean;
+      nextStep: string;
+      profile?: Record<string, unknown>;
+    }>("/api/auth/adhesion/check-email", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  loginWithPassword: async (email: string, password: string): Promise<{
+    access_token: string;
+    refresh_token?: string;
+    expires_in?: number;
+    adhesion?: Record<string, unknown>;
+  }> => {
+    const res = await request<{ success: boolean; data: Record<string, unknown> } | Record<string, unknown>>(
+      "/api/auth/adhesion/login",
+      { method: "POST", body: JSON.stringify({ email, password }), skipAuth: true }
+    );
+    const payload = (res as { data: Record<string, unknown> })?.data ?? (res as Record<string, unknown>);
+    const token = payload?.access_token as string | undefined;
+    if (!token) throw new Error("Token introuvable dans la réponse de l'API");
+    return {
+      access_token: token,
+      refresh_token: payload?.refresh_token as string | undefined,
+      expires_in: payload?.expires_in as number | undefined,
+      adhesion: payload?.adhesion as Record<string, unknown> | undefined,
+    };
+  },
+
   sendOtp: (email: string) =>
     request<void>("/api/auth/adhesion/send-otp", {
       method: "POST",
@@ -2224,6 +2265,18 @@ export const authApi = {
       expires_in: payload?.expires_in as number | undefined,
       adhesion: payload?.adhesion as Record<string, unknown> | undefined,
     };
+  },
+
+  setPassword: async (params: {
+    adhesionId?: string;
+    email: string;
+    password: string;
+  }): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/set-password", {
+      method: "POST",
+      body: JSON.stringify(params),
+      skipAuth: true,
+    });
   },
 
   logout: () =>
