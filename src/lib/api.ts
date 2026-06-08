@@ -265,6 +265,14 @@ export const paymentsApi = {
 
 // ── Types abonnements & paiements ClaPay ──────────────────────────
 
+export interface AbonnementAvantage {
+  id: string;
+  libelle: string;
+  description: string;
+  icone: string;
+  actif: boolean;
+}
+
 export interface AbonnementAPI {
   id: string;
   typeMembreId: string;
@@ -274,9 +282,19 @@ export interface AbonnementAPI {
   description: string;
   tarifMensuel: string;
   tarifAnnuel: string;
+  tarifMinAnnuel: string;
   surDevis: boolean;
   ordre: number;
   isActive: boolean;
+  popular: boolean;
+  avantages: AbonnementAvantage[];
+  limites: {
+    nombreProjets: number;
+    nombreFormations: number;
+    espaceStockage: number;
+    supportPrioritaire: boolean;
+    accesModules: string[];
+  };
 }
 
 export interface CountryData {
@@ -2654,5 +2672,149 @@ export const adhesionsApi = {
 
     const json = await res.json();
     return (json as { data: AdhesionDetail }).data ?? (json as AdhesionDetail);
+  },
+};
+
+// ── KYC ───────────────────────────────────────────────────────────────────────
+
+export interface KycDocumentType {
+  id: string;
+  code: string;
+  name: string;
+  acceptedFormats: string[];
+  maxSize: number;
+  isActive: boolean;
+}
+
+export interface KycRequiredDocument {
+  documentTypeId: string;
+  documentType: KycDocumentType;
+  isRequired: boolean;
+  abonnementId: string | null;
+  status: "missing" | "pending" | "uploaded" | "validated" | "rejected" | "expired" | string;
+  uploaded: Record<string, unknown> | null;
+}
+
+export interface KycLevelInfo {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+}
+
+export interface KycLevelData {
+  level: KycLevelInfo;
+  totalDocuments: number;
+  validatedDocuments: number;
+  validationPercentage: number;
+  requiredDocuments: KycRequiredDocument[];
+}
+
+export interface KycRequiredDocumentsResponse {
+  abonnementId: string;
+  abonnement: { id: string; libelle: string; plan: string };
+  caseStatus: string;
+  targetKycLevelId: string | null;
+  targetKycLevel: KycLevelInfo | null;
+  currentKycLevelId: string | null;
+  currentKycLevel: KycLevelInfo | null;
+  levels: KycLevelData[];
+}
+
+export interface KycLevelEntry {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  isCurrent: boolean;
+  isTarget: boolean;
+  canSelect: boolean;
+}
+
+export interface KycLevelsResponse {
+  abonnementId: string;
+  abonnement: { id: string; libelle: string; plan: string };
+  currentKycLevelId: string | null;
+  targetKycLevelId: string | null;
+  levels: KycLevelEntry[];
+}
+
+export interface KycLevelDocumentsResponse {
+  abonnementId: string;
+  abonnement: { id: string; libelle: string; plan: string };
+  caseStatus: string;
+  targetKycLevelId: string | null;
+  targetKycLevel: KycLevelInfo | null;
+  currentKycLevelId: string | null;
+  currentKycLevel: KycLevelInfo | null;
+  level: KycLevelInfo;
+  totalDocuments: number;
+  validatedDocuments: number;
+  validationPercentage: number;
+  requiredDocuments: KycRequiredDocument[];
+}
+
+export interface KycUploadedDocument {
+  id: string;
+  fileUrl: string;
+  status: string;
+  kycCaseId: string;
+  documentTypeId: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  rejectionReason: string | null;
+  reviewedAt: string | null;
+  reviewedById: string | null;
+}
+
+export const kycApi = {
+  uploadDocument: async (documentTypeId: string, file: File): Promise<KycUploadedDocument> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("documentTypeId", documentTypeId);
+    fd.append("file", file);
+    const res = await fetch(`${API_BASE}/api/adhesions/me/kyc/documents`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    if (!res.ok) {
+      let message = `Erreur ${res.status}`;
+      try {
+        const b = await res.json();
+        message = b?.message || b?.error || b?.detail || message;
+      } catch { /* ignore */ }
+      const error = new Error(message) as Error & { status: number };
+      error.status = res.status;
+      throw error;
+    }
+    const json = await res.json();
+    return (json as { data: KycUploadedDocument }).data ?? (json as KycUploadedDocument);
+  },
+
+  getRequiredDocuments: async (): Promise<KycRequiredDocumentsResponse> => {
+    const res = await request<{ success: boolean; data: KycRequiredDocumentsResponse }>(
+      "/api/adhesions/me/kyc/levels/required-documents"
+    );
+    return res.data;
+  },
+
+  getLevels: async (): Promise<KycLevelsResponse> => {
+    const res = await request<{ success: boolean; data: KycLevelsResponse }>(
+      "/api/adhesions/me/kyc/levels"
+    );
+    return res.data;
+  },
+
+  getLevelDocuments: async (levelId: string): Promise<KycLevelDocumentsResponse> => {
+    const res = await request<{ success: boolean; data: KycLevelDocumentsResponse }>(
+      `/api/adhesions/me/kyc/levels/${encodeURIComponent(levelId)}/required-documents`
+    );
+    return res.data;
   },
 };

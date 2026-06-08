@@ -393,7 +393,19 @@ export default function Abonnement() {
                           )}
                         </div>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="space-y-4">
+                        {/* Avantages */}
+                        {plan.avantages?.filter((a) => a.actif).length > 0 && (
+                          <ul className="space-y-2">
+                            {plan.avantages.filter((a) => a.actif).map((av) => (
+                              <li key={av.id} className="flex items-start gap-2 text-sm">
+                                <Check className={cn("w-4 h-4 shrink-0 mt-0.5", textColor)} />
+                                <span className="text-muted-foreground leading-snug">{av.libelle}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
                         <Button
                           className="w-full"
                           variant={current ? "default" : "outline"}
