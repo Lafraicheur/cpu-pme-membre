@@ -2691,7 +2691,7 @@ export interface KycRequiredDocument {
   documentType: KycDocumentType;
   isRequired: boolean;
   abonnementId: string | null;
-  status: "missing" | "pending" | "uploaded" | "validated" | "rejected" | "expired" | string;
+  status: "missing" | "pending" | "approved" | "rejected" | "uploaded" | "validated" | "expired" | string;
   uploaded: Record<string, unknown> | null;
 }
 
@@ -2770,6 +2770,36 @@ export interface KycUploadedDocument {
   reviewedById: string | null;
 }
 
+export interface KycCase {
+  id: string;
+  adhesionId: string;
+  subjectType: "individual" | "organization";
+  targetKycLevelId: string | null;
+  currentKycLevelId: string | null;
+  status: "not_started" | "draft" | "submitted" | "in_review" | "approved" | "rejected" | "expired" | string;
+  submittedAt: string | null;
+  approvedAt: string | null;
+  expiresAt: string | null;
+  rejectionReason: string | null;
+  targetKycLevel: KycLevelInfo | null;
+  currentKycLevel: KycLevelInfo | null;
+  documents: KycUploadedDocument[];
+}
+
+export interface KycMyRequiredDocumentsResponse {
+  abonnementId: string;
+  abonnement: { id: string; libelle: string; plan: string };
+  caseStatus: string;
+  targetKycLevelId: string | null;
+  targetKycLevel: KycLevelInfo | null;
+  currentKycLevelId: string | null;
+  currentKycLevel: KycLevelInfo | null;
+  totalDocuments: number;
+  validatedDocuments: number;
+  validationPercentage: number;
+  requiredDocuments: KycRequiredDocument[];
+}
+
 export const kycApi = {
   uploadDocument: async (documentTypeId: string, file: File): Promise<KycUploadedDocument> => {
     const token = getToken();
@@ -2815,6 +2845,34 @@ export const kycApi = {
     const res = await request<{ success: boolean; data: KycLevelDocumentsResponse }>(
       `/api/adhesions/me/kyc/levels/${encodeURIComponent(levelId)}/required-documents`
     );
+    return res.data;
+  },
+
+  getKycCase: async (): Promise<KycCase> => {
+    const res = await request<{ success: boolean; data: KycCase }>("/api/adhesions/me/kyc");
+    return res.data;
+  },
+
+  getMyRequiredDocuments: async (): Promise<KycMyRequiredDocumentsResponse> => {
+    const res = await request<{ success: boolean; data: KycMyRequiredDocumentsResponse }>(
+      "/api/adhesions/me/kyc/required-documents"
+    );
+    return res.data;
+  },
+
+  startKyc: async (targetKycLevelId: string, subjectType?: "individual" | "organization"): Promise<KycCase> => {
+    const res = await request<{ success: boolean; data: KycCase }>("/api/adhesions/me/kyc/start", {
+      method: "POST",
+      body: JSON.stringify({ targetKycLevelId, ...(subjectType ? { subjectType } : {}) }),
+    });
+    return res.data;
+  },
+
+  submitKyc: async (): Promise<KycCase> => {
+    const res = await request<{ success: boolean; data: KycCase }>("/api/adhesions/me/kyc/submit", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
     return res.data;
   },
 };
