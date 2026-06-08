@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,34 +20,12 @@ import {
   ImageOff,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { evenementsApi, registrationsApi, type Evenement, type Registration } from "@/lib/api";
+import { evenementsApi, registrationsApi, type Evenement } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface OverviewProps {
   onNavigate: (tab: string) => void;
 }
-
-
-const upcomingRDV = [
-  {
-    id: "rdv-001",
-    company: "SIFCA Group",
-    contact: "Jean Konan",
-    date: "2024-03-15",
-    time: "10:00",
-    objective: "Partenariat distribution",
-    status: "accepted",
-  },
-  {
-    id: "rdv-002",
-    company: "Nestlé CI",
-    contact: "Marie Bamba",
-    date: "2024-03-15",
-    time: "14:30",
-    objective: "Sourcing local",
-    status: "requested",
-  },
-];
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("fr-FR", {
@@ -58,17 +37,20 @@ function formatDate(iso: string) {
 
 function EventCard({ event }: { event: Evenement }) {
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
+  const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3">
+    <div
+      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors gap-3 cursor-pointer"
+      onClick={() => window.open(`https://evenement.cpupme.ci/evenement/${event.id}`, "_blank")}
+    >
       <div className="flex items-center gap-3 min-w-0">
-        {/* Image ou icône */}
-        {event.image_flayer ? (
+        {event.image_flayer && !imgError ? (
           <img
             src={event.image_flayer}
             alt={event.titre}
             className="w-12 h-12 rounded-lg object-cover shrink-0"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
@@ -80,12 +62,16 @@ function EventCard({ event }: { event: Evenement }) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-0.5">
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />
-              {formatDate(event.date_debut)}
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
             </span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {event.lieu.split(",")[0]}
-            </span>
+            {event.lieu && (
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {event.lieu.split(",")[0]}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -116,11 +102,13 @@ function EventCardSkeleton() {
   );
 }
 
-function statusLabel(statut: string) {
+function statusLabel(statut: string, est_valable = true) {
+  if (!est_valable) return { label: "Annulé", className: "bg-destructive/10 text-destructive" };
   switch (statut) {
+    case "gratuit":
     case "payé":
     case "paye":
-    case "confirmed": return { label: "Payé", className: "bg-green-500/10 text-green-600" };
+    case "confirmed": return { label: "Confirmé", className: "bg-green-500/10 text-green-600" };
     case "en_attente": return { label: "En attente", className: "bg-amber-500/10 text-amber-600" };
     case "annulé":
     case "annule": return { label: "Annulé", className: "bg-destructive/10 text-destructive" };
@@ -169,7 +157,9 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               <Ticket className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoadingTickets ? "—" : (registrations?.length ?? 0)}</p>
+              <p className="text-2xl font-bold">
+                {isLoadingTickets ? "—" : (registrations ?? []).filter(r => r.est_valable).reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0)}
+              </p>
               <p className="text-sm text-muted-foreground">Billets actifs</p>
             </div>
           </CardContent>
@@ -203,7 +193,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-lg">Événements récents</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate("decouvrir")}>
+            <Button variant="ghost" size="sm" onClick={() => window.open("https://evenement.cpupme.ci/agenda", "_blank")}>
               Voir tout <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
@@ -223,7 +213,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
             )}
             {!isLoading && !isError && recentEvents?.length === 0 && (
               <p className="text-sm text-muted-foreground p-4 text-center">
-                Aucun événement récent.
+                Aucun événement à venir.
               </p>
             )}
             {recentEvents?.slice(0, 3).map((event) => (
@@ -239,7 +229,7 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               Mes billets
               {registrations && registrations.length > 0 && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  ({registrations.length})
+                  ({registrations.reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0)})
                 </span>
               )}
             </CardTitle>
@@ -266,39 +256,35 @@ export function EvenementsOverview({ onNavigate }: OverviewProps) {
               </p>
             )}
             {registrations?.slice(0, 3).map((reg) => {
-              const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
-              const { label, className } = statusLabel(reg.statut_paiement);
+              const ticketNom = reg.participant_tickets?.[0]?.ticket?.nom ?? reg.details[0]?.ticket_type?.nom ?? "Billet";
+              const nbBillets = reg.participant_tickets?.length ?? reg.details.reduce((s, d) => s + d.quantite, 0);
+              const { label, className } = statusLabel(reg.statut_paiement, reg.est_valable);
               return (
                 <div
                   key={reg.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5 gap-3"
+                  className="flex items-center gap-3 p-4 rounded-lg border bg-gradient-to-r from-primary/5 to-secondary/5"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="p-3 rounded-lg bg-background border shrink-0">
-                      <QrCode className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {reg.prenom} {reg.nom}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 text-sm mt-0.5">
-                        <Badge variant="outline">{ticketNom}</Badge>
-                        <Badge className={className}>{label}</Badge>
-                        <span className="text-muted-foreground">
-                          {new Date(reg.date_commande).toLocaleDateString("fr-FR")}
-                        </span>
-                      </div>
-                      {Number(reg.total_price) > 0 && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
-                        </p>
-                      )}
-                    </div>
+                  <div className="p-3 rounded-lg bg-background border shrink-0">
+                    <QrCode className="w-6 h-6 text-primary" />
                   </div>
-                  <Button variant="outline" size="sm" className="shrink-0">
-                    <QrCode className="w-4 h-4 mr-1" />
-                    Pass
-                  </Button>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">
+                      {reg.prenom} {reg.nom}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-sm mt-0.5">
+                      <Badge variant="outline">{ticketNom}</Badge>
+                      {nbBillets > 1 && <Badge variant="secondary">{nbBillets} billets</Badge>}
+                      <Badge className={className}>{label}</Badge>
+                      <span className="text-muted-foreground">
+                        {new Date(reg.date_commande).toLocaleDateString("fr-FR")}
+                      </span>
+                    </div>
+                    {Number(reg.total_price) > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {Number(reg.total_price).toLocaleString("fr-FR")} FCFA
+                      </p>
+                    )}
+                  </div>
                 </div>
               );
             })}

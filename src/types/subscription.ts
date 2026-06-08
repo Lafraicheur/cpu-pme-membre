@@ -45,6 +45,7 @@ export type Feature =
 
   // Affiliation
   | 'affiliation.access'
+  | 'members.management'
 
   // Financement
   | 'financing.requests'
@@ -61,6 +62,9 @@ export type Feature =
   // Exports
   | 'export.pdf'
   | 'export.xlsx'
+
+  // Support
+  | 'support.priority'
 
   // API & Intégrations
   | 'api.access'

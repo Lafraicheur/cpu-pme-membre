@@ -10,7 +10,6 @@ import {
   Calendar,
   MapPin,
   Clock,
-  Star,
   Video,
   ExternalLink,
   AlertCircle,
@@ -21,9 +20,9 @@ import {
   Presentation,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { evenementsApi, type Evenement } from "@/lib/api";
+import { evenementsApi, ticketTypesApi, type Evenement, type TicketType } from "@/lib/api";
 
-const SITE_EVENEMENTS = "https://dev-evenement.cpupme.ci/agenda";
+const SITE_EVENEMENTS = "https://evenement.cpupme.ci/agenda";
 const PAGE_SIZE = 6;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -80,14 +79,22 @@ function resolveImage(event: Evenement) {
   return event.image_flayer;
 }
 
+function formatTicketPrice(price: number): string {
+  return price === 0 ? "Gratuit" : `${price.toLocaleString("fr-FR")} FCFA`;
+}
+
+function getMinPrice(tickets: TicketType[], field: "prix" | "prix_membre"): number {
+  return Math.min(...tickets.map((t) => t[field]));
+}
+
 // ─── Event Card Grid ────────────────────────────────────────────────────────
 
-function EventCardGrid({ event }: { event: Evenement }) {
+function EventCardGrid({ event, tickets }: { event: Evenement; tickets: TicketType[] }) {
   const { label, className: badgeClass } = getAccessBadge(event);
   const couleur = event.type_evenement?.couleur ?? "#6366f1";
   const typeNom = event.type_evenement?.nom ?? "Événement";
   const image = resolveImage(event);
-  const eventUrl = `https://dev-evenement.cpupme.ci/evenement/${event.id}`;
+  const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
 
   return (
     <a
@@ -156,15 +163,31 @@ function EventCardGrid({ event }: { event: Evenement }) {
         <div className="flex-1 space-y-1.5 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Calendar className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span>{formatDate(event.date_debut)}</span>
+            <span>
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
+            </span>
             <Clock className="w-3.5 h-3.5 text-primary ml-auto shrink-0" />
-            <span>{event.heure_debut}</span>
+            <span>
+              {event.heure_fin && event.heure_fin !== event.heure_debut
+                ? `${event.heure_debut} → ${event.heure_fin}`
+                : event.heure_debut}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
             <span className="truncate">{event.lieu ?? "En ligne"}</span>
           </div>
         </div>
+
+        {/* Prix membre */}
+        {tickets.length > 0 && (
+          <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2 mt-3 flex items-center justify-between">
+            <p className="text-[10px] text-primary font-medium uppercase tracking-wide">Prix membre</p>
+            <p className="text-sm font-bold text-primary">{formatTicketPrice(getMinPrice(tickets, "prix_membre"))}</p>
+          </div>
+        )}
 
         {/* Bouton — toujours en bas */}
         <div className="flex items-center justify-end mt-4">
@@ -180,9 +203,9 @@ function EventCardGrid({ event }: { event: Evenement }) {
 
 // ─── Event Card List ────────────────────────────────────────────────────────
 
-function EventCardList({ event }: { event: Evenement }) {
+function EventCardList({ event, tickets }: { event: Evenement; tickets: TicketType[] }) {
   const image = resolveImage(event);
-  const eventUrl = `https://dev-evenement.cpupme.ci/evenement/${event.id}`;
+  const eventUrl = `https://evenement.cpupme.ci/evenement/${event.id}`;
   const prix = formatPrice(event);
 
   return (
@@ -229,16 +252,26 @@ function EventCardList({ event }: { event: Evenement }) {
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {formatDate(event.date_debut)}
+              {event.date_fin && event.date_fin.slice(0, 10) !== event.date_debut.slice(0, 10)
+                ? `${formatDate(event.date_debut)} → ${formatDate(event.date_fin)}`
+                : formatDate(event.date_debut)}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              {event.heure_debut}
+              {event.heure_fin && event.heure_fin !== event.heure_debut
+                ? `${event.heure_debut} → ${event.heure_fin}`
+                : event.heure_debut}
             </span>
           </div>
-          <span className={`font-bold text-sm ${prix === "Gratuit" ? "text-emerald-600" : "text-primary"}`}>
-            {prix}
-          </span>
+          {tickets.length > 0 ? (
+            <span className={`font-bold text-sm ${getMinPrice(tickets, "prix_membre") === 0 ? "text-emerald-600" : "text-primary"}`}>
+              Membre : {formatTicketPrice(getMinPrice(tickets, "prix_membre"))}
+            </span>
+          ) : (
+            <span className={`font-bold text-sm ${prix === "Gratuit" ? "text-emerald-600" : "text-primary"}`}>
+              {prix}
+            </span>
+          )}
         </div>
       </div>
     </a>
@@ -287,21 +320,29 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
   const [selectedPrice, setSelectedPrice] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  // À la une
-  const { data: alaUne, isLoading: isLoadingAlaUne } = useQuery({
-    queryKey: ["evenements", "ala-une"],
-    queryFn: evenementsApi.getAlaUne,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Tous les événements
+  // Événements à venir
   const { data: allEvents, isLoading: isLoadingAll, isError } = useQuery({
-    queryKey: ["evenements", "all"],
-    queryFn: evenementsApi.getAll,
+    queryKey: ["evenements", "recent-upcoming"],
+    queryFn: evenementsApi.getRecentUpcoming,
     staleTime: 5 * 60 * 1000,
   });
 
-  const isLoading = isLoadingAlaUne || isLoadingAll;
+  // Tous les tickets (groupés par event_id côté client)
+  const { data: allTickets = [] } = useQuery({
+    queryKey: ["ticket-types", "all"],
+    queryFn: () => ticketTypesApi.getAll(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const ticketsByEvent = useMemo(
+    () =>
+      allTickets.reduce<Record<string, TicketType[]>>((acc, t) => {
+        if (!acc[t.event_id]) acc[t.event_id] = [];
+        acc[t.event_id].push(t);
+        return acc;
+      }, {}),
+    [allTickets]
+  );
 
   // Types uniques pour le filtre
   const typeOptions = useMemo(() => {
@@ -317,7 +358,6 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
   const filtered = useMemo(() => {
     if (!allEvents) return [];
     return allEvents.filter((e) => {
-      if (e.ala_une) return false; // déjà dans la section "à la une"
       const matchSearch =
         !searchQuery ||
         e.titre.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -337,23 +377,6 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
 
   return (
     <div className="space-y-8">
-      {/* ── À la une ── */}
-      {(isLoadingAlaUne || (alaUne && alaUne.length > 0)) && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Star className="w-5 h-5 text-primary" />
-            Événements à la une
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-            {isLoadingAlaUne ? (
-              <><GridSkeleton /><GridSkeleton /><GridSkeleton /></>
-            ) : (
-              alaUne!.map((e) => <EventCardGrid key={e.id} event={e} />)
-            )}
-          </div>
-        </section>
-      )}
-
       {/* ── Filtres ── */}
       <Card>
         <CardContent className="p-4">
@@ -428,7 +451,7 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">
-            Tous les événements
+            Événements à venir
             {!isLoadingAll && (
               <span className="ml-2 text-sm font-normal text-muted-foreground">
                 ({filtered.length})
@@ -448,14 +471,14 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
         {/* Grid */}
         {!isLoadingAll && !isError && viewMode === "grid" && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-            {visible.map((e) => <EventCardGrid key={e.id} event={e} />)}
+            {visible.map((e) => <EventCardGrid key={e.id} event={e} tickets={ticketsByEvent[e.id] ?? []} />)}
           </div>
         )}
 
         {/* List */}
         {!isLoadingAll && !isError && viewMode === "list" && (
           <div className="space-y-4">
-            {visible.map((e) => <EventCardList key={e.id} event={e} />)}
+            {visible.map((e) => <EventCardList key={e.id} event={e} tickets={ticketsByEvent[e.id] ?? []} />)}
           </div>
         )}
 
@@ -492,7 +515,7 @@ export function DecouvrirEvenements({ onViewDetail }: DecouvrirProps) {
               rel="noopener noreferrer"
               className="text-primary hover:underline underline-offset-2"
             >
-              dev-evenement.cpupme.ci
+              evenement.cpupme.ci
             </a>
           </p>
         )}

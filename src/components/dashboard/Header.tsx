@@ -1,33 +1,19 @@
-import { Bell, Search, Plus, ChevronDown, User, Crown, Star, Sparkles, Building2, Users as UsersIcon, Landmark, RefreshCw, Menu } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Bell, User, Crown, Star, Sparkles, Building2, Users as UsersIcon, Landmark, Menu } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionTier } from "@/types/subscription";
-import { useNavigate } from "react-router-dom";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 const tierIcons: Record<SubscriptionTier, { icon: any; color: string; label: string }> = {
-  // Membre Individuel
-  MI_BASIC:   { icon: Sparkles,  color: "text-muted-foreground", label: "Basic Individuel" },
-  MI_ARGENT:  { icon: Star,      color: "text-secondary",        label: "Argent Pro" },
-  MI_OR:      { icon: Crown,     color: "text-yellow-500",       label: "Or Pro" },
-  // Membre Entreprise
-  ME_BASIC:   { icon: Building2, color: "text-sky-500",          label: "Basic Entreprise" },
-  ME_ARGENT:  { icon: Star,      color: "text-indigo-500",       label: "Argent Entreprise" },
-  ME_OR:      { icon: Crown,     color: "text-primary",          label: "Or Entreprise" },
-  // Collectif
-  ORGANISATION:    { icon: Building2, color: "text-blue-500",   label: "Organisation" },
-  FEDERATION:      { icon: UsersIcon, color: "text-purple-500", label: "Fédération" },
-  INSTITUTIONNEL:  { icon: Landmark,  color: "text-amber-500",  label: "Institutionnel" },
+  MI_BASIC:        { icon: Sparkles,  color: "text-muted-foreground", label: "Basic Individuel" },
+  MI_ARGENT:       { icon: Star,      color: "text-secondary",        label: "Argent Pro" },
+  MI_OR:           { icon: Crown,     color: "text-yellow-500",       label: "Or Pro" },
+  ME_BASIC:        { icon: Building2, color: "text-sky-500",          label: "Basic Entreprise" },
+  ME_ARGENT:       { icon: Star,      color: "text-indigo-500",       label: "Argent Entreprise" },
+  ME_OR:           { icon: Crown,     color: "text-primary",          label: "Or Entreprise" },
+  ORGANISATION:    { icon: Building2, color: "text-blue-500",         label: "Organisation" },
+  FEDERATION:      { icon: UsersIcon, color: "text-purple-500",       label: "Fédération" },
+  INSTITUTIONNEL:  { icon: Landmark,  color: "text-amber-500",        label: "Institutionnel" },
 };
 
 interface HeaderProps {
@@ -35,7 +21,7 @@ interface HeaderProps {
 }
 
 export function Header({ onMobileMenuToggle }: HeaderProps) {
-  const { user, updateSubscriptionTier } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const currentTier: SubscriptionTier =
@@ -43,18 +29,7 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
       ? user.subscription.tier
       : 'ME_ARGENT';
   const CurrentIcon = tierIcons[currentTier].icon;
-
-  const handleTierChange = (tier: SubscriptionTier) => {
-    updateSubscriptionTier(tier);
-    // Recharger la page pour appliquer les changements
-    window.location.reload();
-  };
-
-  const handleGoToSelector = () => {
-    // Effacer le tier pour forcer l'affichage du sélecteur
-    localStorage.removeItem("demo_subscription_tier");
-    navigate("/subscription-selector");
-  };
+  const planLabel   = user?.planLibelle || tierIcons[currentTier].label;
 
   return (
     <header className="h-16 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30 flex items-center justify-between px-3 sm:px-4 md:px-6">
@@ -69,14 +44,16 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
       {/* Left section */}
       <div className="hidden lg:flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors text-sm font-medium">
-            <span>Siège Abidjan</span>
-            <ChevronDown size={16} />
-          </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors text-sm font-medium">
-            <span>Agroalimentaire</span>
-            <ChevronDown size={16} />
-          </button>
+          {(user?.communeNom || user?.regionNom) && (
+            <span className="px-3 py-1.5 rounded-lg bg-muted text-sm font-medium">
+              Siège {user.communeNom || user.regionNom}
+            </span>
+          )}
+          {(user?.filiereNom || user?.secteurPrincipal) && (
+            <span className="px-3 py-1.5 rounded-lg bg-muted text-sm font-medium">
+              {user.filiereNom || user.secteurPrincipal}
+            </span>
+          )}
         </div>
       </div>
 
@@ -101,56 +78,21 @@ export function Header({ onMobileMenuToggle }: HeaderProps) {
           <span className="hidden sm:inline">Actions rapides</span>
         </Button> */}
 
-        {/* Subscription Tier Selector */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted hover:bg-muted/80 transition-colors text-sm font-medium">
-              <CurrentIcon size={16} className={cn(tierIcons[currentTier].color)} />
-              <span className="hidden sm:inline">{tierIcons[currentTier].label}</span>
-              <Badge variant="outline" className="hidden md:flex text-xs">
-                Simulation
-              </Badge>
-              <ChevronDown size={14} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Changer d'abonnement (Test)</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {Object.entries(tierIcons).map(([tier, config]) => {
-              const TierIcon = config.icon;
-              return (
-                <DropdownMenuItem
-                  key={tier}
-                  onClick={() => handleTierChange(tier as SubscriptionTier)}
-                  className={cn(
-                    "cursor-pointer",
-                    currentTier === tier && "bg-accent"
-                  )}
-                >
-                  <TierIcon size={16} className={cn("mr-2", config.color)} />
-                  <span>{config.label}</span>
-                  {currentTier === tier && (
-                    <Badge variant="secondary" className="ml-auto text-xs">
-                      Actif
-                    </Badge>
-                  )}
-                </DropdownMenuItem>
-              );
-            })}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleGoToSelector} className="cursor-pointer">
-              <RefreshCw size={16} className="mr-2" />
-              <span>Retour au sélecteur</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Plan abonnement réel */}
+        <span className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted text-sm font-medium">
+          <CurrentIcon size={16} className={cn(tierIcons[currentTier].color)} />
+          <span className="hidden sm:inline">{planLabel}</span>
+        </span>
 
         <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
           <Bell size={20} className="text-muted-foreground" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full animate-pulse" />
         </button>
 
-        <button className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted transition-colors">
+        <button
+          onClick={() => navigate("/parametres")}
+          className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-muted transition-colors"
+        >
           <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
             <User size={16} className="text-secondary-foreground" />
           </div>

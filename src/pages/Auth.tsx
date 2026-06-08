@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,9 +146,33 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [countdownActive, setCountdownActive] = useState(false);
 
-  const { sendOtp, login } = useAuth();
+  const { sendOtp, login, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  const returnUrl = searchParams.get("returnUrl");
+  const isSafeReturnUrl = (url: string | null): url is string => {
+    if (!url) return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname === "localhost" || parsed.hostname.endsWith(".cpupme.ci");
+    } catch {
+      return false;
+    }
+  };
+
+  // Redirection automatique si déjà connecté
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (isAuthenticated) {
+      if (isSafeReturnUrl(returnUrl)) {
+        window.location.href = returnUrl;
+      } else {
+        navigate("/", { replace: true });
+      }
+    }
+  }, [isAuthenticated, isAuthLoading]);
 
   const { remaining, formatted } = useCountdown(OTP_EXPIRY_SECONDS, countdownActive);
   const isExpired = countdownActive && remaining === 0;
@@ -181,7 +205,11 @@ export default function Auth() {
       await login(email, code);
       playSuccessSound();
       toast({ title: "Connexion réussie", description: "Bienvenue sur CPU-PME !" });
-      navigate("/");
+      if (isSafeReturnUrl(returnUrl)) {
+        window.location.href = returnUrl;
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       const status = (err as Error & { status?: number }).status;
       playErrorSound();
@@ -222,14 +250,14 @@ export default function Auth() {
           </div>
           <div className="space-y-2">
             <h1 className="text-4xl font-bold tracking-tight">CPU-PME</h1>
-            <p className="text-lg text-white/80 font-light">Plateforme des entreprises camerounaises</p>
+            <p className="text-lg text-white/80 font-light">Plateforme des entreprises</p>
           </div>
 
           <div className="flex flex-col gap-4 mt-10 text-left">
             {[
-              { icon: "🏢", title: "Annuaire entreprises", desc: "Accédez à tout l'écosystème PME" },
-              { icon: "📅", title: "Événements & Forums", desc: "Rejoignez les rencontres business" },
-              { icon: "💼", title: "Marketplace", desc: "Achetez et vendez en B2B" },
+              { icon: "", title: "Annuaire entreprises", desc: "Accédez à tout l'écosystème PME" },
+              { icon: "", title: "Événements & Forums", desc: "Rejoignez les rencontres business" },
+              { icon: "", title: "Marketplace", desc: "Achetez et vendez en B2B" },
             ].map((item) => (
               <div key={item.title} className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-3 border border-white/10 backdrop-blur-sm">
                 <span className="text-2xl">{item.icon}</span>
@@ -251,7 +279,7 @@ export default function Auth() {
           <div className="lg:hidden text-center space-y-2">
             <img src={logo} alt="CPU-PME" className="w-16 h-16 mx-auto rounded-xl shadow-lg" />
             <h1 className="text-xl font-bold">CPU-PME</h1>
-            <p className="text-sm text-muted-foreground">Plateforme des entreprises camerounaises</p>
+            <p className="text-sm text-muted-foreground">Plateforme des entreprises</p>
           </div>
 
           {/* ── Étape email ── */}

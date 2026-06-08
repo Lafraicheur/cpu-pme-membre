@@ -20,10 +20,12 @@ import Evenements from "./pages/Evenements";
 import Formation from "./pages/Formation";
 import Affiliation from "./pages/Affiliation";
 import DataHub from "./pages/DataHub";
+import Membres from "./pages/Membres";
 import Support from "./pages/Support";
 import Historique from "./pages/Historique";
 import Parametres from "./pages/Parametres";
 import NotFound from "./pages/NotFound";
+import EvenementParticipants from "./pages/EvenementParticipants";
 
 const queryClient = new QueryClient();
 
@@ -39,7 +41,7 @@ const App = () => (
               <Route path="/subscription-selector" element={<SubscriptionSelector />} />
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              {/* <Route path="/abonnement" element={<Abonnement />} /> */}
+              <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/mon-entreprise" element={<MonEntreprise />} />
               <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/appels-offres" element={<AppelsOffres />} />
@@ -48,9 +50,11 @@ const App = () => (
               <Route path="/kyc" element={<KYCConformite />} />
               <Route path="/incubateur" element={<Incubateur />} />
               <Route path="/evenements" element={<Evenements />} />
+              <Route path="/evenements/:eventId/participants" element={<EvenementParticipants />} />
               <Route path="/formation" element={<Formation />} />
               <Route path="/affiliation" element={<Affiliation />} />
               <Route path="/data-hub" element={<DataHub />} />
+              <Route path="/membres" element={<Membres />} />
               <Route path="/support" element={<Support />} />
               <Route path="/historique" element={<Historique />} />
               <Route path="/parametres" element={<Parametres />} />

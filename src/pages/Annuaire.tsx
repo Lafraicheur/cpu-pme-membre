@@ -1,186 +1,166 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  Search, 
-  Building2, 
-  MapPin, 
-  Phone, 
-  Mail, 
-  Globe, 
-  Users, 
-  Star,
-  Filter,
+import {
+  Search,
+  Building2,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Users,
   Grid3X3,
   List,
   ChevronRight,
   Briefcase,
-  Calendar,
-  CheckCircle2,
-  Award
+  ChevronLeft,
+  Loader2,
+  AlertCircle,
+  Award,
 } from "lucide-react";
-import { regions } from "@/data/regions";
-import { sectors, getSectorN1List, getSectorN2List } from "@/data/sectors";
 
-// Données de démonstration des entreprises membres
-const mockCompanies = [
-  {
-    id: "1",
-    name: "SARL AgroTech Côte d'Ivoire",
-    logo: null,
-    sector: "N1-PRI",
-    sectorName: "Agriculture",
-    filiere: "Cultures de rente",
-    region: "LAGUNES",
-    ville: "Abidjan",
-    commune: "Cocody",
-    phone: "+225 07 00 00 00 01",
-    email: "contact@agrotech-ci.com",
-    website: "www.agrotech-ci.com",
-    employeeCount: "10-50",
-    yearFounded: 2018,
-    description: "Spécialisé dans l'exportation de cacao et café de qualité premium.",
-    kycStatus: "validated",
-    kycLevel: "renforce",
-    memberSince: "2023-01-15",
-    plan: "Or",
-    rating: 4.8,
-    reviewCount: 24,
-    certifications: ["Bio", "Fairtrade"],
-    activities: ["Cacao", "Café", "Export"],
-  },
-  {
-    id: "2",
-    name: "Tech Solutions SARL",
-    logo: null,
-    sector: "N1-NUM",
-    sectorName: "Numérique",
-    filiere: "Développement Web/Mobile",
-    region: "LAGUNES",
-    ville: "Abidjan",
-    commune: "Plateau",
-    phone: "+225 07 00 00 00 02",
-    email: "info@techsolutions.ci",
-    website: "www.techsolutions.ci",
-    employeeCount: "5-10",
-    yearFounded: 2020,
-    description: "Développement d'applications mobiles et solutions cloud pour les PME.",
-    kycStatus: "validated",
-    kycLevel: "standard",
-    memberSince: "2023-06-20",
-    plan: "Argent",
-    rating: 4.5,
-    reviewCount: 18,
-    certifications: ["ISO 27001"],
-    activities: ["Développement mobile", "Cloud", "Cybersécurité"],
-  },
-  {
-    id: "3",
-    name: "BTP Excellence SA",
-    logo: null,
-    sector: "N1-SEC",
-    sectorName: "Construction",
-    filiere: "Gros œuvre",
-    region: "VALLEE DU BANDAMA",
-    ville: "Bouaké",
-    commune: "Bouaké",
-    phone: "+225 07 00 00 00 03",
-    email: "contact@btpexcellence.ci",
-    website: "www.btpexcellence.ci",
-    employeeCount: "50-100",
-    yearFounded: 2015,
-    description: "Construction de bâtiments et ouvrages de génie civil.",
-    kycStatus: "validated",
-    kycLevel: "renforce",
-    memberSince: "2022-11-01",
-    plan: "Or",
-    rating: 4.9,
-    reviewCount: 45,
-    certifications: ["Agrément BTP Classe 2"],
-    activities: ["Maçonnerie", "Béton armé", "VRD"],
-  },
-  {
-    id: "4",
-    name: "Transport Express CI",
-    logo: null,
-    sector: "N1-TER",
-    sectorName: "Services",
-    filiere: "Transport & Logistique",
-    region: "LAGUNES",
-    ville: "Abidjan",
-    commune: "Port-Bouët",
-    phone: "+225 07 00 00 00 04",
-    email: "info@transportexpress.ci",
-    website: "www.transportexpress.ci",
-    employeeCount: "20-50",
-    yearFounded: 2019,
-    description: "Services de transport de marchandises et logistique.",
-    kycStatus: "validated",
-    kycLevel: "standard",
-    memberSince: "2023-03-10",
-    plan: "Argent",
-    rating: 4.3,
-    reviewCount: 32,
-    certifications: ["Licence transport"],
-    activities: ["Transport routier", "Livraison", "Entreposage"],
-  },
-  {
-    id: "5",
-    name: "Hôtel Palm Beach",
-    logo: null,
-    sector: "N1-TER",
-    sectorName: "Tourisme",
-    filiere: "Hôtellerie",
-    region: "SUD-COMOE",
-    ville: "Grand-Bassam",
-    commune: "Grand-Bassam",
-    phone: "+225 07 00 00 00 05",
-    email: "reservation@palmbeach.ci",
-    website: "www.palmbeach-ci.com",
-    employeeCount: "50-100",
-    yearFounded: 2010,
-    description: "Hôtel 4 étoiles avec vue sur la mer.",
-    kycStatus: "validated",
-    kycLevel: "renforce",
-    memberSince: "2022-08-15",
-    plan: "Or",
-    rating: 4.7,
-    reviewCount: 156,
-    certifications: ["4 étoiles"],
-    activities: ["Hébergement", "Restauration", "Événementiel"],
-  },
-  {
-    id: "6",
-    name: "Ferme Avicole Moderne",
-    logo: null,
-    sector: "N1-PRI",
-    sectorName: "Agriculture",
-    filiere: "Aviculture",
-    region: "HAUT-SASSANDRA",
-    ville: "Daloa",
-    commune: "Daloa",
-    phone: "+225 07 00 00 00 06",
-    email: "contact@fermeavicole.ci",
-    website: null,
-    employeeCount: "10-20",
-    yearFounded: 2021,
-    description: "Élevage de poulets de chair et production d'œufs.",
-    kycStatus: "validated",
-    kycLevel: "minimum",
-    memberSince: "2023-09-01",
-    plan: "Basic",
-    rating: 4.2,
-    reviewCount: 8,
-    certifications: [],
-    activities: ["Élevage volaille", "Production œufs"],
-  },
-];
+const API_BASE = import.meta.env.VITE_API_URL || "https://back.cpupme.ci";
+
+function getToken(): string | null {
+  return localStorage.getItem("cpu-access-token");
+}
+
+interface AdhesionMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+interface Adhesion {
+  id: string;
+  name: string;
+  customOrganisationName: string | null;
+  position: string | null;
+  email: string;
+  phone: string;
+  message: string | null;
+  logo: string | null;
+  website_url: string | null;
+  nombre_employee: string | null;
+  statut: string;
+  created_at: string;
+  typeMembre: { name: string } | null;
+  profil: { name: string } | null;
+  abonnement: { plan: string; libelle: string } | null;
+  secteurPrincipal: { name: string } | null;
+  filiere: { id: string; name: string } | null;
+  activites: { name: string }[];
+  siegeRegion: { name: string } | null;
+  siegeCommune: { name: string } | null;
+  siegeVille: string | null;
+}
+
+interface AdhesionsResponse {
+  success: boolean;
+  data: {
+    data: Adhesion[];
+    meta: AdhesionMeta;
+  };
+}
+
+interface Region {
+  id: string;
+  name: string;
+  zone: string;
+}
+
+interface Secteur {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface Filiere {
+  id: string;
+  secteur_id: string;
+  name: string;
+}
+
+function decodeHtml(str: string): string {
+  return str
+    .replace(/&amp;#x27;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"');
+}
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  return res.json();
+}
+
+async function fetchAdhesions(params: {
+  page: number;
+  limit: number;
+  search?: string;
+  statut?: string;
+  siegeRegionId?: string;
+  secteurPrincipalId?: string;
+}): Promise<AdhesionsResponse> {
+  const query = new URLSearchParams({ page: String(params.page), limit: String(params.limit) });
+  if (params.search) query.set("search", params.search);
+  if (params.statut) query.set("statut", params.statut);
+  if (params.siegeRegionId) query.set("siegeRegionId", params.siegeRegionId);
+  if (params.secteurPrincipalId) query.set("secteurPrincipalId", params.secteurPrincipalId);
+
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/api/adhesions/for-site-web?${query}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Erreur ${res.status}`);
+  return res.json();
+}
+
+const planBanners: Record<string, string> = {
+  basic: "bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600",
+  silver: "bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500",
+  gold: "bg-gradient-to-br from-yellow-400 via-amber-400 to-orange-400",
+  federation: "bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-600",
+  organisation: "bg-gradient-to-br from-purple-400 via-violet-500 to-purple-600",
+  institutionnel: "bg-gradient-to-br from-red-400 via-rose-500 to-red-600",
+};
+
+const planLabels: Record<string, string> = {
+  basic: "Basic",
+  silver: "Argent",
+  gold: "Or",
+  federation: "Fédération",
+  organisation: "Organisation",
+  institutionnel: "Institutionnel",
+};
+
+const planPills: Record<string, string> = {
+  basic: "border-slate-300 text-slate-600 bg-slate-50",
+  silver: "border-gray-300 text-gray-600 bg-gray-50",
+  gold: "border-amber-300 text-amber-700 bg-amber-50",
+  federation: "border-blue-300 text-blue-700 bg-blue-50",
+  organisation: "border-violet-300 text-violet-700 bg-violet-50",
+  institutionnel: "border-red-300 text-red-700 bg-red-50",
+};
 
 const employeeSizes = [
   { value: "all", label: "Toutes tailles" },
@@ -191,63 +171,109 @@ const employeeSizes = [
   { value: "100+", label: "100+ employés" },
 ];
 
-const plans = [
-  { value: "all", label: "Tous les plans" },
-  { value: "Basic", label: "Basic" },
-  { value: "Argent", label: "Argent" },
-  { value: "Or", label: "Or" },
-];
+function parseRange(value: string): [number, number] {
+  if (!value) return [0, Infinity];
+  if (value.endsWith("+")) return [parseInt(value), Infinity];
+  const parts = value.split("-").map(Number);
+  return parts.length === 2 ? [parts[0], parts[1]] : [parts[0], parts[0]];
+}
 
-const kycLevels = [
-  { value: "all", label: "Tous les niveaux" },
-  { value: "minimum", label: "KYC Minimum" },
-  { value: "standard", label: "KYC Standard" },
-  { value: "renforce", label: "KYC Renforcé" },
-];
+function matchesEmployeeSize(nombreEmployee: string | null, filter: string): boolean {
+  if (filter === "all" || !nombreEmployee) return true;
+  const [fMin, fMax] = parseRange(filter);
+  const [eMin, eMax] = parseRange(nombreEmployee);
+  return eMin <= fMax && eMax >= fMin;
+}
 
-const planColors = {
-  Basic: "bg-muted text-muted-foreground",
-  Argent: "bg-gradient-to-r from-gray-400 to-gray-500 text-white",
-  Or: "bg-gradient-to-r from-yellow-500 to-amber-500 text-white",
-};
+
+function displayName(member: Adhesion): string {
+  return member.customOrganisationName || member.name;
+}
 
 export default function Annuaire() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedRegion, setSelectedRegion] = useState<string>("all");
-  const [selectedSector, setSelectedSector] = useState<string>("all");
-  const [selectedFiliere, setSelectedFiliere] = useState<string>("all");
-  const [selectedSize, setSelectedSize] = useState<string>("all");
-  const [selectedPlan, setSelectedPlan] = useState<string>("all");
-  const [selectedKycLevel, setSelectedKycLevel] = useState<string>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [selectedRegionId, setSelectedRegionId] = useState("all");
+  const [selectedSecteurId, setSelectedSecteurId] = useState("all");
+  const [selectedFiliereId, setSelectedFiliereId] = useState("all");
+  const [selectedSize, setSelectedSize] = useState("all");
+  const [selectedPlan, setSelectedPlan] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [selectedCompany, setSelectedCompany] = useState<typeof mockCompanies[0] | null>(null);
+  const [page, setPage] = useState(1);
+  const [selectedMember, setSelectedMember] = useState<Adhesion | null>(null);
+  const LIMIT = 12;
 
-  const sectorList = getSectorN1List();
-  const filiereList = selectedSector !== "all" ? getSectorN2List(selectedSector) : [];
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
-  const filteredCompanies = useMemo(() => {
-    return mockCompanies.filter((company) => {
-      const matchesSearch =
-        company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        company.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        company.activities.some((a) => a.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Reset filière quand le secteur change
+  useEffect(() => {
+    setSelectedFiliereId("all");
+  }, [selectedSecteurId]);
 
-      const matchesRegion = selectedRegion === "all" || company.region === selectedRegion;
-      const matchesSector = selectedSector === "all" || company.sector === selectedSector;
-      const matchesSize = selectedSize === "all" || company.employeeCount === selectedSize;
-      const matchesPlan = selectedPlan === "all" || company.plan === selectedPlan;
-      const matchesKycLevel = selectedKycLevel === "all" || company.kycLevel === selectedKycLevel;
+  // Reset page quand les filtres changent
+  useEffect(() => {
+    setPage(1);
+  }, [selectedRegionId, selectedSecteurId, selectedFiliereId, selectedPlan]);
 
-      return matchesSearch && matchesRegion && matchesSector && matchesSize && matchesPlan && matchesKycLevel;
-    });
-  }, [searchTerm, selectedRegion, selectedSector, selectedSize, selectedPlan, selectedKycLevel]);
+  const { data: regions = [] } = useQuery({
+    queryKey: ["regions"],
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Region[] } | Region[]>("/api/regions");
+      return Array.isArray(res) ? res : ((res as { data: Region[] }).data ?? []);
+    },
+    staleTime: 5 * 60_000,
+  });
 
-  const stats = {
-    totalMembers: mockCompanies.length,
-    regionsCount: new Set(mockCompanies.map((c) => c.region)).size,
-    sectorsCount: new Set(mockCompanies.map((c) => c.sector)).size,
-    kycValidated: mockCompanies.filter((c) => c.kycStatus === "validated").length,
-  };
+  const { data: secteurs = [] } = useQuery({
+    queryKey: ["secteurs"],
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Secteur[] } | Secteur[]>("/api/secteurs");
+      return Array.isArray(res) ? res : ((res as { data: Secteur[] }).data ?? []);
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: allFilieres = [] } = useQuery({
+    queryKey: ["filieres"],
+    queryFn: async () => {
+      const res = await apiFetch<{ success: boolean; data: Filiere[] } | Filiere[]>("/api/filieres");
+      return Array.isArray(res) ? res : ((res as { data: Filiere[] }).data ?? []);
+    },
+    staleTime: 5 * 60_000,
+  });
+  const filieresFiltrees = selectedSecteurId !== "all"
+    ? allFilieres.filter((f) => f.secteur_id === selectedSecteurId)
+    : [];
+
+  const effectiveLimit = selectedPlan !== "all" ? 200 : LIMIT;
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["annuaire-membres", page, search, selectedRegionId, selectedSecteurId, selectedPlan],
+    queryFn: () => fetchAdhesions({
+      page: selectedPlan !== "all" ? 1 : page,
+      limit: effectiveLimit,
+      search: search || undefined,
+      statut: "approved",
+      siegeRegionId: selectedRegionId !== "all" ? selectedRegionId : undefined,
+      secteurPrincipalId: selectedSecteurId !== "all" ? selectedSecteurId : undefined,
+    }),
+    staleTime: 30_000,
+  });
+
+  const rawMembers = data?.data?.data ?? [];
+  const members = rawMembers.filter((m) =>
+    matchesEmployeeSize(m.nombre_employee, selectedSize) &&
+    (selectedFiliereId === "all" || m.filiere?.id === selectedFiliereId) &&
+    (selectedPlan === "all" || m.abonnement?.plan?.toLowerCase() === selectedPlan)
+  );
+  const meta = data?.data?.meta;
 
   return (
     <DashboardLayout>
@@ -259,13 +285,13 @@ export default function Annuaire() {
               Annuaire des Membres
             </h1>
             <p className="text-muted-foreground">
-              Recherchez et connectez-vous avec les entreprises membres CPU-PME
+              Recherchez et connectez-vous avec les membres CPU-PME
             </p>
           </div>
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-border/50">
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
@@ -273,8 +299,8 @@ export default function Annuaire() {
                   <Building2 className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.totalMembers}</p>
-                  <p className="text-sm text-muted-foreground">Entreprises membres</p>
+                  <p className="text-2xl font-bold">{meta?.total ?? "—"}</p>
+                  <p className="text-sm text-muted-foreground">Membres au total</p>
                 </div>
               </div>
             </CardContent>
@@ -283,11 +309,13 @@ export default function Annuaire() {
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="p-3 rounded-xl bg-success/10">
-                  <MapPin className="h-6 w-6 text-success" />
+                  <Users className="h-6 w-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.regionsCount}</p>
-                  <p className="text-sm text-muted-foreground">Régions couvertes</p>
+                  <p className="text-2xl font-bold">
+                    {meta ? Math.ceil(meta.total / LIMIT) : "—"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Pages de résultats</p>
                 </div>
               </div>
             </CardContent>
@@ -299,21 +327,10 @@ export default function Annuaire() {
                   <Briefcase className="h-6 w-6 text-warning" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.sectorsCount}</p>
-                  <p className="text-sm text-muted-foreground">Secteurs d'activité</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-primary/10">
-                  <CheckCircle2 className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.kycValidated}</p>
-                  <p className="text-sm text-muted-foreground">KYC validés</p>
+                  <p className="text-2xl font-bold">
+                    {new Set(members.map((m) => m.secteurPrincipal?.name).filter(Boolean)).size || "—"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Secteurs (page courante)</p>
                 </div>
               </div>
             </CardContent>
@@ -323,18 +340,19 @@ export default function Annuaire() {
         {/* Search and Filters */}
         <Card className="border-border/50">
           <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-4 lg:flex-row">
+            <div className="flex flex-col gap-3">
+              {/* Ligne 1 : recherche + toggle vue */}
+              <div className="flex flex-col gap-3 lg:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Rechercher par nom, activité, mot-clé..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Rechercher par nom, email, téléphone..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="pl-10"
                   />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-shrink-0">
                   <Button
                     variant={viewMode === "grid" ? "default" : "outline"}
                     size="icon"
@@ -352,378 +370,490 @@ export default function Annuaire() {
                 </div>
               </div>
 
-              {/* Première ligne de filtres */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-                  <SelectTrigger>
-                    <MapPin className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Région" />
+              {/* Ligne 2 : 4 filtres sur la même ligne */}
+              <div className="flex flex-wrap gap-3">
+                <Select value={selectedRegionId} onValueChange={setSelectedRegionId}>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
+                    <MapPin className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Toutes les régions" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Toutes les régions</SelectItem>
-                    {regions.map((region) => (
-                      <SelectItem key={region} value={region}>
-                        {region}
-                      </SelectItem>
-                    ))}
+                    {regions
+                      .slice()
+                      .sort((a, b) => decodeHtml(a.name).localeCompare(decodeHtml(b.name), "fr"))
+                      .map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {decodeHtml(r.name)}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
 
-                <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedFiliere("all"); }}>
-                  <SelectTrigger>
-                    <Briefcase className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Secteur" />
+                <Select value={selectedSecteurId} onValueChange={setSelectedSecteurId}>
+                  <SelectTrigger className="flex-1 min-w-[160px]">
+                    <Briefcase className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Tous les secteurs" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Tous les secteurs</SelectItem>
-                    {sectorList.map((sector) => (
-                      <SelectItem key={sector.code} value={sector.code}>
-                        {sector.name.split(":")[0]}
+                    {secteurs.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {decodeHtml(s.name)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
-                <Select value={selectedFiliere} onValueChange={setSelectedFiliere} disabled={selectedSector === "all"}>
-                  <SelectTrigger>
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filière" />
+                <Select
+                  value={selectedFiliereId}
+                  onValueChange={setSelectedFiliereId}
+                  disabled={selectedSecteurId === "all"}
+                >
+                  <SelectTrigger className={`flex-1 min-w-[160px] ${selectedSecteurId === "all" ? "opacity-50" : ""}`}>
+                    <ChevronRight className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder={selectedSecteurId === "all" ? "Choisir d'abord un secteur" : "Toutes les filières"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Toutes les filières</SelectItem>
-                    {filiereList.map((filiere) => (
-                      <SelectItem key={filiere.code} value={filiere.code}>
-                        {filiere.name}
-                      </SelectItem>
-                    ))}
+                    {filieresFiltrees
+                      .slice()
+                      .sort((a, b) => a.name.localeCompare(b.name, "fr"))
+                      .map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {decodeHtml(f.name)}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
-              </div>
 
-              {/* Deuxième ligne de filtres */}
-              <div className="grid gap-4 md:grid-cols-3">
                 <Select value={selectedSize} onValueChange={setSelectedSize}>
-                  <SelectTrigger>
-                    <Users className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Taille" />
+                  <SelectTrigger className="flex-1 min-w-[160px]">
+                    <Users className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Toutes tailles" />
                   </SelectTrigger>
                   <SelectContent>
-                    {employeeSizes.map((size) => (
-                      <SelectItem key={size.value} value={size.value}>
-                        {size.label}
+                    {employeeSizes.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
                 <Select value={selectedPlan} onValueChange={setSelectedPlan}>
-                  <SelectTrigger>
-                    <Award className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Plan" />
+                  <SelectTrigger className="flex-1 min-w-[160px]">
+                    <Award className="h-4 w-4 mr-2 text-muted-foreground flex-shrink-0" />
+                    <SelectValue placeholder="Tous les abonnements" />
                   </SelectTrigger>
                   <SelectContent>
-                    {plans.map((plan) => (
-                      <SelectItem key={plan.value} value={plan.value}>
-                        {plan.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={selectedKycLevel} onValueChange={setSelectedKycLevel}>
-                  <SelectTrigger>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Niveau KYC" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {kycLevels.map((level) => (
-                      <SelectItem key={level.value} value={level.value}>
-                        {level.label}
-                      </SelectItem>
+                    <SelectItem value="all">Tous les abonnements</SelectItem>
+                    {Object.entries(planLabels).map(([key, label]) => (
+                      <SelectItem key={key} value={key}>{label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Filtres actifs */}
+              {(selectedRegionId !== "all" || selectedSecteurId !== "all" || selectedFiliereId !== "all" || selectedSize !== "all" || selectedPlan !== "all") && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Filtres actifs :</span>
+                  {selectedRegionId !== "all" && (
+                    <button
+                      onClick={() => setSelectedRegionId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(regions.find((r) => r.id === selectedRegionId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedSecteurId !== "all" && (
+                    <button
+                      onClick={() => setSelectedSecteurId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(secteurs.find((s) => s.id === selectedSecteurId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedFiliereId !== "all" && (
+                    <button
+                      onClick={() => setSelectedFiliereId("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {decodeHtml(allFilieres.find((f) => f.id === selectedFiliereId)?.name ?? "")}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedSize !== "all" && (
+                    <button
+                      onClick={() => setSelectedSize("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {employeeSizes.find((s) => s.value === selectedSize)?.label}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  {selectedPlan !== "all" && (
+                    <button
+                      onClick={() => setSelectedPlan("all")}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                    >
+                      {planLabels[selectedPlan]}
+                      <span className="ml-0.5 font-bold">×</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setSelectedRegionId("all"); setSelectedSecteurId("all"); setSelectedFiliereId("all"); setSelectedSize("all"); setSelectedPlan("all"); }}
+                    className="text-xs text-muted-foreground underline hover:text-foreground transition-colors"
+                  >
+                    Tout effacer
+                  </button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Results */}
+        {/* Results count */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {filteredCompanies.length} entreprise(s) trouvée(s)
+            {meta ? `${meta.total} membre(s) trouvé(s) — page ${meta.page}/${meta.totalPages}` : "Chargement..."}
           </p>
         </div>
 
-        {viewMode === "grid" ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredCompanies.map((company) => (
-              <Card
-                key={company.id}
-                className="border-border/50 transition-all cursor-pointer group"
-                onClick={() => setSelectedCompany(company)}
-              >
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="h-14 w-14">
-                      <AvatarImage src={company.logo || undefined} />
-                      <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                        {company.name.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold truncate group-hover:text-primary transition-colors">
-                          {company.name}
-                        </h3>
-                        <Badge className={planColors[company.plan as keyof typeof planColors]} variant="secondary">
-                          {company.plan}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{company.sectorName} • {company.filiere}</p>
-                    </div>
-                  </div>
-
-                  <p className="mt-4 text-sm text-muted-foreground line-clamp-2">
-                    {company.description}
-                  </p>
-
-                  <div className="mt-4 flex flex-wrap gap-1">
-                    {company.activities.slice(0, 3).map((activity) => (
-                      <Badge key={activity} variant="outline" className="text-xs">
-                        {activity}
-                      </Badge>
-                    ))}
-                    {company.activities.length > 3 && (
-                      <Badge variant="outline" className="text-xs">
-                        +{company.activities.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-border/50 flex items-center justify-between">
-                    <div className="flex items-center gap-1 text-sm">
-                      <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">{company.ville}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      <span className="font-medium">{company.rating}</span>
-                      <span className="text-muted-foreground text-sm">({company.reviewCount})</span>
-                    </div>
-                  </div>
-
-                  {company.certifications.length > 0 && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <Award className="h-4 w-4 text-primary" />
-                      <div className="flex flex-wrap gap-1">
-                        {company.certifications.map((cert) => (
-                          <Badge key={cert} variant="none" className="text-xs bg-primary/10 text-primary">
-                            {cert}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredCompanies.map((company) => (
-              <Card
-                key={company.id}
-                className="border-border/50 hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => setSelectedCompany(company)}
-              >
-                <CardContent className="py-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src={company.logo || undefined} />
-                      <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                        {company.name.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{company.name}</h3>
-                        <Badge className={planColors[company.plan as keyof typeof planColors]} variant="secondary">
-                          {company.plan}
-                        </Badge>
-                        {company.certifications.map((cert) => (
-                          <Badge key={cert} variant="secondary" className="text-xs bg-primary/10 text-primary">
-                            {cert}
-                          </Badge>
-                        ))}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {company.sectorName} • {company.filiere} • {company.ville}, {company.region}
-                      </p>
-                    </div>
-                    <div className="hidden md:flex items-center gap-6">
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{company.employeeCount}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                        <span className="font-medium">{company.rating}</span>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        {/* Loading */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         )}
 
-        {/* Company Detail Modal */}
-        {selectedCompany && (
-          <div
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-            onClick={() => setSelectedCompany(null)}
-          >
-            <Card
-              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <CardHeader className="flex flex-row items-start justify-between sticky top-0 bg-card z-10 border-b">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={selectedCompany.logo || undefined} />
-                    <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
-                      {selectedCompany.name.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <CardTitle>{selectedCompany.name}</CardTitle>
-                      <Badge className={planColors[selectedCompany.plan as keyof typeof planColors]}>
-                        {selectedCompany.plan}
-                      </Badge>
-                    </div>
-                    <p className="text-muted-foreground">
-                      {selectedCompany.sectorName} • {selectedCompany.filiere}
-                    </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      <span className="font-medium">{selectedCompany.rating}</span>
-                      <span className="text-muted-foreground">({selectedCompany.reviewCount} avis)</span>
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSelectedCompany(null)}
-                  className="hover:bg-destructive/10 hover:text-destructive rounded-full"
-                >
-                  <span className="text-xl">×</span>
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">À propos</h4>
-                  <p className="text-muted-foreground">{selectedCompany.description}</p>
-                </div>
+        {/* Error */}
+        {isError && (
+          <Card className="border-destructive/50">
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
+              <h3 className="font-semibold text-lg">Erreur de chargement</h3>
+              <p className="text-muted-foreground mt-2">
+                Impossible de récupérer les membres. Vérifiez votre connexion.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Coordonnées</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-muted-foreground" />
-                        <span>{selectedCompany.commune}, {selectedCompany.ville}, {selectedCompany.region}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-muted-foreground" />
-                        <span>{selectedCompany.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span>{selectedCompany.email}</span>
-                      </div>
-                      {selectedCompany.website && (
-                        <div className="flex items-center gap-2">
-                          <Globe className="h-4 w-4 text-muted-foreground" />
-                          <span>{selectedCompany.website}</span>
-                        </div>
+        {/* Grid view */}
+        {!isLoading && !isError && viewMode === "grid" && (
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="group relative rounded-sm border border-border/60 bg-card overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-primary/10 hover:-translate-y-0.5 hover:border-primary/30"
+                onClick={() => setSelectedMember(member)}
+              >
+                {/* Bandeau coloré en haut */}
+                <div className={`h-20 w-full ${planBanners[member.abonnement?.plan ?? ""] ?? "bg-gradient-to-r from-slate-400 to-slate-500"}`} />
+
+                {/* Avatar en overlap */}
+                <div className="px-5 pb-5">
+                  <div className="flex items-end justify-between -mt-8 mb-3">
+                    <Avatar className="h-16 w-16 ring-4 ring-card shadow-md">
+                      <AvatarImage src={member.logo || undefined} />
+                      <AvatarFallback className="bg-primary/10 text-primary font-bold text-lg">
+                        {displayName(member).slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {member.abonnement && (
+                        <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${planPills[member.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
+                          {planLabels[member.abonnement.plan] ?? member.abonnement.plan}
+                        </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Informations</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>{selectedCompany.employeeCount} employés</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span>Fondée en {selectedCompany.yearFounded}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-success" />
-                        <span>KYC validé</span>
-                      </div>
+                  {/* Nom & poste */}
+                  <h3 className="font-bold text-base leading-tight group-hover:text-primary transition-colors truncate">
+                    {displayName(member)}
+                  </h3>
+                  {member.position && (
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{member.position}</p>
+                  )}
+
+                  {/* Secteur */}
+                  {member.secteurPrincipal && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <Briefcase className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">
+                        {member.secteurPrincipal.name}
+                        {member.filiere ? ` · ${member.filiere.name}` : ""}
+                      </p>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-                <div>
-                  <h4 className="font-semibold mb-2">Activités</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedCompany.activities.map((activity) => (
-                      <Badge key={activity} variant="outline">
-                        {activity}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                  {/* Description */}
+                  {member.message && (
+                    <p className="mt-3 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      {member.message}
+                    </p>
+                  )}
 
-                {selectedCompany.certifications.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold mb-2">Certifications</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedCompany.certifications.map((cert) => (
-                        <Badge key={cert} className="bg-primary/10 text-primary">
-                          <Award className="h-3 w-3 mr-1" />
-                          {cert}
-                        </Badge>
+                  {/* Activités */}
+                  {member.activites.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {member.activites.slice(0, 3).map((a) => (
+                        <span key={a.name} className="text-[11px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/60">
+                          {a.name}
+                        </span>
                       ))}
+                      {member.activites.length > 3 && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/60">
+                          +{member.activites.length - 3}
+                        </span>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="flex gap-3 pt-4 border-t">
-                  <Button className="flex-1">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Contacter
-                  </Button>
-                  <Button variant="outline" className="flex-1">
-                    <Phone className="h-4 w-4 mr-2" />
-                    Appeler
-                  </Button>
+                  {/* Footer localisation */}
+                  <div className="mt-4 pt-3 border-t border-border/50 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs text-muted-foreground truncate">
+                      {[member.siegeCommune?.name, member.siegeVille, member.siegeRegion?.name]
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join(", ") || "—"}
+                    </span>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            ))}
           </div>
         )}
 
-        {filteredCompanies.length === 0 && (
+        {/* List view */}
+        {!isLoading && !isError && viewMode === "list" && (
+          <div className="space-y-3">
+            {members.map((member) => (
+              <div
+                key={member.id}
+                className="group flex items-center gap-4 rounded-sm border border-border/60 bg-card px-4 py-3.5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-primary/8 hover:border-primary/30 hover:-translate-y-px"
+                onClick={() => setSelectedMember(member)}
+              >
+                {/* Barre colorée gauche */}
+                <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${planBanners[member.abonnement?.plan ?? ""] ?? "bg-slate-400"} hidden`} />
+
+                <Avatar className="h-12 w-12 flex-shrink-0 ring-2 ring-border">
+                  <AvatarImage src={member.logo || undefined} />
+                  <AvatarFallback className={`font-bold text-sm text-white ${planBanners[member.abonnement?.plan ?? ""] ?? "bg-slate-400"}`}>
+                    {displayName(member).slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-semibold text-sm group-hover:text-primary transition-colors">
+                      {displayName(member)}
+                    </h3>
+                    {member.abonnement && (
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${planPills[member.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
+                        {planLabels[member.abonnement.plan] ?? member.abonnement.plan}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {[member.secteurPrincipal?.name, member.filiere?.name].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+
+                {/* Méta droite */}
+                <div className="hidden md:flex items-center gap-5 flex-shrink-0 text-xs text-muted-foreground">
+                  {(member.siegeVille || member.siegeRegion) && (
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span>{member.siegeVille || member.siegeRegion?.name}</span>
+                    </div>
+                  )}
+                  {member.nombre_employee && (
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      <span>{member.nombre_employee}</span>
+                    </div>
+                  )}
+                  <ChevronRight className="h-4 w-4 group-hover:text-primary transition-colors" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && !isError && members.length === 0 && (
           <Card className="border-border/50">
             <CardContent className="py-12 text-center">
               <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="font-semibold text-lg">Aucune entreprise trouvée</h3>
+              <h3 className="font-semibold text-lg">Aucun membre trouvé</h3>
               <p className="text-muted-foreground mt-2">
                 Essayez de modifier vos critères de recherche
               </p>
             </CardContent>
           </Card>
         )}
+
+        {/* Pagination */}
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p - 1)}
+              disabled={!meta.hasPreviousPage || isLoading}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Précédent
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {meta.page} / {meta.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!meta.hasNextPage || isLoading}
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        )}
+
+        {/* Member Detail Sheet */}
+        <Sheet open={!!selectedMember} onOpenChange={(open) => { if (!open) setSelectedMember(null); }}>
+          <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0">
+            {selectedMember && (
+              <>
+                <SheetHeader className="sr-only">
+                  <SheetTitle>{displayName(selectedMember)}</SheetTitle>
+                </SheetHeader>
+
+                {/* Bandeau coloré + avatar */}
+                <div className={`relative h-28 ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-gradient-to-br from-slate-400 to-slate-600"}`} />
+                <div className="px-6 pb-6">
+                  <div className="flex items-end justify-between -mt-10 mb-4">
+                    <Avatar className="h-20 w-20 ring-4 ring-card shadow-lg">
+                      <AvatarImage src={selectedMember.logo || undefined} />
+                      <AvatarFallback className={`font-bold text-2xl text-white ${planBanners[selectedMember.abonnement?.plan ?? ""] ?? "bg-slate-400"}`}>
+                        {displayName(selectedMember).slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    {selectedMember.abonnement && (
+                      <span className={`text-xs font-semibold px-3 py-1 rounded-full border mb-1 ${planPills[selectedMember.abonnement.plan] ?? "border-border text-muted-foreground"}`}>
+                        {selectedMember.abonnement.libelle || planLabels[selectedMember.abonnement.plan] || selectedMember.abonnement.plan}
+                      </span>
+                    )}
+                  </div>
+
+                  <h2 className="text-xl font-bold leading-tight">{displayName(selectedMember)}</h2>
+                  {selectedMember.position && (
+                    <p className="text-sm text-muted-foreground mt-0.5">{selectedMember.position}</p>
+                  )}
+                  {(selectedMember.typeMembre || selectedMember.profil) && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {[selectedMember.typeMembre?.name, selectedMember.profil?.name].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+
+                  <div className="mt-6 space-y-5">
+                    {selectedMember.message && (
+                      <div className="rounded-xl bg-muted/50 p-4">
+                        <p className="text-sm text-muted-foreground leading-relaxed">{selectedMember.message}</p>
+                      </div>
+                    )}
+
+                    {/* Coordonnées */}
+                    <div className="rounded-xl border border-border/60 p-4 space-y-2.5">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Coordonnées</h4>
+                      {(selectedMember.siegeVille || selectedMember.siegeCommune || selectedMember.siegeRegion) && (
+                        <div className="flex items-start gap-2 text-sm">
+                          <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                          <span>
+                            {[selectedMember.siegeCommune?.name, selectedMember.siegeVille, selectedMember.siegeRegion?.name]
+                              .filter(Boolean).join(", ")}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-sm">
+                        <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span>{selectedMember.phone}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="break-all">{selectedMember.email}</span>
+                      </div>
+                      {selectedMember.website_url && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <span className="break-all">{selectedMember.website_url}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Infos */}
+                    <div className="rounded-xl border border-border/60 p-4 space-y-2.5">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Informations</h4>
+                      {selectedMember.nombre_employee && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          <span>{selectedMember.nombre_employee} employé(s)</span>
+                        </div>
+                      )}
+                      {selectedMember.secteurPrincipal && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Briefcase className="h-4 w-4 text-muted-foreground" />
+                          <span>{selectedMember.secteurPrincipal.name}</span>
+                        </div>
+                      )}
+                      {selectedMember.filiere && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Award className="h-4 w-4 text-muted-foreground" />
+                          <span>{selectedMember.filiere.name}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedMember.activites.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Activités</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedMember.activites.map((a) => (
+                            <span key={a.name} className="text-xs px-3 py-1 rounded-lg bg-muted border border-border/60 text-muted-foreground">
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                      <Button className="flex-1 rounded-xl" asChild>
+                        <a href={`mailto:${selectedMember.email}`}>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Envoyer un email
+                        </a>
+                      </Button>
+                      <Button variant="outline" className="flex-1 rounded-xl" asChild>
+                        <a href={`tel:${selectedMember.phone}`}>
+                          <Phone className="h-4 w-4 mr-2" />
+                          Appeler
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
       </div>
     </DashboardLayout>
   );

@@ -10,31 +10,32 @@ import {
   MapPin,
   Ticket,
   QrCode,
-  Download,
   Clock,
   CheckCircle2,
   AlertCircle,
   XCircle,
-  Share2,
-  FileText,
   CreditCard,
-  User,
 } from "lucide-react";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { registrationsApi, evenementsApi, type Registration, type Evenement } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { registrationsApi, evenementsApi, paymentsApi, type Registration, type Evenement, type Payment } from "@/lib/api";
+import { ETicket } from "./ETicket";
 import { useAuth } from "@/contexts/AuthContext";
 
 // Inscription enrichie avec les données de l'événement
-interface EnrichedRegistration extends Registration {
+export interface EnrichedRegistration extends Registration {
   event?: Evenement;
 }
 
-function mapStatut(statut: string): {
+function mapStatut(statut: string, est_valable = true): {
   label: string;
   color: string;
   Icon: typeof Clock;
 } {
+  if (!est_valable) {
+    return { label: "Annulé", color: "bg-destructive/10 text-destructive", Icon: XCircle };
+  }
   switch (statut) {
+    case "gratuit":
     case "payé":
     case "paye":
     case "confirmed":
@@ -100,27 +101,34 @@ export function MesInscriptions() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // 2. Récupérer les événements pour chaque inscription (unique event_ids)
-  const uniqueEventIds = [...new Set((registrations ?? []).map((r) => r.event_id))];
-
-  const eventQueries = useQueries({
-    queries: uniqueEventIds.map((eventId) => ({
-      queryKey: ["evenement", eventId],
-      queryFn: () => evenementsApi.getById(eventId),
-      staleTime: 10 * 60 * 1000,
-      enabled: uniqueEventIds.length > 0,
-    })),
+  // 2. Récupérer tous les événements publics pour enrichir les inscriptions
+  const { data: allEvents, isLoading: isLoadingEvents } = useQuery({
+    queryKey: ["evenements", "all"],
+    queryFn: evenementsApi.getAll,
+    staleTime: 5 * 60 * 1000,
   });
 
-  const isLoadingEvents = eventQueries.some((q) => q.isLoading);
+  // 3. Récupérer les paiements de l'utilisateur pour les liens de checkout
+  const { data: payments } = useQuery({
+    queryKey: ["payments", user?.id],
+    queryFn: () => paymentsApi.getByUser(user!.id),
+    enabled: !!user?.id,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Map registrationId → paiement pending avec checkoutUrl
+  const pendingPaymentMap = new Map<string, Payment>();
+  (payments ?? []).forEach((p) => {
+    if (p.status !== "pending" || !p.checkoutUrl) return;
+    const regId = p.registrationId ?? (p.payableType === "registration" ? p.payableId : null);
+    if (regId) pendingPaymentMap.set(regId, p);
+  });
+
   const isLoading = isLoadingReg || isLoadingEvents;
 
   // Map eventId → Evenement
   const eventMap = new Map<string, Evenement>();
-  uniqueEventIds.forEach((id, i) => {
-    const ev = eventQueries[i]?.data;
-    if (ev) eventMap.set(id, ev);
-  });
+  (allEvents ?? []).forEach((ev) => eventMap.set(ev.id, ev));
 
   // 3. Enrichir les inscriptions
   const enriched: EnrichedRegistration[] = (registrations ?? []).map((reg) => ({
@@ -130,22 +138,29 @@ export function MesInscriptions() {
 
   const now = new Date();
 
-  // 4. Séparer à venir / passés selon date_debut de l'événement
+  // 4. Séparer à venir / passés selon date_debut de l'événement et est_valable
   const upcoming = enriched.filter((r) => {
-    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return false;
+    if (!r.est_valable) return false;
     const dateDebut = r.event?.date_debut;
-    if (!dateDebut) return true; // si event pas encore chargé, on garde dans "à venir" par défaut
+    if (!dateDebut) return true;
     return new Date(dateDebut) >= now;
   });
 
   const past = enriched.filter((r) => {
-    if (r.statut_paiement === "annulé" || r.statut_paiement === "annule") return true;
+    if (!r.est_valable) return true;
     const dateDebut = r.event?.date_debut;
     if (!dateDebut) return false;
     return new Date(dateDebut) < now;
   });
 
-  const pendingCount = enriched.filter((r) => r.statut_paiement === "en_attente").length;
+  const pendingCount = enriched.filter((r) => r.est_valable && r.statut_paiement === "en_attente").length;
+
+  const countTickets = (regs: EnrichedRegistration[]) =>
+    regs.reduce((sum, r) => sum + (r.participant_tickets?.length ?? r.tickets?.length ?? r.details.reduce((s, d) => s + d.quantite, 0)), 0);
+
+  const totalBillets = countTickets(enriched);
+  const upcomingBillets = countTickets(upcoming);
+  const pastBillets = countTickets(past);
 
   const handleShowQR = (reg: EnrichedRegistration) => {
     setSelectedReg(reg);
@@ -159,9 +174,10 @@ export function MesInscriptions() {
     reg: EnrichedRegistration;
     isPast?: boolean;
   }) {
-    const { label, color, Icon } = mapStatut(reg.statut_paiement);
-    const ticketNom = reg.details[0]?.ticket_type?.nom ?? "Billet";
-    const totalQty = reg.details.reduce((s, d) => s + d.quantite, 0);
+    const { label, color, Icon } = mapStatut(reg.statut_paiement, reg.est_valable);
+    const ticketNom = reg.participant_tickets?.[0]?.ticket?.nom ?? reg.details[0]?.ticket_type?.nom ?? "Billet";
+    const nbBillets = reg.participant_tickets?.length ?? reg.tickets?.length ?? reg.details.reduce((s, d) => s + d.quantite, 0);
+    const pendingPayment = pendingPaymentMap.get(reg.id);
 
     return (
       <Card className={`flex flex-col h-full ${isPast ? "opacity-75" : "hover:shadow-lg transition-all"}`}>
@@ -173,6 +189,9 @@ export function MesInscriptions() {
               {label}
             </Badge>
             <Badge variant="outline">{ticketNom}</Badge>
+            {nbBillets > 1 && (
+              <Badge variant="secondary">{nbBillets} billets</Badge>
+            )}
           </div>
 
           {/* Titre */}
@@ -215,13 +234,18 @@ export function MesInscriptions() {
           {/* Action */}
           <div className="pt-1">
             {isPast ? (
-              <Button variant="outline" size="sm" className="w-full">
-                Laisser un avis
-              </Button>
+              <div className="w-full h-8 flex items-center justify-center rounded-md border border-muted-foreground/20 bg-muted/40 text-xs text-muted-foreground font-medium">
+                Terminé
+              </div>
             ) : reg.statut_paiement === "en_attente" ? (
-              <Button className="w-full gap-2" size="sm">
+              <Button
+                className="w-full gap-2"
+                size="sm"
+                onClick={() => pendingPayment?.checkoutUrl && window.open(pendingPayment.checkoutUrl, "_blank")}
+                disabled={!pendingPayment?.checkoutUrl}
+              >
                 <CreditCard className="w-4 h-4" />
-                Payer
+                {pendingPayment?.checkoutUrl ? "Finaliser le paiement" : "Payer"}
               </Button>
             ) : (
               <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => handleShowQR(reg)}>
@@ -245,8 +269,8 @@ export function MesInscriptions() {
               <Ticket className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : enriched.length}</p>
-              <p className="text-sm text-muted-foreground">Total inscriptions</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : totalBillets}</p>
+              <p className="text-sm text-muted-foreground">Total billets</p>
             </div>
           </CardContent>
         </Card>
@@ -256,7 +280,7 @@ export function MesInscriptions() {
               <Calendar className="w-6 h-6 text-secondary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : upcoming.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : upcomingBillets}</p>
               <p className="text-sm text-muted-foreground">À venir</p>
             </div>
           </CardContent>
@@ -278,7 +302,7 @@ export function MesInscriptions() {
               <CheckCircle2 className="w-6 h-6 text-blue-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{isLoading ? "—" : past.length}</p>
+              <p className="text-2xl font-bold">{isLoading ? "—" : pastBillets}</p>
               <p className="text-sm text-muted-foreground">Passés</p>
             </div>
           </CardContent>
@@ -339,46 +363,16 @@ export function MesInscriptions() {
         </TabsContent>
       </Tabs>
 
-      {/* QR Code Dialog */}
+      {/* E-Ticket Dialog */}
       <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
-        <DialogContent className="max-w-sm text-center">
+        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Pass Événement</DialogTitle>
+            <DialogTitle>Mon E-Ticket</DialogTitle>
             <DialogDescription>
               {selectedReg?.event?.titre ?? `Événement #${selectedReg?.event_id.slice(0, 8)}`}
             </DialogDescription>
           </DialogHeader>
-          <div className="py-8">
-            <div className="w-48 h-48 mx-auto bg-muted rounded-xl flex items-center justify-center border-4 border-primary/20">
-              <QrCode className="w-32 h-32 text-primary" />
-            </div>
-            <p className="mt-4 text-sm text-muted-foreground">
-              Réf : {selectedReg?.id.slice(0, 8).toUpperCase()}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="font-medium">
-              {selectedReg?.details[0]?.ticket_type?.nom ?? "Billet"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {selectedReg?.event?.date_debut &&
-                new Date(selectedReg.event.date_debut).toLocaleDateString("fr-FR", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
-            </p>
-          </div>
-          <div className="flex gap-3 mt-4">
-            <Button variant="outline" className="flex-1 gap-2">
-              <Share2 className="w-4 h-4" />
-              Partager
-            </Button>
-            <Button className="flex-1 gap-2">
-              <Download className="w-4 h-4" />
-              Télécharger
-            </Button>
-          </div>
+          {selectedReg && <ETicket reg={selectedReg} />}
         </DialogContent>
       </Dialog>
     </div>

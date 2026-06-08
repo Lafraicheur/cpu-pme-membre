@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,13 +24,12 @@ import {
   typeEvenementsApi,
   regionsApi,
   filieresApi,
-  publicCiblesApi,
   ticketTypesApi,
   createEvenementApi,
+  createEvenementApiJson,
   TypeEvenement,
   Region,
   Filiere,
-  PublicCible,
 } from "@/lib/api";
 import {
   PlusCircle,
@@ -59,7 +58,7 @@ import { cn } from "@/lib/utils";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Intervenant {
+export interface Intervenant {
   nom_complet: string;
   titre_fonction: string;
   entreprise_organisation: string;
@@ -67,33 +66,33 @@ interface Intervenant {
   imagePreview: string | null;
 }
 
-interface ObjectifRow {
+export interface ObjectifRow {
   texte: string;
 }
 
-interface ProgrammeRow {
+export interface ProgrammeRow {
   heure: string;
   activite: string;
 }
 
-interface TicketRow {
+export interface TicketRow {
   nom: string;
   prix: string;
   prix_membre: string;
   quantite_totale: string;
 }
 
-interface InfosPratiques {
+export interface InfosPratiques {
   parking: string;
   restauration: string;
   accessibilite: string;
 }
 
-const emptyObjectif = (): ObjectifRow => ({ texte: "" });
-const emptyProgrammeRow = (): ProgrammeRow => ({ heure: "", activite: "" });
-const emptyInfosPratiques = (): InfosPratiques => ({ parking: "", restauration: "", accessibilite: "" });
+export const emptyObjectif = (): ObjectifRow => ({ texte: "" });
+export const emptyProgrammeRow = (): ProgrammeRow => ({ heure: "", activite: "" });
+export const emptyInfosPratiques = (): InfosPratiques => ({ parking: "", restauration: "", accessibilite: "" });
 
-const emptyIntervenant = (): Intervenant => ({
+export const emptyIntervenant = (): Intervenant => ({
   nom_complet: "",
   titre_fonction: "",
   entreprise_organisation: "",
@@ -101,7 +100,7 @@ const emptyIntervenant = (): Intervenant => ({
   imagePreview: null,
 });
 
-const emptyTicket = (): TicketRow => ({
+export const emptyTicket = (): TicketRow => ({
   nom: "",
   prix: "0",
   prix_membre: "0",
@@ -168,7 +167,7 @@ function StepIndicator({ current }: { current: number }) {
 // Section card wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SectionCard({
+export function SectionCard({
   icon: Icon,
   title,
   color = "text-primary",
@@ -198,7 +197,7 @@ function SectionCard({
 // Option toggle row
 // ─────────────────────────────────────────────────────────────────────────────
 
-function OptionRow({ label, description, checked, onCheckedChange }: {
+export function OptionRow({ label, description, checked, onCheckedChange }: {
   label: string;
   description?: string;
   checked: boolean;
@@ -223,14 +222,23 @@ function OptionRow({ label, description, checked, onCheckedChange }: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { user } = useAuth();
   const { toast } = useToast();
 
-  const [typeEvenements, setTypeEvenements] = useState<TypeEvenement[]>([]);
-  const [regions, setRegions]               = useState<Region[]>([]);
-  const [filieres, setFilieres]             = useState<Filiere[]>([]);
-  const [publicCibles, setPublicCibles]     = useState<PublicCible[]>([]);
-
+  const { data: typeEvenements = [] } = useQuery({
+    queryKey: ["type-evenements"],
+    queryFn: () => typeEvenementsApi.getAll(),
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: regions = [] } = useQuery({
+    queryKey: ["regions"],
+    queryFn: regionsApi.getAll,
+    staleTime: 10 * 60 * 1000,
+  });
+  const { data: filieres = [] } = useQuery({
+    queryKey: ["filieres"],
+    queryFn: filieresApi.getAll,
+    staleTime: 10 * 60 * 1000,
+  });
   const [step, setStep] = useState(0);
 
   // Étape 1
@@ -242,7 +250,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const [regionId, setRegionId]             = useState("");
   const [filiereId, setFiliereId]           = useState("");
   const [filiereConcerner, setFiliereConcerner] = useState<ObjectifRow[]>([emptyObjectif()]);
-  const [publicCibleIds, setPublicCibleIds] = useState<string[]>([]);
+  const [audience, setAudience]             = useState("");
   const [imageFile, setImageFile]           = useState<File | null>(null);
   const [imagePreview, setImagePreview]     = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -279,19 +287,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const [loading, setLoading]   = useState(false);
   const [done, setDone]         = useState(false);
 
-  useEffect(() => {
-    Promise.all([
-      typeEvenementsApi.getAll(),
-      regionsApi.getAll(),
-      filieresApi.getAll(),
-      publicCiblesApi.getAll(),
-    ]).then(([te, r, f, pc]) => {
-      setTypeEvenements(te);
-      setRegions(r);
-      setFilieres(f);
-      setPublicCibles(pc);
-    }).catch(() => {});
-  }, []);
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -348,81 +343,110 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const handleSubmitEvent = async () => {
     setLoading(true);
     try {
-      const fd = new FormData();
-      fd.append("titre", titre);
-      if (description) fd.append("description", description);
-      fd.append("format", format);
-      if (descriptionTypeFormat) fd.append("description_type_format", descriptionTypeFormat);
-      if (typeEvenementId) fd.append("type_evenement_id", typeEvenementId);
-      if (regionId) fd.append("region_id", regionId);
-      if (filiereId) fd.append("filiere_id", filiereId);
-      const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim());
-      if (validFiliereConcerner.length > 0) fd.append("filiere_concerner", JSON.stringify(validFiliereConcerner.map((o) => o.texte)));
-      const selectedPc = publicCibles.filter((p) => publicCibleIds.includes(p.id));
-      if (selectedPc.length > 0) fd.append("type_audience", JSON.stringify(selectedPc.map((p) => p.libelle)));
-      if (dateDebut) {
-        fd.append("date_debut", new Date(dateDebut).toISOString());
-        fd.append("heure_debut", dateDebut.slice(11, 16)); // extrait "HH:MM"
-      }
-      if (dateFin) {
-        fd.append("date_fin", new Date(dateFin).toISOString());
-        fd.append("heure_fin", dateFin.slice(11, 16));
-      }
-      if (lieu) fd.append("lieu", lieu);
-      if (lienUrl) fd.append("lien_url", lienUrl);
-      const validObjectifs = objectifs.filter((o) => o.texte.trim());
-      if (validObjectifs.length > 0) fd.append("objectifs", JSON.stringify(validObjectifs.map((o) => o.texte)));
-      const validProgramme = programme.filter((r) => r.heure.trim() || r.activite.trim());
-      if (validProgramme.length > 0) fd.append("programme", JSON.stringify(validProgramme));
-      if (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite) {
-        fd.append("informations_pratiques", JSON.stringify(informationsPratiques));
-      }
-      fd.append("exiger_kyc_verifie", String(exigerKyc));
-      fd.append("activer_matchmaking_b2b", String(matchmakingB2b));
-      fd.append("autoriser_liste_attente", String(listeAttente));
-      fd.append("generer_qr_checkin", String(qrCheckin));
-      fd.append("attestation_participation", String(attestation));
-      fd.append("partage_photos_autorise", String(partagePhotos));
-      fd.append("ala_une", String(alaUne));
-      fd.append("isActive", String(isActive));
-      fd.append("prix", prix);
-      fd.append("prix_membre", prixMembre);
-      fd.append("capacite_max", capaciteMax);
-      fd.append("gratuit_pour_tous", String(gratuitPourTous));
-      fd.append("gratuit_membre_uniquement", String(gratuitMembreUniquement));
-      const validCequiInclu = cequiInclu.filter((o) => o.texte.trim());
-      if (validCequiInclu.length > 0) fd.append("cequiInclu", JSON.stringify(validCequiInclu.map((o) => o.texte)));
+      // Champs communs
+      const validObjectifs  = objectifs.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const validProgramme  = programme.filter((r) => r.heure.trim() || r.activite.trim());
+      const validFiliereConcerner = filiereConcerner.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const validCequiInclu = cequiInclu.filter((o) => o.texte.trim()).map((o) => o.texte);
+      const typeAudience    = audience.trim() || null;
+      const infoPratiques   = (informationsPratiques.parking || informationsPratiques.restauration || informationsPratiques.accessibilite)
+        ? informationsPratiques : null;
       const intervenantsData = intervenants
         .filter((iv) => iv.nom_complet.trim())
         .map(({ nom_complet, titre_fonction, entreprise_organisation }) => ({
-          nom_complet, titre_fonction, entreprise_organisation,
+          nom_complet, titre_fonction, entreprise_organisation, image: null as string | null,
         }));
-      if (intervenantsData.length > 0) {
-        fd.append("intervenants", JSON.stringify(intervenantsData));
-        intervenants.filter((iv) => iv.nom_complet.trim()).forEach((iv) => {
-          if (iv.imageFile) fd.append("intervenant_images", iv.imageFile);
+
+      let ev: import("@/lib/api").Evenement;
+
+      if (imageFile) {
+        // Multipart quand un fichier image est sélectionné
+        const fd = new FormData();
+        fd.append("titre", titre);
+        if (description) fd.append("description", description);
+        fd.append("format", format);
+        if (descriptionTypeFormat) fd.append("description_type_format", descriptionTypeFormat);
+        if (typeEvenementId) fd.append("type_evenement_id", typeEvenementId);
+        if (regionId) fd.append("region_id", regionId);
+        if (filiereId) fd.append("filiere_id", filiereId);
+        if (validFiliereConcerner.length > 0) fd.append("filiere_concerner", JSON.stringify(validFiliereConcerner));
+        if (typeAudience) fd.append("type_audience", typeAudience);
+        if (dateDebut) {
+          fd.append("date_debut", new Date(dateDebut).toISOString());
+          fd.append("heure_debut", dateDebut.slice(11, 16));
+        }
+        if (dateFin) {
+          fd.append("date_fin", new Date(dateFin).toISOString());
+          fd.append("heure_fin", dateFin.slice(11, 16));
+        }
+        if (lieu) fd.append("lieu", lieu);
+        if (lienUrl) fd.append("lien_url", lienUrl);
+        if (validObjectifs.length > 0) fd.append("objectifs", JSON.stringify(validObjectifs));
+        if (validProgramme.length > 0) fd.append("programme", JSON.stringify(validProgramme));
+        if (infoPratiques) fd.append("informations_pratiques", JSON.stringify(infoPratiques));
+        fd.append("exiger_kyc_verifie", String(exigerKyc));
+        fd.append("activer_matchmaking_b2b", String(matchmakingB2b));
+        fd.append("autoriser_liste_attente", String(listeAttente));
+        fd.append("generer_qr_checkin", String(qrCheckin));
+        fd.append("attestation_participation", String(attestation));
+        fd.append("partage_photos_autorise", String(partagePhotos));
+        fd.append("ala_une", String(alaUne));
+        fd.append("isActive", String(isActive));
+        fd.append("prix", prix);
+        fd.append("prix_membre", prixMembre);
+        fd.append("capacite_max", capaciteMax);
+        fd.append("gratuit_pour_tous", String(gratuitPourTous));
+        fd.append("gratuit_membre_uniquement", String(gratuitMembreUniquement));
+        if (validCequiInclu.length > 0) fd.append("cequiInclu", JSON.stringify(validCequiInclu));
+        if (intervenantsData.length > 0) {
+          fd.append("intervenants", JSON.stringify(intervenantsData));
+          intervenants.filter((iv) => iv.nom_complet.trim()).forEach((iv) => {
+            if (iv.imageFile) fd.append("intervenant_images", iv.imageFile);
+          });
+        }
+        fd.append("image_flayer", imageFile);
+        ev = await createEvenementApi(fd);
+      } else {
+        // JSON quand pas de fichier (token récupéré automatiquement via Authorization header)
+        ev = await createEvenementApiJson({
+          titre,
+          description:              description || null,
+          format,
+          description_type_format:  descriptionTypeFormat || null,
+          type_evenement_id:        typeEvenementId || undefined,
+          region_id:                regionId || null,
+          filiere_id:               filiereId || null,
+          filiere_concerner:        validFiliereConcerner.length > 0 ? validFiliereConcerner : null,
+          type_audience:            typeAudience,
+          date_debut:               dateDebut ? new Date(dateDebut).toISOString() : null,
+          heure_debut:              dateDebut ? dateDebut.slice(11, 16) : undefined,
+          date_fin:                 dateFin ? new Date(dateFin).toISOString() : null,
+          heure_fin:                dateFin ? dateFin.slice(11, 16) : undefined,
+          lieu:                     lieu || null,
+          lien_url:                 lienUrl || null,
+          objectifs:                validObjectifs.length > 0 ? validObjectifs : null,
+          programme:                validProgramme.length > 0 ? validProgramme : null,
+          informations_pratiques:   infoPratiques as unknown as Record<string, string> | null,
+          exiger_kyc_verifie:       exigerKyc,
+          activer_matchmaking_b2b:  matchmakingB2b,
+          autoriser_liste_attente:  listeAttente,
+          generer_qr_checkin:       qrCheckin,
+          attestation_participation: attestation,
+          partage_photos_autorise:  partagePhotos,
+          ala_une:                  alaUne,
+          isActive,
+          prix,
+          prix_membre:              prixMembre,
+          capacite_max:             parseInt(capaciteMax) || 100,
+          gratuit_pour_tous:        gratuitPourTous,
+          gratuit_membre_uniquement: gratuitMembreUniquement,
+          cequiInclu:               validCequiInclu.length > 0 ? validCequiInclu : null,
+          intervenants:             intervenantsData.length > 0 ? intervenantsData : null,
+          image_flayer:             null,
         });
       }
-      // Récupère l'ID depuis user, sinon depuis l'adhesion stockée, sinon depuis le JWT sub
-      const createdBy = user?.id || (() => {
-        try {
-          const adhesion = JSON.parse(localStorage.getItem("cpu-adhesion") || "{}");
-          if (adhesion?.id) return adhesion.id as string;
-          const token = localStorage.getItem("cpu-access-token");
-          if (token) {
-            const payload = JSON.parse(atob(token.split(".")[1]));
-            return (payload.sub as string) || null;
-          }
-        } catch { /* ignore */ }
-        return null;
-      })();
-      if (createdBy) fd.append("created_by", createdBy);
-      if (imageFile) fd.append("image_flayer", imageFile);
 
-      // 1. Créer l'événement
-      const ev = await createEvenementApi(fd);
-
-      // 2. Créer les billets configurés à l'étape 3
+      // Créer les billets configurés à l'étape 3
       const validTickets = tickets.filter((t) => t.nom.trim());
       if (validTickets.length > 0) {
         await Promise.all(validTickets.map((t) =>
@@ -436,7 +460,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
         ));
       }
 
-      // 3. Afficher le succès directement
       setDone(true);
       toast({ title: "Événement publié !", description: "L'événement et ses billets sont créés." });
     } catch (err) {
@@ -449,7 +472,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
   const reset = () => {
     setStep(0); setTitre(""); setDescription(""); setFormat("presentiel");
     setDescriptionTypeFormat(""); setFiliereConcerner([emptyObjectif()]);
-    setTypeEvenementId(""); setRegionId(""); setFiliereId(""); setPublicCibleIds([]);
+    setTypeEvenementId(""); setRegionId(""); setFiliereId(""); setAudience("");
     setImageFile(null); setImagePreview(null);
     setDateDebut(""); setDateFin("");
     setObjectifs([emptyObjectif()]); setProgramme([emptyProgrammeRow()]); setInformationsPratiques(emptyInfosPratiques());
@@ -597,35 +620,13 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
                 </div>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Public cible
-                  {publicCibleIds.length > 0 && (
-                    <span className="ml-2 normal-case font-normal text-primary">{publicCibleIds.length} sélectionné{publicCibleIds.length > 1 ? "s" : ""}</span>
-                  )}
-                </Label>
-                <div className="flex flex-wrap gap-2">
-                  {publicCibles.map((pc) => {
-                    const selected = publicCibleIds.includes(pc.id);
-                    return (
-                      <button
-                        key={pc.id}
-                        type="button"
-                        onClick={() => setPublicCibleIds((prev) =>
-                          selected ? prev.filter((id) => id !== pc.id) : [...prev, pc.id]
-                        )}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-all",
-                          selected
-                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                            : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
-                        )}
-                      >
-                        {selected && <CheckCircle className="w-3 h-3 shrink-0" />}
-                        {pc.libelle}
-                      </button>
-                    );
-                  })}
-                </div>
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Audience</Label>
+                <Input
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                  placeholder="Ex : PME, startups, investisseurs, entrepreneurs…"
+                  className="h-11"
+                />
               </div>
             </div>
           </SectionCard>
@@ -868,8 +869,6 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
               <OptionRow label="QR code check-in" description="Accès par scan QR" checked={qrCheckin} onCheckedChange={setQrCheckin} />
               <OptionRow label="Attestation" description="Délivrer une attestation" checked={attestation} onCheckedChange={setAttestation} />
               <OptionRow label="Partage photos" description="Autoriser le partage" checked={partagePhotos} onCheckedChange={setPartagePhotos} />
-              <OptionRow label="À la une" description="Mettre en avant sur la plateforme" checked={alaUne} onCheckedChange={setAlaUne} />
-              <OptionRow label="Événement actif" description="Publier immédiatement" checked={isActive} onCheckedChange={setIsActive} />
             </div>
           </SectionCard>
 

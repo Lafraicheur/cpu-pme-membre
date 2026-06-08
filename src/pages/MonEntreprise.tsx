@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import {
   Card,
@@ -7,6 +7,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,13 +45,20 @@ import {
   Briefcase,
   MoreVertical,
   AlertCircle,
+  Camera,
+  Save,
+  X,
+  CreditCard,
+  User,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSubscription } from "@/hooks/useSubscription";
 import { TeamLimitIndicator } from "@/components/subscription/TeamLimitIndicator";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "@/lib/api";
+import { CarteMembre } from "@/components/dashboard/CarteMembre";
 
 interface Branch {
   id: string;
@@ -121,36 +135,20 @@ const mockTeam: TeamMember[] = [
     email: "amadou.diallo@entreprise.sn",
     role: "owner",
     status: "active",
-  },
-  {
-    id: "2",
-    name: "Fatou Ndiaye",
-    email: "fatou.ndiaye@entreprise.sn",
-    role: "admin",
-    status: "active",
-  },
-  {
-    id: "3",
-    name: "Moussa Sow",
-    email: "moussa.sow@entreprise.sn",
-    role: "commercial",
-    status: "active",
-  },
-  {
-    id: "4",
-    name: "Aïssatou Ba",
-    email: "aissatou.ba@entreprise.sn",
-    role: "comptable",
-    status: "pending",
-  },
+  }
 ];
 
 export default function MonEntreprise() {
   const { canAddMember, getTeamLimit } = useSubscription();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [branches] = useState<Branch[]>(mockBranches);
   const [team] = useState<TeamMember[]>(mockTeam);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", website_url: "" });
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // Données réelles depuis l'API profil
   const { data: profile, isLoading: isLoadingProfile, isError: isErrorProfile } = useQuery({
@@ -164,6 +162,71 @@ export default function MonEntreprise() {
       } catch { return undefined; }
     },
   });
+
+  const logoUrl = profile?.logo
+    ? String(profile.logo).startsWith("http")
+      ? String(profile.logo)
+      : `${import.meta.env.VITE_API_URL || ""}${profile.logo}`
+    : null;
+
+  const updateProfileMutation = useMutation({
+    mutationFn: (payload: { email: string; name?: string; phone?: string; website_url?: string }) =>
+      authApi.updateProfile(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adhesion-profile"] });
+      setIsDialogOpen(false);
+      toast({ title: "Profil mis à jour avec succès" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateLogoMutation = useMutation({
+    mutationFn: ({ email, logo }: { email: string; logo: File }) =>
+      authApi.updateLogo(email, logo),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["adhesion-profile"] });
+      setLogoPreview(null);
+      toast({ title: "Logo mis à jour avec succès" });
+    },
+    onError: (err: Error) => {
+      setLogoPreview(null);
+      toast({ title: "Erreur upload logo", description: err.message, variant: "destructive" });
+    },
+  });
+
+  function handleEditStart() {
+    setEditForm({
+      name: String(profile?.name ?? ""),
+      phone: String(profile?.phone ?? ""),
+      website_url: String(profile?.website_url ?? ""),
+    });
+    setIsDialogOpen(true);
+  }
+
+  function handleSave() {
+    const email = String(profile?.email ?? "");
+    updateProfileMutation.mutate({
+      email,
+      name: editForm.name || undefined,
+      phone: editForm.phone || undefined,
+      website_url: editForm.website_url || undefined,
+    });
+  }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const email = String(profile?.email ?? "");
+    if (!email) {
+      toast({ title: "Email introuvable", description: "Impossible d'identifier le compte.", variant: "destructive" });
+      return;
+    }
+    setLogoPreview(URL.createObjectURL(file));
+    updateLogoMutation.mutate({ email, logo: file });
+    e.target.value = "";
+  }
 
   const abonnement  = profile?.abonnement  as Record<string, unknown> | undefined;
   const typeMembre  = profile?.typeMembre  as Record<string, unknown> | undefined;
@@ -182,7 +245,7 @@ export default function MonEntreprise() {
   }) {
     return (
       <div className={cn("space-y-2", colSpan && "md:col-span-2")}>
-        <Label className="flex items-center gap-2">
+        <Label className="flex items-center gap-2 text-muted-foreground">
           {Icon && <Icon className="w-4 h-4" />}
           {label}
         </Label>
@@ -218,14 +281,14 @@ export default function MonEntreprise() {
               <Building2 className="w-4 h-4" />
               Profil
             </TabsTrigger>
-            {/* <TabsTrigger value="branches" className="gap-2">
-              <MapPin className="w-4 h-4" />
-              Sites & Branches
-            </TabsTrigger> */}
-            <TabsTrigger value="team" className="gap-2">
+            <TabsTrigger value="carte" className="gap-2">
+              <CreditCard className="w-4 h-4" />
+              Carte Membre
+            </TabsTrigger>
+            {/* <TabsTrigger value="team" className="gap-2">
               <Users className="w-4 h-4" />
               Équipes
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
 
           {/* Profile Tab */}
@@ -239,20 +302,55 @@ export default function MonEntreprise() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Informations générales</CardTitle>
-                <CardDescription>
-                  Informations publiques visibles sur le réseau CPU-PME
-                </CardDescription>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Informations générales</CardTitle>
+                    <CardDescription>
+                      Informations publiques visibles sur le réseau CPU-PME
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleEditStart} className="gap-2 shrink-0">
+                    <Pencil className="w-4 h-4" />
+                    Modifier le profil
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-8">
-                {/* Avatar */}
+                {/* Logo */}
                 <div className="flex justify-center">
                   <div className="relative">
-                    <Avatar className="w-24 h-24">
-                      <AvatarFallback className="bg-primary/10 text-primary text-2xl font-bold">
-                        {String(profile?.name ?? "?").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="w-24 h-24 rounded-full overflow-hidden bg-primary/10 flex items-center justify-center border border-border">
+                      {(logoPreview ?? logoUrl) ? (
+                        <img
+                          src={logoPreview ?? logoUrl ?? ""}
+                          alt="Logo"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-primary text-2xl font-bold">
+                          {String(profile?.name ?? "?").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={updateLogoMutation.isPending}
+                      className="absolute bottom-0 right-0 bg-primary text-primary-foreground rounded-full p-1.5 shadow-md hover:bg-primary/90 transition-colors"
+                      title="Changer le logo"
+                    >
+                      {updateLogoMutation.isPending
+                        ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                        : <Camera className="w-4 h-4" />
+                      }
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleLogoChange}
+                    />
                   </div>
                 </div>
 
@@ -310,6 +408,20 @@ export default function MonEntreprise() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Carte Membre Tab */}
+          <TabsContent value="carte" className="space-y-8">
+            <CarteMembre
+              isLoading={isLoadingProfile}
+              name={String(profile?.name ?? "")}
+              orgName={String(profile?.customOrganisationName ?? profile?.organisationName ?? "")}
+              numeroMembre={String(profile?.numero_membre ?? "")}
+              plan={String((abonnement?.plan as string | undefined) ?? "basic")}
+              abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
+              modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
+              typeMembreNom={String(typeMembre?.name ?? "")}
+            />
           </TabsContent>
 
           {/* Branches Tab */}
@@ -621,6 +733,75 @@ export default function MonEntreprise() {
           </TabsContent>
         </Tabs>
       </div>
+      {/* Modal édition profil */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="w-4 h-4" />
+              Modifier mon profil
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name" className="flex items-center gap-2 text-sm font-medium">
+                Nom complet
+              </Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="Votre nom ou raison sociale"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone" className="flex items-center gap-2 text-sm font-medium">
+                <Phone className="w-4 h-4 text-muted-foreground" />
+                Téléphone
+              </Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+225 07 00 00 00 00"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-website" className="flex items-center gap-2 text-sm font-medium">
+                <Globe className="w-4 h-4 text-muted-foreground" />
+                Site web
+              </Label>
+              <Input
+                id="edit-website"
+                value={editForm.website_url}
+                onChange={(e) => setEditForm((f) => ({ ...f, website_url: e.target.value }))}
+                placeholder="https://www.monentreprise.ci"
+              />
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Seuls ces champs sont modifiables ici. Pour les autres informations, contactez le support.
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={updateProfileMutation.isPending}>
+              <X className="w-4 h-4 mr-2" />
+              Annuler
+            </Button>
+            <Button onClick={handleSave} disabled={updateProfileMutation.isPending}>
+              {updateProfileMutation.isPending
+                ? <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                : <Save className="w-4 h-4 mr-2" />
+              }
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
