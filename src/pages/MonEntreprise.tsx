@@ -360,7 +360,7 @@ export default function MonEntreprise() {
                   <div className="grid md:grid-cols-2 gap-4">
                     <F label="Nom complet" value={String(profile?.name ?? "")} />
                     <F label="Poste / Fonction" value={String(profile?.position ?? "")} />
-                    <F label="Nom de l'organisation" value={String(profile?.organisationName ?? profile?.customOrganisationName ?? "")} />
+                    <F label="Nom de l'organisation" value={String(profile?.customOrganisationName ?? "")} />
                     <F label="Type d'organisation" value={String(profile?.organisationType ?? "")} />
                     <F label="Nombre d'employés" value={String(profile?.nombre_employee ?? "")} />
                     <F label="Type de membre" value={String(typeMembre?.name ?? "")} />
@@ -415,12 +415,14 @@ export default function MonEntreprise() {
             <CarteMembre
               isLoading={isLoadingProfile}
               name={String(profile?.name ?? "")}
-              orgName={String(profile?.customOrganisationName ?? profile?.organisationName ?? "")}
+              orgName={String(profile?.customOrganisationName ?? "")}
               numeroMembre={String(profile?.numero_membre ?? "")}
               plan={String((abonnement?.plan as string | undefined) ?? "basic")}
               abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
               modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
               typeMembreNom={String(typeMembre?.name ?? "")}
+              hasAffiliation={!!profile?.hasAffiliation}
+              affiliationName={String(profile?.organisationName ?? "")}
             />
           </TabsContent>
 

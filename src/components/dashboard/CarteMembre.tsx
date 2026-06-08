@@ -12,6 +12,8 @@ interface Props {
   abonnementCreatedAt: string;
   modaliteAbonnement?: "abonnement_mensuel" | "abonnement_annuel";
   typeMembreNom?: string;
+  hasAffiliation?: boolean;
+  affiliationName?: string;
 }
 
 type PlanConfig = {
@@ -86,7 +88,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt, modaliteAbonnement, typeMembreNom = "" }: Props) {
+export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abonnementCreatedAt, modaliteAbonnement, typeMembreNom = "", hasAffiliation = false, affiliationName = "" }: Props) {
   const config = resolveConfig(plan, typeMembreNom);
   const expirationDate = formatExpiration(abonnementCreatedAt, modaliteAbonnement);
 
@@ -177,6 +179,13 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
     ctx.font = `30px ${FONT}`;
     ctx.fillText(orgName || "—", PAD, 250, W - PAD * 2 - 10);
 
+    // ── Affiliation ───────────────────────────────────────────
+    if (hasAffiliation && affiliationName) {
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.font = `22px ${FONT}`;
+      ctx.fillText(`Affilié à ${affiliationName}`, PAD, 292, W - PAD * 2 - 10);
+    }
+
     // ── Texte confédération ───────────────────────────────────
     ctx.fillStyle = "rgba(255,255,255,0.5)";
     ctx.font = `bold 13px ${FONT}`;
@@ -266,16 +275,23 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
               <div className="space-y-0.5">
                 <p className="text-[10px] tracking-widest opacity-70 uppercase">CPU-PME.CI</p>
                 <div className="flex items-center gap-2 mt-1">
-                  {isCollective
+                  <User className="w-4 h-4 opacity-70 shrink-0" />
+                  {/* {isCollective
                     ? <CardIcon className="w-5 h-5 opacity-80 shrink-0" />
                     : <User className="w-5 h-5 opacity-80 shrink-0" />
-                  }
+                  } */}
                   <span className="text-lg font-bold leading-tight truncate">{name || "—"}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 opacity-70 shrink-0" />
                   <span className="text-sm opacity-90 truncate">{orgName || "—"}</span>
                 </div>
+                {hasAffiliation && affiliationName && (
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 opacity-70 shrink-0" />
+                    <span className="text-sm opacity-90 truncate">Affilié à {affiliationName}</span>
+                  </div>
+                )}
               </div>
 
               {/* Bas */}
