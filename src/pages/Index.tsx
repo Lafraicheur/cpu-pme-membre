@@ -225,7 +225,7 @@ const Index = () => {
   if (isLoading || !isAuthenticated) return null;
 
   const statut     = user?.statut ? (statutLabel[user.statut] ?? user.statut) : "Actif";
-  const entreprise = user?.organisationName || user?.companyName || user?.name || "Mon entreprise";
+  // const entreprise = user?.organisationName || user?.companyName || user?.name || "Mon entreprise";
   const plan       = user?.planLibelle || user?.subscription?.tier || "—";
   const secteur    = user?.filiereNom || user?.secteurPrincipal || "—";
   const region     = [user?.communeNom, user?.regionNom].filter(Boolean).join(", ") || "—";
@@ -261,7 +261,7 @@ const Index = () => {
           )}
           <span className="inline-block w-[2px] h-7 bg-foreground/60 rounded-full animate-pulse" />
         </h1>
-        <p className="text-base font-medium text-foreground/80">{entreprise}</p>
+        {/* <p className="text-base font-medium text-foreground/80">{entreprise}</p> */}
         <p className="text-sm text-muted-foreground mt-0.5">
           Voici un aperçu de votre activité et de vos tâches en attente.
         </p>
