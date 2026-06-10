@@ -56,7 +56,7 @@ const navItems: NavItem[] = [
   { icon: GraduationCap, label: "Formation", href: "/formation", requiredFeature: "formation.learner" },
   // { icon: ShoppingCart, label: "Marketplace", href: "/marketplace", requiredFeature: "marketplace.buyer" },
   // { icon: Wallet, label: "Financement", href: "/financement", requiredFeature: "financing.requests" },
-  // { icon: Building2, label: "Affiliation", href: "/affiliation", hideForFeature: "members.management" },
+  { icon: Building2, label: "Affiliation", href: "/affiliation", hideForFeature: "members.management" },
   // { icon: BarChart3, label: "Data Hub", href: "/data-hub", requiredFeature: "datahub.access" },
   { icon: Calendar, label: "Événements", href: "/evenements", requiredFeature: "events.participation" },
   // { icon: HeadphonesIcon, label: "Support", href: "/support" },
