@@ -57,7 +57,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { TeamLimitIndicator } from "@/components/subscription/TeamLimitIndicator";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi } from "@/lib/api";
+import { authApi, affiliationApi } from "@/lib/api";
 import { CarteMembre } from "@/components/dashboard/CarteMembre";
 
 interface Branch {
@@ -161,6 +161,12 @@ export default function MonEntreprise() {
         return stored ? JSON.parse(stored) : undefined;
       } catch { return undefined; }
     },
+  });
+
+  const { data: affiliationData } = useQuery({
+    queryKey: ["affiliation", "me"],
+    queryFn: affiliationApi.getMe,
+    staleTime: 2 * 60 * 1000,
   });
 
   const logoUrl = profile?.logo
@@ -421,8 +427,8 @@ export default function MonEntreprise() {
               abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
               modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
               typeMembreNom={String(typeMembre?.name ?? "")}
-              hasAffiliation={!!profile?.hasAffiliation}
-              affiliationName={String(profile?.organisationName ?? "")}
+              hasAffiliation={affiliationData?.currentAffiliation?.status === "Approved"}
+              affiliationName={affiliationData?.currentAffiliation?.organization?.name ?? ""}
             />
           </TabsContent>
 

@@ -286,7 +286,7 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
                   <Building2 className="w-4 h-4 opacity-70 shrink-0" />
                   <span className="text-sm opacity-90 truncate">{orgName || "—"}</span>
                 </div>
-                {hasAffiliation && affiliationName && (
+                {hasAffiliation && (
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 opacity-70 shrink-0" />
                     <span className="text-sm opacity-90 truncate">Affilié à {affiliationName}</span>

@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
   ChevronLeft,
   Eye,
   EyeOff,
@@ -19,48 +21,93 @@ import {
   Mail,
   Globe,
   Info,
-  Save
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
+import { affiliationApi, type AffiliationSettings as AffiliationSettingsType, type AffiliationMeResponse } from "@/lib/api";
 
 interface AffiliationSettingsProps {
   onBack: () => void;
 }
 
-interface DataSharingSettings {
-  profileVisible: boolean;
-  showInDirectory: boolean;
-  shareStatistics: boolean;
-  shareContactInfo: boolean;
-  shareLocation: boolean;
-  receiveOpportunities: boolean;
-  receiveEventInvites: boolean;
-  receiveNewsletters: boolean;
-}
+type SettingsPayload = Omit<AffiliationSettingsType, "adhesionId" | "updatedAt">;
 
 export function AffiliationSettings({ onBack }: AffiliationSettingsProps) {
-  const [settings, setSettings] = useState<DataSharingSettings>({
-    profileVisible: true,
-    showInDirectory: true,
-    shareStatistics: true,
-    shareContactInfo: false,
-    shareLocation: true,
-    receiveOpportunities: true,
-    receiveEventInvites: true,
-    receiveNewsletters: false,
+  const queryClient = useQueryClient();
+
+  const { data: settingsData, isLoading, isError } = useQuery({
+    queryKey: ["affiliation", "settings"],
+    queryFn: affiliationApi.getSettings,
+    staleTime: 2 * 60 * 1000,
   });
 
-  const [hasChanges, setHasChanges] = useState(false);
+  // Données d'affiliation depuis le cache existant
+  const meData = queryClient.getQueryData<AffiliationMeResponse>(["affiliation", "me"]);
+  const currentAffiliation = meData?.currentAffiliation ?? null;
 
-  const updateSetting = (key: keyof DataSharingSettings, value: boolean) => {
-    setSettings({ ...settings, [key]: value });
-    setHasChanges(true);
+  const [settings, setSettings] = useState<SettingsPayload | null>(null);
+
+  // Initialise l'état local dès que les données API arrivent
+  useEffect(() => {
+    if (settingsData) {
+      const { adhesionId: _a, updatedAt: _u, ...rest } = settingsData;
+      setSettings(rest);
+    }
+  }, [settingsData]);
+
+  const mutation = useMutation({
+    mutationFn: (payload: SettingsPayload) => affiliationApi.updateSettings(payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["affiliation", "settings"], updated);
+    },
+    onError: (_err, variables) => {
+      // Rollback optimiste : on remet l'ancienne valeur
+      if (settingsData) {
+        const { adhesionId: _a, updatedAt: _u, ...prev } = settingsData;
+        setSettings(prev);
+      }
+      toast.error("Erreur lors de la mise à jour");
+    },
+  });
+
+  const updateSetting = (key: keyof SettingsPayload, value: boolean) => {
+    if (!settings) return;
+    const updated = { ...settings, [key]: value };
+    setSettings(updated);
+    mutation.mutate(updated);
   };
 
-  const handleSave = () => {
-    setHasChanges(false);
-    toast.success("Paramètres enregistrés avec succès");
-  };
+  if (isLoading || !settings) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-56" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+        </div>
+        <Card>
+          <CardContent className="pt-6 space-y-6">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="space-y-1">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-52" />
+                  </div>
+                </div>
+                <Skeleton className="h-6 w-10 rounded-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -77,13 +124,22 @@ export function AffiliationSettings({ onBack }: AffiliationSettingsProps) {
             </p>
           </div>
         </div>
-        {hasChanges && (
-          <Button onClick={handleSave}>
-            <Save className="mr-2 h-4 w-4" />
-            Enregistrer
-          </Button>
+        {mutation.isPending && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Enregistrement...
+          </div>
         )}
       </div>
+
+      {/* Erreur chargement */}
+      {isError && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Impossible de charger les paramètres. Veuillez réessayer.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Current Affiliation Info */}
       <Card>
@@ -100,11 +156,19 @@ export function AffiliationSettings({ onBack }: AffiliationSettingsProps) {
                 <Building2 className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="font-medium">Coopérative Agricole du Sud</p>
-                <p className="text-sm text-muted-foreground">Membre depuis le 15 janvier 2024</p>
+                <p className="font-medium">
+                  {currentAffiliation?.organization.name ?? "—"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {currentAffiliation?.effectiveDate
+                    ? `Membre depuis le ${new Date(currentAffiliation.effectiveDate).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`
+                    : "Aucune affiliation active"}
+                </p>
               </div>
             </div>
-            <Badge className="bg-emerald-500/20 text-emerald-700">Active</Badge>
+            {currentAffiliation && (
+              <Badge className="bg-emerald-500/20 text-emerald-700">Active</Badge>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -285,8 +349,8 @@ export function AffiliationSettings({ onBack }: AffiliationSettingsProps) {
       <Alert>
         <Shield className="h-4 w-4" />
         <AlertDescription>
-          <strong>Protection des données</strong> - Vos données personnelles sont protégées 
-          conformément à la réglementation en vigueur. Seules les données que vous choisissez 
+          <strong>Protection des données</strong> — Vos données personnelles sont protégées
+          conformément à la réglementation en vigueur. Seules les données que vous choisissez
           de partager sont transmises à votre organisation d'affiliation.
         </AlertDescription>
       </Alert>
@@ -354,6 +418,14 @@ export function AffiliationSettings({ onBack }: AffiliationSettingsProps) {
               </p>
             </div>
           </div>
+          {settingsData?.updatedAt && (
+            <p className="text-xs text-muted-foreground mt-4 text-right">
+              Dernière mise à jour : {new Date(settingsData.updatedAt).toLocaleDateString("fr-FR", {
+                day: "numeric", month: "long", year: "numeric",
+                hour: "2-digit", minute: "2-digit"
+              })}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

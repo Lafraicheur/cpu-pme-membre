@@ -1,18 +1,17 @@
-import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Building2, 
-  Users, 
-  Calendar, 
-  FileText, 
-  ArrowRight, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Building2,
+  Users,
+  Calendar,
+  FileText,
+  Clock,
+  CheckCircle2,
+  XCircle,
   AlertTriangle,
   MapPin,
   Briefcase,
@@ -23,46 +22,13 @@ import {
   RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type AffiliationStatus = 
-  | "None" 
-  | "Declared" 
-  | "PendingConfirmation" 
-  | "Approved" 
-  | "Rejected" 
-  | "CancelledByMember" 
-  | "RevokedByOrg" 
-  | "Suspended" 
-  | "Overridden";
-
-interface Organization {
-  id: string;
-  name: string;
-  type: "cooperative" | "federation" | "association";
-  sector: string;
-  region: string;
-  memberCount: number;
-  logo?: string;
-}
-
-interface Affiliation {
-  id: string;
-  organization: Organization;
-  status: AffiliationStatus;
-  role: string;
-  sectors: string[];
-  effectiveDate: string;
-  requestDate?: string;
-  approvalDate?: string;
-  rejectionReason?: string;
-}
+import { affiliationApi, type AffiliationStatus } from "@/lib/api";
 
 interface AffiliationOverviewProps {
   onDeclare: () => void;
   onChangeRequest: () => void;
   onViewHistory: () => void;
   onSettings: () => void;
-  isAccountActive?: boolean;
 }
 
 const statusConfig: Record<AffiliationStatus, { label: string; color: string; icon: React.ElementType }> = {
@@ -77,55 +43,22 @@ const statusConfig: Record<AffiliationStatus, { label: string; color: string; ic
   Overridden: { label: "Modifiée (Admin)", color: "bg-purple-500/20 text-purple-700", icon: RefreshCw },
 };
 
-// Mock data
-const mockCurrentAffiliation: Affiliation = {
-  id: "aff-1",
-  organization: {
-    id: "org-1",
-    name: "Coopérative Agricole du Sud",
-    type: "cooperative",
-    sector: "Agriculture",
-    region: "Abidjan",
-    memberCount: 156,
-  },
-  status: "Approved",
-  role: "Membre",
-  sectors: ["Agriculture", "Agroalimentaire"],
-  effectiveDate: "2024-01-15",
-  requestDate: "2024-01-10",
-  approvalDate: "2024-01-15",
-};
-
-const mockPendingRequest: Affiliation | null = null;
-
-const suggestedOrganizations: Organization[] = [
-  {
-    id: "org-2",
-    name: "Fédération des Industries Ivoiriennes",
-    type: "federation",
-    sector: "Industrie",
-    region: "Abidjan",
-    memberCount: 342,
-  },
-  {
-    id: "org-3",
-    name: "Association des Exportateurs",
-    type: "association",
-    sector: "Commerce International",
-    region: "National",
-    memberCount: 89,
-  },
-];
-
-export function AffiliationOverview({ 
-  onDeclare, 
-  onChangeRequest, 
-  onViewHistory, 
+export function AffiliationOverview({
+  onDeclare,
+  onChangeRequest,
+  onViewHistory,
   onSettings,
-  isAccountActive = true
 }: AffiliationOverviewProps) {
-  const [currentAffiliation] = useState<Affiliation | null>(mockCurrentAffiliation);
-  const [pendingRequest] = useState<Affiliation | null>(mockPendingRequest);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["affiliation", "me"],
+    queryFn: affiliationApi.getMe,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const currentAffiliation = data?.currentAffiliation ?? null;
+  const pendingRequest = data?.pendingRequest ?? null;
+  const suggestedOrganizations = data?.suggestedOrganizations ?? [];
+  const isAccountActive = data?.isAccountActive ?? true;
 
   const StatusBadge = ({ status }: { status: AffiliationStatus }) => {
     const config = statusConfig[status];
@@ -140,8 +73,19 @@ export function AffiliationOverview({
 
   return (
     <div className="space-y-6">
+      {/* Erreur chargement */}
+      {isError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Erreur</AlertTitle>
+          <AlertDescription>
+            Impossible de charger les données d'affiliation. Veuillez réessayer.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Alert si compte non actif */}
-      {!isAccountActive && (
+      {!isLoading && !isAccountActive && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Compte non activé</AlertTitle>
@@ -156,7 +100,7 @@ export function AffiliationOverview({
         <Building2 className="h-4 w-4" />
         <AlertTitle>Affiliation ≠ Abonnement</AlertTitle>
         <AlertDescription>
-          L'affiliation vous rattache à une organisation collective pour le reporting et l'animation de filière. 
+          L'affiliation vous rattache à une organisation collective pour le reporting et l'animation de filière.
           Elle n'accorde aucun accès gratuit aux modules.
         </AlertDescription>
       </Alert>
@@ -180,7 +124,29 @@ export function AffiliationOverview({
           </div>
         </CardHeader>
         <CardContent>
-          {currentAffiliation ? (
+          {isLoading ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-4">
+                <Skeleton className="h-16 w-16 rounded-lg shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <Skeleton className="h-5 w-56" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-5 w-24" />
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-5 w-24" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : currentAffiliation ? (
             <div className="space-y-4">
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10">
