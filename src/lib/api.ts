@@ -2584,7 +2584,7 @@ export const adhesionsApi = {
 
   changeStatut: async (
     id: string,
-    statut: "pending" | "in_review" | "approved" | "rejected" | "completed",
+    statut: "pending" | "in_review" | "approved" | "rejected" | "completed" | "suspended" | "inactive",
     notes?: string,
     clientBaseUrl = "https://membre.cpupme.ci/"
   ): Promise<AdhesionDetail> => {
