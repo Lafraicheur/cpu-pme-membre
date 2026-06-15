@@ -3,9 +3,10 @@ import { cn } from "@/lib/utils";
 interface HealthScoreProps {
   score: number;
   breakdown: { label: string; score: number; max: number }[];
+  onRecommendations?: () => void;
 }
 
-export function HealthScore({ score, breakdown }: HealthScoreProps) {
+export function HealthScore({ score, breakdown, onRecommendations }: HealthScoreProps) {
   const getScoreColor = (value: number) => {
     if (value >= 80) return "text-success";
     if (value >= 60) return "text-warning";
@@ -20,7 +21,7 @@ export function HealthScore({ score, breakdown }: HealthScoreProps) {
   };
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5">
+    <div className="bg-card rounded-xl border border-border p-5 h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-lg font-semibold text-foreground">
@@ -33,7 +34,7 @@ export function HealthScore({ score, breakdown }: HealthScoreProps) {
       </div>
 
       {/* Main score */}
-      <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 md:gap-6 mb-6">
+      <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 md:gap-6 mb-6 flex-1">
         <div className="relative flex-shrink-0">
           <svg className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 transform -rotate-90" viewBox="0 0 112 112">
             <circle
@@ -89,7 +90,10 @@ export function HealthScore({ score, breakdown }: HealthScoreProps) {
         </div>
       </div>
 
-      <button className="w-full py-2.5 rounded-lg bg-muted text-foreground text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-all duration-300">
+      <button
+        onClick={onRecommendations}
+        className="w-full py-2.5 rounded-lg bg-muted text-foreground text-sm font-medium hover:bg-primary hover:text-primary-foreground transition-all duration-300"
+      >
         Voir les recommandations
       </button>
     </div>

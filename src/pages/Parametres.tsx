@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import {
-  Settings as SettingsIcon,
   User,
   Bell,
   Save,
@@ -11,7 +10,11 @@ import {
   Zap,
   ShoppingBag,
   GraduationCap,
-  FileText
+  FileText,
+  Lock,
+  Eye,
+  EyeOff,
+  Shield,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +30,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { mailingApi } from "@/lib/api";
+import { mailingApi, authApi } from "@/lib/api";
 
 const TOPICS = [
   { key: "formation",     label: "Formation",         desc: "Nouvelles formations, rappels, certificats", icon: GraduationCap },
@@ -47,6 +50,14 @@ export default function Parametres() {
   const [name, setName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState(user?.phone || "");
+
+  // Password state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword]         = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent]         = useState(false);
+  const [showNew, setShowNew]                 = useState(false);
+  const [showConfirm, setShowConfirm]         = useState(false);
 
   // Notifications state (synced from API)
   const [newsletterOptIn, setNewsletterOptIn] = useState(true);
@@ -88,6 +99,37 @@ export default function Parametres() {
     );
   }
 
+  // Change password mutation
+  const changePasswordMutation = useMutation({
+    mutationFn: ({ current, next }: { current: string; next: string }) =>
+      authApi.changePassword(current, next),
+    onSuccess: () => {
+      toast.success("Mot de passe modifié avec succès");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Erreur lors du changement de mot de passe");
+    },
+  });
+
+  function handleChangePassword() {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("Veuillez remplir tous les champs");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Les nouveaux mots de passe ne correspondent pas");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("Le nouveau mot de passe doit contenir au moins 8 caractères");
+      return;
+    }
+    changePasswordMutation.mutate({ current: currentPassword, next: newPassword });
+  }
+
   function handleSaveProfile() {
     toast.success("Profil mis à jour avec succès");
   }
@@ -120,10 +162,14 @@ export default function Parametres() {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="profile" className="gap-2 text-xs sm:text-sm">
                 <User className="h-4 w-4 flex-shrink-0" />
                 <span>Profil</span>
+              </TabsTrigger>
+              <TabsTrigger value="securite" className="gap-2 text-xs sm:text-sm">
+                <Shield className="h-4 w-4 flex-shrink-0" />
+                <span>Sécurité</span>
               </TabsTrigger>
               <TabsTrigger value="notifications" className="gap-2 text-xs sm:text-sm">
                 <Bell className="h-4 w-4 flex-shrink-0" />
@@ -194,6 +240,99 @@ export default function Parametres() {
                     <Button variant="outline" onClick={() => navigate("/mon-entreprise")}>
                       Gérer l'entreprise
                       <ChevronRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+            </TabsContent>
+
+            {/* Sécurité Tab */}
+            <TabsContent value="securite" className="mt-6 space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <CardTitle>Modifier le mot de passe</CardTitle>
+                      <CardDescription>Choisissez un mot de passe fort d'au moins 8 caractères</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">Mot de passe actuel</Label>
+                    <div className="relative">
+                      <Input
+                        id="current-password"
+                        type={showCurrent ? "text" : "password"}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrent(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">Nouveau mot de passe</Label>
+                    <div className="relative">
+                      <Input
+                        id="new-password"
+                        type={showNew ? "text" : "password"}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNew(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirmer le nouveau mot de passe</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirm-password"
+                        type={showConfirm ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirm(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {confirmPassword && newPassword !== confirmPassword && (
+                      <p className="text-xs text-destructive">Les mots de passe ne correspondent pas</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      onClick={handleChangePassword}
+                      disabled={changePasswordMutation.isPending}
+                    >
+                      <Lock className="mr-2 h-4 w-4" />
+                      {changePasswordMutation.isPending ? "Modification…" : "Modifier le mot de passe"}
                     </Button>
                   </div>
                 </CardContent>

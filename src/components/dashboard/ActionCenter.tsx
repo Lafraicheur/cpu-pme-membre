@@ -1,15 +1,16 @@
+import { useEffect, useState } from "react";
 import {
-  FileWarning,
-  CreditCard,
-  Package,
-  MessageSquare,
-  FileText,
-  Calendar,
-  Wallet,
-  Users,
-  ChevronRight,
+  FileWarning, CreditCard, MessageSquare, FileText,
+  Calendar, Users, ChevronRight, Shield, BookOpen,
+  Loader2, CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  kycApi, affiliationApi, mesCoursApi, rfqApi, evenementsApi,
+  type KycMyRequiredDocumentsResponse, type AffiliationMeResponse,
+  type MonInscription, type RFQFromAPI, type Evenement,
+} from "@/lib/api";
 
 interface ActionItem {
   id: string;
@@ -20,147 +21,245 @@ interface ActionItem {
   module: string;
 }
 
-const actions: ActionItem[] = [
-  {
-    id: "1",
-    icon: FileWarning,
-    title: "Documents KYC expirés",
-    description: "RCCM et attestation fiscale à renouveler",
-    priority: "high",
-    module: "KYC",
-  },
-  {
-    id: "2",
-    icon: CreditCard,
-    title: "Facture impayée",
-    description: "Abonnement Argent - Échéance dépassée",
-    priority: "high",
-    module: "Abonnement",
-  },
-  {
-    id: "3",
-    icon: Package,
-    title: "3 commandes à expédier",
-    description: "Délai de livraison dans 2 jours",
-    priority: "medium",
-    module: "Marketplace",
-  },
-  {
-    id: "4",
-    icon: MessageSquare,
-    title: "2 RFQ en attente",
-    description: "Demandes de devis à traiter",
-    priority: "medium",
-    module: "Marketplace",
-  },
-  {
-    id: "5",
-    icon: FileText,
-    title: "AO à soumettre",
-    description: "Fourniture équipements - J-5",
-    priority: "medium",
-    module: "Appels d'offres",
-  },
-  {
-    id: "6",
-    icon: Calendar,
-    title: "Session mentorat",
-    description: "Demain à 14h00 - Coach: M. Koné",
-    priority: "low",
-    module: "Incubateur",
-  },
-  {
-    id: "7",
-    icon: Wallet,
-    title: "Pièces complémentaires",
-    description: "Dossier financement - 2 documents",
-    priority: "medium",
-    module: "Financement",
-  },
-  {
-    id: "8",
-    icon: Users,
-    title: "Événement B2B",
-    description: "3 demandes de RDV à confirmer",
-    priority: "low",
-    module: "Événements",
-  },
-];
-
-const priorityStyles = {
-  high: "border-l-destructive bg-destructive/5",
+const priorityStyles: Record<ActionItem["priority"], string> = {
+  high:   "border-l-destructive bg-destructive/5",
   medium: "border-l-warning bg-warning/5",
-  low: "border-l-muted bg-muted/30",
+  low:    "border-l-muted bg-muted/30",
 };
 
-const priorityBadge = {
-  high: "bg-destructive/20 text-destructive",
+const priorityBadge: Record<ActionItem["priority"], string> = {
+  high:   "bg-destructive/20 text-destructive",
   medium: "bg-warning/20 text-warning",
-  low: "bg-muted text-muted-foreground",
+  low:    "bg-muted text-muted-foreground",
 };
+
+const PRIORITY_ORDER: Record<ActionItem["priority"], number> = { high: 0, medium: 1, low: 2 };
+
+function deriveActions(
+  kycData:     KycMyRequiredDocumentsResponse | null,
+  affiliation: AffiliationMeResponse | null,
+  formations:  MonInscription[] | null,
+  rfqs:        RFQFromAPI[] | null,
+  events:      Evenement[] | null,
+  user:        { abonnementEndDate?: string; planLibelle?: string } | null,
+): ActionItem[] {
+  const items: ActionItem[] = [];
+
+  // ── KYC ──────────────────────────────────────────────────────────────────
+  if (kycData) {
+    const { caseStatus, requiredDocuments } = kycData;
+    if (caseStatus === "not_started") {
+      items.push({
+        id: "kyc-start", icon: Shield, priority: "high", module: "KYC",
+        title: "Démarrez votre vérification KYC",
+        description: "Obligatoire pour débloquer toutes les fonctionnalités",
+      });
+    } else if (caseStatus === "expired") {
+      items.push({
+        id: "kyc-expired", icon: FileWarning, priority: "high", module: "KYC",
+        title: "KYC expiré",
+        description: "Renouvelez vos documents pour maintenir l'accès",
+      });
+    } else if (caseStatus === "rejected") {
+      items.push({
+        id: "kyc-rejected", icon: FileWarning, priority: "high", module: "KYC",
+        title: "KYC rejeté — documents à corriger",
+        description: "Corrigez les documents signalés puis soumettez à nouveau",
+      });
+    } else if (caseStatus === "draft") {
+      const missing = requiredDocuments.filter(d => d.isRequired && d.status === "missing").length;
+      if (missing > 0) {
+        items.push({
+          id: "kyc-missing", icon: FileWarning, priority: "high", module: "KYC",
+          title: `${missing} document${missing > 1 ? "s" : ""} KYC manquant${missing > 1 ? "s" : ""}`,
+          description: "Documents obligatoires à fournir pour valider votre dossier",
+        });
+      } else {
+        items.push({
+          id: "kyc-submit", icon: FileText, priority: "medium", module: "KYC",
+          title: "Soumettez votre dossier KYC",
+          description: "Tous les documents sont prêts — envoyez pour validation",
+        });
+      }
+    }
+  }
+
+  // ── Abonnement ────────────────────────────────────────────────────────────
+  if (user?.abonnementEndDate) {
+    const daysLeft = Math.floor(
+      (new Date(user.abonnementEndDate).getTime() - Date.now()) / 86_400_000
+    );
+    if (daysLeft < 0) {
+      items.push({
+        id: "sub-expired", icon: CreditCard, priority: "high", module: "Abonnement",
+        title: "Abonnement expiré",
+        description: "Renouvelez votre abonnement pour rétablir l'accès complet",
+      });
+    } else if (daysLeft <= 15) {
+      items.push({
+        id: "sub-expiring",
+        icon: CreditCard,
+        priority: daysLeft <= 5 ? "high" : "medium",
+        module: "Abonnement",
+        title: `Abonnement expire dans ${daysLeft} jour${daysLeft > 1 ? "s" : ""}`,
+        description: `${user.planLibelle ?? "Votre plan"} — renouvelez pour ne pas perdre l'accès`,
+      });
+    }
+  }
+
+  // ── Affiliation ───────────────────────────────────────────────────────────
+  if (affiliation) {
+    if (!affiliation.currentAffiliation && !affiliation.pendingRequest) {
+      items.push({
+        id: "affil-none", icon: Users, priority: "low", module: "Affiliation",
+        title: "Aucune affiliation",
+        description: "Rejoignez une organisation pour étendre votre réseau professionnel",
+      });
+    } else if (affiliation.pendingRequest) {
+      items.push({
+        id: "affil-pending", icon: Users, priority: "medium", module: "Affiliation",
+        title: "Demande d'affiliation en attente",
+        description: "Soumise — en cours d'examen par l'organisation",
+      });
+    }
+  }
+
+  // ── Formations en cours ───────────────────────────────────────────────────
+  if (formations) {
+    const inProgress = formations.filter(
+      f => f.status === "started" || (f.status === "confirmed" && (f.progression ?? 0) < 100)
+    );
+    if (inProgress.length > 0) {
+      items.push({
+        id: "formation-progress", icon: BookOpen, priority: "low", module: "Formation",
+        title: `${inProgress.length} formation${inProgress.length > 1 ? "s" : ""} en cours`,
+        description: inProgress.slice(0, 2).map(f => f.formation.title).join(", "),
+      });
+    }
+  }
+
+  // ── RFQ sans réponse ──────────────────────────────────────────────────────
+  if (rfqs) {
+    const openStatuses = new Set(["open", "published", "pending", "active"]);
+    const pending = rfqs.filter(r => openStatuses.has(r.status) && r.offersCount === 0);
+    if (pending.length > 0) {
+      items.push({
+        id: "rfq-pending", icon: MessageSquare, priority: "medium", module: "Marketplace",
+        title: `${pending.length} RFQ sans réponse`,
+        description: "Vos demandes de devis n'ont pas encore reçu d'offres",
+      });
+    }
+  }
+
+  // ── Événements à venir (≤ 7 jours) ───────────────────────────────────────
+  if (events) {
+    const soon = events.filter(e => {
+      const diff = new Date(e.date_debut).getTime() - Date.now();
+      return diff > 0 && diff <= 7 * 86_400_000;
+    });
+    if (soon.length > 0) {
+      const next = soon[0];
+      const dateStr = new Date(next.date_debut).toLocaleDateString("fr-FR", {
+        day: "numeric", month: "short",
+      });
+      items.push({
+        id: "event-soon", icon: Calendar, priority: "low", module: "Événements",
+        title: next.titre,
+        description: `Le ${dateStr}${next.lieu ? ` • ${next.lieu}` : ""}`,
+      });
+    }
+  }
+
+  return items.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+}
 
 export function ActionCenter() {
+  const { user } = useAuth();
+  const [loading,     setLoading]     = useState(true);
+  const [kycData,     setKycData]     = useState<KycMyRequiredDocumentsResponse | null>(null);
+  const [affiliation, setAffiliation] = useState<AffiliationMeResponse | null>(null);
+  const [formations,  setFormations]  = useState<MonInscription[] | null>(null);
+  const [rfqs,        setRfqs]        = useState<RFQFromAPI[] | null>(null);
+  const [events,      setEvents]      = useState<Evenement[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const [kyc, aff, form, rfq, evt] = await Promise.allSettled([
+        kycApi.getMyRequiredDocuments(),
+        affiliationApi.getMe(),
+        mesCoursApi.getMesFormations(),
+        rfqApi.getAll(),
+        evenementsApi.getRecentUpcoming(),
+      ]);
+      if (kyc.status  === "fulfilled") setKycData(kyc.value);
+      if (aff.status  === "fulfilled") setAffiliation(aff.value);
+      if (form.status === "fulfilled") setFormations(form.value);
+      if (rfq.status  === "fulfilled") setRfqs(rfq.value);
+      if (evt.status  === "fulfilled") setEvents(evt.value);
+      setLoading(false);
+    })();
+  }, []);
+
+  const actions = deriveActions(kycData, affiliation, formations, rfqs, events, user);
+
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden">
+    <div className="bg-card rounded-xl border border-border overflow-hidden h-full flex flex-col">
       <div className="p-3 sm:p-4 md:p-5 border-b border-border flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Centre d'actions
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">Centre d'actions</h2>
           <p className="text-sm text-muted-foreground">
-            {actions.length} tâches en attente
+            {loading
+              ? "Chargement…"
+              : `${actions.length} tâche${actions.length !== 1 ? "s" : ""} en attente`}
           </p>
         </div>
-        <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+        {/* <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
           To-Do
-        </span>
+        </span> */}
       </div>
 
-      <div className="divide-y divide-border max-h-[300px] sm:max-h-[350px] md:max-h-[400px] overflow-y-auto">
-        {actions.map((action, idx) => (
-          <div
-            key={action.id}
-            className={cn(
-              "p-2.5 sm:p-3 md:p-4 flex items-center gap-2 sm:gap-3 md:gap-4 border-l-4 hover:bg-muted/50 transition-colors cursor-pointer group opacity-0 animate-slide-up",
-              priorityStyles[action.priority]
-            )}
-            style={{ animationDelay: `${idx * 0.05}s`, animationFillMode: "forwards" }}
-          >
-            <div className="p-2 rounded-lg bg-background">
-              <action.icon size={18} className="text-muted-foreground" />
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-foreground truncate">
-                {action.title}
-              </p>
-              <p className="text-sm text-muted-foreground truncate">
-                {action.description}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <span
-                className={cn(
+      <div className="divide-y divide-border max-h-[192px] md:max-h-[228px] overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center items-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : actions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
+            <CheckCircle2 className="h-8 w-8 text-green-500" />
+            <p className="text-sm">Aucune action requise — tout est à jour !</p>
+          </div>
+        ) : (
+          actions.map((action, idx) => (
+            <div
+              key={action.id}
+              className={cn(
+                "p-2.5 sm:p-3 md:p-4 flex items-center gap-2 sm:gap-3 md:gap-4 border-l-4 hover:bg-muted/50 transition-colors cursor-pointer group opacity-0 animate-slide-up",
+                priorityStyles[action.priority]
+              )}
+              style={{ animationDelay: `${idx * 0.05}s`, animationFillMode: "forwards" }}
+            >
+              <div className="p-2 rounded-lg bg-background">
+                <action.icon size={18} className="text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-foreground truncate">{action.title}</p>
+                <p className="text-sm text-muted-foreground truncate">{action.description}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={cn(
                   "px-2 py-1 rounded text-xs font-medium hidden sm:block",
                   priorityBadge[action.priority]
-                )}
-              >
-                {action.module}
-              </span>
-              <ChevronRight
-                size={16}
-                className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-              />
+                )}>
+                  {action.module}
+                </span>
+                <ChevronRight
+                  size={16}
+                  className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                />
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="p-3 sm:p-4 border-t border-border bg-muted/30">
-        <button className="text-sm font-medium text-primary hover:text-primary/80 transition-colors w-full text-center">
-          Voir toutes les actions →
-        </button>
+          ))
+        )}
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { UpgradeSubscriptionModal } from "@/components/subscription/UpgradeSubscriptionModal";
-import { abonnementsApi, type AbonnementAPI } from "@/lib/api";
+import { abonnementsApi, authApi, kycApi, type AbonnementAPI, type KycRequiredDocumentsResponse } from "@/lib/api";
 import { TIER_CONFIGS } from "@/lib/permissions";
 import type { SubscriptionTier } from "@/types/subscription";
 
@@ -197,6 +197,16 @@ const Index = () => {
     return () => { if (tidRef.current) clearTimeout(tidRef.current); };
   }, [user?.name]);
 
+  // ── HealthScore : données réelles ────────────────────────────────────────
+  const [rawProfile, setRawProfile] = useState<Record<string, unknown> | null>(null);
+  const [kycData, setKycData] = useState<KycRequiredDocumentsResponse | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    authApi.getProfile().then(setRawProfile).catch(() => {});
+    kycApi.getRequiredDocuments().then(setKycData).catch(() => {});
+  }, [isAuthenticated]);
+
   // ── Paiement abonnement (hooks AVANT le return conditionnel) ─────────────
   const [subModal, setSubModal] = useState(false);
   const [renewPlan, setRenewPlan] = useState<AbonnementAPI | null | undefined>(undefined);
@@ -223,6 +233,58 @@ const Index = () => {
   };
 
   if (isLoading || !isAuthenticated) return null;
+
+  // ── Calcul score Profil (même logique que calculateCompletionScore dans Membres.tsx) ──
+  const profilScore = (() => {
+    const p = rawProfile;
+    if (!p) return 0;
+    const typeMembre  = p.typeMembre  as Record<string, unknown> | undefined;
+    const profil      = p.profil      as Record<string, unknown> | undefined;
+    const abonnement  = p.abonnement  as Record<string, unknown> | undefined;
+    const secteur     = p.secteurPrincipal as Record<string, unknown> | undefined;
+    const filiere     = p.filiere     as Record<string, unknown> | undefined;
+    const siegeRegion = p.siegeRegion as Record<string, unknown> | undefined;
+    const activites   = p.activites   as unknown[] | undefined;
+    const fields = [
+      p.name,
+      p.email,
+      p.phone,
+      p.customOrganisationName,
+      p.position,
+      typeMembre?.name,
+      profil?.name,
+      abonnement?.libelle,
+      secteur?.name,
+      filiere?.name,
+      siegeRegion?.name,
+      p.website_url,
+      p.nombre_employee,
+      activites?.length
+        ? activites.map((a) => (a as { name: string }).name).join(", ")
+        : null,
+    ];
+    const filled = fields.filter((f) => f && f !== "").length;
+    return Math.round((filled / fields.length) * 30);
+  })();
+
+  // ── Calcul score KYC ────────────────────────────────────────────────────
+  const kycScore = (() => {
+    if (!kycData) return 0;
+    const kycPct = kycData.caseStatus === "approved"
+      ? 100
+      : (kycData.levels.find((l) => l.level.id === kycData.targetKycLevelId)?.validationPercentage
+         ?? kycData.levels[0]?.validationPercentage
+         ?? 0);
+    return Math.round((kycPct / 100) * 30);
+  })();
+
+  const totalHealthScore = profilScore + kycScore;
+
+  const handleRecommendations = () => {
+    const profilPct = profilScore / 30;
+    const kycPct    = kycScore / 30;
+    navigate(profilPct <= kycPct ? "/parametres" : "/kyc");
+  };
 
   const statut     = user?.statut ? (statutLabel[user.statut] ?? user.statut) : "Actif";
   // const entreprise = user?.organisationName || user?.companyName || user?.name || "Mon entreprise";
@@ -333,19 +395,20 @@ const Index = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
         {/* Action Center */}
-        <div className="lg:col-span-2 opacity-0 animate-slide-up stagger-2" style={{ animationFillMode: "forwards" }}>
+        <div className="lg:col-span-2 opacity-0 animate-slide-up stagger-2 h-full" style={{ animationFillMode: "forwards" }}>
           <ActionCenter />
         </div>
 
         {/* Health Score */}
-        <div className="opacity-0 animate-slide-up stagger-3" style={{ animationFillMode: "forwards" }}>
+        <div className="opacity-0 animate-slide-up stagger-3 h-full" style={{ animationFillMode: "forwards" }}>
           <HealthScore
-            score={72}
+            score={totalHealthScore}
             breakdown={[
-              { label: "Profil entreprise", score: 28, max: 30 },
-              { label: "KYC & Documents", score: 22, max: 30 },
-              { label: "Activité (30j)", score: 22, max: 40 },
+              { label: "Profil entreprise", score: profilScore, max: 30 },
+              { label: "KYC & Documents", score: kycScore, max: 30 },
+              { label: "Activité (30j)", score: 0, max: 40 },
             ]}
+            onRecommendations={handleRecommendations}
           />
         </div>
       </div>

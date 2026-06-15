@@ -276,9 +276,9 @@ export default function MonEntreprise() {
               Gérez votre profil, vos sites et votre équipe
             </p>
           </div>
-          <Badge variant="outline" className="text-secondary border-secondary">
+          {/* <Badge variant="outline" className="text-secondary border-secondary">
             Profil complet à 85%
-          </Badge>
+          </Badge> */}
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
@@ -427,7 +427,7 @@ export default function MonEntreprise() {
               abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
               modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
               typeMembreNom={String(typeMembre?.name ?? "")}
-              hasAffiliation={affiliationData?.currentAffiliation?.status === "Approved"}
+              hasAffiliation={!!affiliationData?.currentAffiliation && affiliationData.currentAffiliation.status.toLowerCase() === "approved"}
               affiliationName={affiliationData?.currentAffiliation?.organization?.name ?? ""}
             />
           </TabsContent>

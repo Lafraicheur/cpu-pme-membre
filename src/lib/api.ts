@@ -2332,6 +2332,13 @@ export const authApi = {
     );
     return (res as { data: Record<string, unknown> }).data ?? (res as Record<string, unknown>);
   },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
 };
 
 // ── Certificats ───────────────────────────────────────────────────────────────
