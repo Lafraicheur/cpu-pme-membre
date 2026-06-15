@@ -2339,6 +2339,22 @@ export const authApi = {
       body: JSON.stringify({ currentPassword, newPassword }),
     });
   },
+
+  forgotPassword: async (email: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  resetPassword: async (token: string, password: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+      skipAuth: true,
+    });
+  },
 };
 
 // ── Certificats ───────────────────────────────────────────────────────────────
