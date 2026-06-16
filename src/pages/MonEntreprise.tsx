@@ -367,7 +367,6 @@ export default function MonEntreprise() {
                     <F label="Nom complet" value={String(profile?.name ?? "")} />
                     <F label="Poste / Fonction" value={String(profile?.position ?? "")} />
                     <F label="Nom de l'organisation" value={String(profile?.customOrganisationName ?? "")} />
-                    <F label="Type d'organisation" value={String(profile?.organisationType ?? "")} />
                     <F label="Nombre d'employés" value={String(profile?.nombre_employee ?? "")} />
                     <F label="Type de membre" value={String(typeMembre?.name ?? "")} />
                     <F label="Profil" value={String(profil?.name ?? "")} />
