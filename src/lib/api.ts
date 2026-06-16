@@ -564,7 +564,7 @@ export const registrationsApi = {
       `/api/registrations?user_id=${encodeURIComponent(userId)}`
     );
     const list = Array.isArray(res) ? res : (res as { data: Registration[] }).data;
-    return list.filter((r) => r.user_id === userId);
+    return list ?? [];
   },
 
   getAll: async (): Promise<RegistrationParticipant[]> => {

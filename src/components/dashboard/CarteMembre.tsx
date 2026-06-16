@@ -21,11 +21,12 @@ type PlanConfig = {
   to: string;
   label: string;
   type: "individual" | "entreprise" | "federation" | "organisation" | "institutionnel";
+  isLight?: boolean;
 };
 
 const PLAN_CONFIG: Record<string, PlanConfig> = {
   // Individuel / Entreprise
-  basic:          { from: "#F97316", to: "#C2410C", label: "Basic",          type: "individual"    },
+  basic:          { from: "#FFFFFF", to: "#F1F5F9", label: "Basic",          type: "individual",   isLight: true },
   argent:         { from: "#6B7280", to: "#374151", label: "Argent",         type: "individual"    },
   silver:         { from: "#6B7280", to: "#374151", label: "Argent",         type: "individual"    },
   gold:           { from: "#D97706", to: "#92400E", label: "Or",             type: "individual"    },
@@ -92,6 +93,13 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
   const config = resolveConfig(plan, typeMembreNom);
   const expirationDate = formatExpiration(abonnementCreatedAt, modaliteAbonnement);
 
+  const isLight = config.isLight ?? false;
+  const textClass     = isLight ? "text-gray-800"     : "text-white";
+  const badgeClass    = isLight ? "bg-gray-800/10"    : "bg-white/25";
+  const borderClass   = isLight ? "border-gray-300"   : "border-white/20";
+  const opacityHigh   = isLight ? "opacity-80"        : "opacity-70";
+  const opacityLow    = isLight ? "opacity-60"        : "opacity-50";
+
   const isCollective = config.type === "federation" || config.type === "organisation" || config.type === "institutionnel";
   const CardIcon      = config.type === "institutionnel" ? Landmark : config.type === "federation" ? Users : Building2;
 
@@ -127,7 +135,14 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
-    // ── Logo watermark (multiply efface le fond blanc du PNG) ─
+    // ── Couleurs texte selon thème ────────────────────────────
+    const mainText  = isLight ? "#1f2937"              : "#ffffff";
+    const subText   = isLight ? "rgba(31,41,55,0.75)"  : "rgba(255,255,255,0.7)";
+    const mutedText = isLight ? "rgba(31,41,55,0.55)"  : "rgba(255,255,255,0.5)";
+    const badgeBg   = isLight ? "rgba(31,41,55,0.10)"  : "rgba(255,255,255,0.25)";
+    const sepColor  = isLight ? "rgba(31,41,55,0.15)"  : "rgba(255,255,255,0.25)";
+
+    // ── Logo watermark ────────────────────────────────────────
     const logo = await loadImage(logoCpuPme);
     if (logo.complete && logo.naturalWidth > 0) {
       const padding = W * 0.08;
@@ -138,16 +153,16 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
       let drawH = drawW / imgRatio;
       if (drawH > availH) { drawH = availH; drawW = drawH * imgRatio; }
       ctx.save();
-      ctx.globalAlpha = 0.22;
+      ctx.globalAlpha = isLight ? 0.07 : 0.22;
       ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(logo, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH);
       ctx.restore();
     }
 
     // ── Badge "Pass PME" (haut gauche) ───────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillStyle = badgeBg;
     fillRoundRect(ctx, PAD, PAD, 150, 38, 19);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = mainText;
     ctx.font = `bold 17px ${FONT}`;
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
@@ -156,62 +171,62 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
     // ── Badge type/plan (haut droit) ─────────────────────────
     ctx.font = `bold 17px ${FONT}`;
     const planW = ctx.measureText(config.label).width + 36;
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillStyle = badgeBg;
     fillRoundRect(ctx, W - PAD - planW, PAD, planW, 38, 19);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = mainText;
     ctx.textAlign = "right";
     ctx.fillText(config.label, W - PAD - 18, PAD + 19);
 
     // ── CPU-PME.CI label ──────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.fillStyle = subText;
     ctx.font = `13px ${FONT}`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
     ctx.fillText("CPU-PME.CI", PAD, 158);
 
     // ── Nom ───────────────────────────────────────────────────
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = mainText;
     ctx.font = `bold 50px ${FONT}`;
     ctx.fillText(name || "—", PAD, 184, W - PAD * 2 - 10);
 
     // ── Organisation ──────────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillStyle = subText;
     ctx.font = `30px ${FONT}`;
     ctx.fillText(orgName || "—", PAD, 250, W - PAD * 2 - 10);
 
     // ── Affiliation ───────────────────────────────────────────
     if (hasAffiliation && affiliationName) {
-      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.fillStyle = mutedText;
       ctx.font = `22px ${FONT}`;
       ctx.fillText(`Affilié à ${affiliationName}`, PAD, 292, W - PAD * 2 - 10);
     }
 
     // ── Texte confédération ───────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillStyle = mutedText;
     ctx.font = `bold 13px ${FONT}`;
     ctx.fillText("CONFÉDÉRATION PATRONALE UNIQUE DES PME DE CÔTE D'IVOIRE", PAD, H - 138, W - PAD * 2);
 
     // ── Séparateur ────────────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.fillStyle = sepColor;
     ctx.fillRect(PAD, H - 112, W - PAD * 2, 1);
 
     // ── N° Membre ─────────────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillStyle = mutedText;
     ctx.font = `13px ${FONT}`;
     ctx.textAlign = "left";
     ctx.fillText("N° Membre", PAD, H - 100);
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = mainText;
     ctx.font = `bold 24px ${FONT}`;
     ctx.fillText(numeroMembre || "—", PAD, H - 78);
 
     // ── Valide jusqu'au ───────────────────────────────────────
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    ctx.fillStyle = mutedText;
     ctx.font = `13px ${FONT}`;
     ctx.textAlign = "right";
     ctx.fillText("Valide jusqu'au", W - PAD, H - 100);
 
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = mainText;
     ctx.font = `bold 24px ${FONT}`;
     ctx.fillText(expirationDate, W - PAD, H - 78);
 
@@ -238,10 +253,11 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
           <Skeleton className="w-full max-w-lg rounded-2xl" style={{ aspectRatio: "1.586" }} />
         ) : (
           <div
-            className="relative w-full max-w-lg rounded-2xl overflow-hidden text-white select-none shadow-2xl"
+            className={`relative w-full max-w-lg rounded-2xl overflow-hidden select-none shadow-2xl ${textClass}`}
             style={{
               background: `linear-gradient(135deg, ${config.from} 0%, ${config.to} 100%)`,
               aspectRatio: "1.586",
+              border: isLight ? "1px solid #e2e8f0" : undefined,
             }}
           >
             {/* Logo watermark — mix-blend-mode:multiply efface le fond blanc du PNG */}
@@ -253,7 +269,7 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
               style={{
                 objectFit: "contain",
                 padding: "8%",
-                opacity: 0.22,
+                opacity: isLight ? 0.08 : 0.22,
                 mixBlendMode: "multiply",
               }}
             />
@@ -262,33 +278,29 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
             <div className="relative h-full flex flex-col justify-between p-5">
               {/* Top */}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 bg-white/25 rounded-full px-3 py-1">
+                <div className={`flex items-center gap-1.5 ${badgeClass} rounded-full px-3 py-1`}>
                   <CreditCard className="w-3 h-3" />
                   <span className="text-xs font-semibold">Pass PME</span>
                 </div>
-                <span className="bg-white/25 rounded-full px-3 py-1 text-xs font-semibold">
+                <span className={`${badgeClass} rounded-full px-3 py-1 text-xs font-semibold`}>
                   {config.label}
                 </span>
               </div>
 
               {/* Infos */}
               <div className="space-y-0.5">
-                <p className="text-[10px] tracking-widest opacity-70 uppercase">CPU-PME.CI</p>
+                <p className={`text-[10px] tracking-widest ${opacityHigh} uppercase`}>CPU-PME.CI</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <User className="w-4 h-4 opacity-70 shrink-0" />
-                  {/* {isCollective
-                    ? <CardIcon className="w-5 h-5 opacity-80 shrink-0" />
-                    : <User className="w-5 h-5 opacity-80 shrink-0" />
-                  } */}
+                  <User className={`w-4 h-4 ${opacityHigh} shrink-0`} />
                   <span className="text-lg font-bold leading-tight truncate">{name || "—"}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 opacity-70 shrink-0" />
+                  <Building2 className={`w-4 h-4 ${opacityHigh} shrink-0`} />
                   <span className="text-sm opacity-90 truncate">{orgName || "—"}</span>
                 </div>
                 {hasAffiliation && (
                   <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 opacity-70 shrink-0" />
+                    <Users className={`w-4 h-4 ${opacityHigh} shrink-0`} />
                     <span className="text-sm opacity-90 truncate">Affilié à {affiliationName}</span>
                   </div>
                 )}
@@ -296,16 +308,16 @@ export function CarteMembre({ isLoading, name, orgName, numeroMembre, plan, abon
 
               {/* Bas */}
               <div className="space-y-1.5">
-                <p className="text-[8px] font-bold uppercase tracking-wide opacity-50 leading-tight">
+                <p className={`text-[8px] font-bold uppercase tracking-wide ${opacityLow} leading-tight`}>
                   Confédération Patronale Unique<br />des PME de Côte d'Ivoire
                 </p>
-                <div className="flex items-end justify-between border-t border-white/20 pt-1.5">
+                <div className={`flex items-end justify-between border-t ${borderClass} pt-1.5`}>
                   <div>
-                    <p className="text-[9px] opacity-60 uppercase tracking-wide">N° Membre</p>
+                    <p className={`text-[9px] ${opacityLow} uppercase tracking-wide`}>N° Membre</p>
                     <p className="text-xs font-bold">{numeroMembre || "—"}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] opacity-60 uppercase tracking-wide">Valide jusqu'au</p>
+                    <p className={`text-[9px] ${opacityLow} uppercase tracking-wide`}>Valide jusqu'au</p>
                     <p className="text-xs font-bold">{expirationDate}</p>
                   </div>
                 </div>
