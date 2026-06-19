@@ -434,7 +434,7 @@ export function AjouterEvenement({ open, onOpenChange }: { open: boolean; onOpen
           attestation_participation: attestation,
           partage_photos_autorise:  partagePhotos,
           ala_une:                  alaUne,
-          isActive,
+          isActive: false,
           prix,
           prix_membre:              prixMembre,
           capacite_max:             parseInt(capaciteMax) || 100,
