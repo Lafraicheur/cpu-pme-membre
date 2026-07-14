@@ -123,7 +123,9 @@ function mapApiProduct(p: ApiProduct): Product {
       : null,
     produitReglemente: p.isRegulated || false,
     statutReglementaire: null,
-    image: "",
+    image: (p.productMedia?.find((m) => m.isMain && m.isActive)
+      ?? p.productMedia?.find((m) => m.isActive)
+      ?? p.productMedia?.[0])?.url ?? "",
     vues: 0,
     commandes: 0,
     chiffreAffaires: 0,
@@ -666,9 +668,18 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
               <Card key={product.id} className="group hover:shadow-md transition-all">
                 <CardContent className="p-0">
                   {/* Image / Header */}
-                  <div className="relative bg-gradient-to-br from-primary/10 to-secondary/10 p-6 flex items-center justify-center h-32 rounded-t-lg">
-                    <span className="text-5xl">{product.image}</span>
-                    
+                  <div className="relative bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center h-32 rounded-t-lg overflow-hidden">
+                    {product.image ? (
+                      <img
+                        src={product.image}
+                        alt={product.nom}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : (
+                      <ImageIcon className="w-10 h-10 text-muted-foreground/40" />
+                    )}
+
                     {/* Badges */}
                     <div className="absolute top-2 left-2 flex flex-col gap-1">
                       <Badge className={cn(status.bgColor, status.color, "border-0")}>
@@ -963,9 +974,15 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Certifications</p>
                       <div className="flex flex-wrap gap-1">
-                        {selectedApiProduct.certifications.map((c, i) => (
-                          <Badge key={i} variant="secondary">{c}</Badge>
-                        ))}
+                        {selectedApiProduct.certifications.map((c, i) =>
+                          c.url ? (
+                            <a key={i} href={c.url} target="_blank" rel="noopener noreferrer">
+                              <Badge variant="secondary" className="cursor-pointer hover:underline">{c.name}</Badge>
+                            </a>
+                          ) : (
+                            <Badge key={i} variant="secondary">{c.name}</Badge>
+                          )
+                        )}
                       </div>
                     </div>
                   )}

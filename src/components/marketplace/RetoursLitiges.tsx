@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { returnsApi, litigesApi, type ReturnVendor, type ReturnVendorStats, type LitigeVendor, type LitigeStatusApi } from "@/lib/api";
 
 // Types
 type RetourStatus = "ReturnRequested" | "Approved" | "Rejected" | "InTransit" | "Received" | "Inspected" | "Refunded" | "PartialRefund" | "Closed";
@@ -70,6 +71,7 @@ type LitigeType = "retard_livraison" | "non_conforme" | "endommage" | "quantite"
 
 interface Retour {
   id: string;
+  apiId: string;
   commande: string;
   produit: string;
   client: string;
@@ -87,6 +89,7 @@ interface Retour {
 
 interface Litige {
   id: string;
+  apiId: string;
   commande: string;
   produit: string;
   plaignant: string;
@@ -152,144 +155,101 @@ const litigeTypeLabels: Record<LitigeType, string> = {
   autre: "Autre",
 };
 
-// Mock data
-const mockRetours: Retour[] = [
-  {
-    id: "RET-001",
-    commande: "CMD-2024-005",
-    produit: "Huile de palme raffinée - 20L",
-    client: "Restaurant Le Gourmet",
-    motif: "Produit endommagé",
-    motifDetail: "3 bidons sur 5 présentent des fuites. Photos jointes montrant les dommages au niveau des bouchons.",
-    statut: "ReturnRequested",
-    dateRetour: "2024-01-22",
-    dateMaj: "2024-01-22",
-    montant: 125000,
-    preuves: ["photo_dommage1.jpg", "photo_dommage2.jpg", "video_constat.mp4"],
-    timeline: [
-      { date: "2024-01-22 10:00", action: "Demande de retour créée par le client", auteur: "Restaurant Le Gourmet", role: "acheteur" },
-      { date: "2024-01-22 10:01", action: "3 preuves jointes", auteur: "Système", role: "systeme" },
-    ],
-  },
-  {
-    id: "RET-002",
-    commande: "CMD-2024-003",
-    produit: "Cacao Premium Grade A",
-    client: "Chocolaterie du Centre",
-    motif: "Non conforme",
-    motifDetail: "Taux d'humidité mesuré à 12% au lieu de 8% maximum annoncé. Rapport d'analyse du laboratoire indépendant fourni.",
-    statut: "Inspected",
-    dateRetour: "2024-01-15",
-    dateMaj: "2024-01-20",
-    montant: 850000,
-    montantPropose: 600000,
-    preuves: ["rapport_labo.pdf", "photos_lot.jpg"],
-    inspectionNotes: "Après vérification, le lot présente effectivement un taux d'humidité supérieur. Proposition de remboursement partiel à 70%.",
-    timeline: [
-      { date: "2024-01-15 08:00", action: "Demande de retour créée", auteur: "Chocolaterie du Centre", role: "acheteur" },
-      { date: "2024-01-16 09:00", action: "Retour approuvé", auteur: "Vous", role: "vendeur" },
-      { date: "2024-01-17 14:00", action: "Colis en transit retour", auteur: "Système", role: "systeme" },
-      { date: "2024-01-18 16:00", action: "Colis reçu en entrepôt", auteur: "Vous", role: "vendeur" },
-      { date: "2024-01-20 10:00", action: "Inspection terminée - remboursement partiel proposé", auteur: "Vous", role: "vendeur" },
-    ],
-  },
-  {
-    id: "RET-003",
-    commande: "CMD-2024-001",
-    produit: "Attiéké séché - 25kg",
-    client: "Supermarché Bonprix",
-    motif: "Quantité incorrecte",
-    motifDetail: "Commande de 10 sacs, seulement 7 reçus. Bon de livraison confirme 10 sacs.",
-    statut: "Refunded",
-    dateRetour: "2024-01-10",
-    dateMaj: "2024-01-14",
-    montant: 45000,
-    preuves: ["bon_livraison.pdf", "photo_reception.jpg"],
-    timeline: [
-      { date: "2024-01-10 09:00", action: "Demande de retour créée", auteur: "Supermarché Bonprix", role: "acheteur" },
-      { date: "2024-01-10 14:00", action: "Erreur confirmée par le vendeur", auteur: "Vous", role: "vendeur" },
-      { date: "2024-01-12 10:00", action: "3 sacs manquants expédiés", auteur: "Vous", role: "vendeur" },
-      { date: "2024-01-14 09:00", action: "Remboursement des frais supplémentaires effectué", auteur: "Système", role: "systeme" },
-    ],
-  },
-  {
-    id: "RET-004",
-    commande: "CMD-2024-008",
-    produit: "Beurre de karité bio - 5kg",
-    client: "Cosmétiques Abidjan",
-    motif: "Qualité insuffisante",
-    motifDetail: "Le beurre de karité ne correspond pas au grade cosmétique annoncé. Couleur et texture non conformes.",
-    statut: "Approved",
-    dateRetour: "2024-01-21",
-    dateMaj: "2024-01-22",
-    montant: 45000,
-    preuves: ["comparaison_qualite.jpg"],
-    timeline: [
-      { date: "2024-01-21 11:00", action: "Demande de retour créée", auteur: "Cosmétiques Abidjan", role: "acheteur" },
-      { date: "2024-01-22 08:00", action: "Retour approuvé - en attente du colis", auteur: "Vous", role: "vendeur" },
-    ],
-  },
-];
+/** Statut API (libellés FR) → statut d'affichage. */
+function mapReturnStatus(s: string): RetourStatus {
+  const v = (s || "").toLowerCase();
+  if (v.includes("approuv")) return "Approved";
+  if (v.includes("rejet") || v.includes("refus")) return "Rejected";
+  if (v.includes("transit")) return "InTransit";
+  if (v.includes("inspect")) return "Inspected";
+  if (v.includes("reçu") || v.includes("recu") || v.includes("retourn")) return "Received";
+  if (v.includes("partiel")) return "PartialRefund";
+  if (v.includes("rembours")) return "Refunded";
+  if (v.includes("clôtur") || v.includes("clotur") || v.includes("clos") || v.includes("fermé")) return "Closed";
+  return "ReturnRequested";
+}
 
-const mockLitiges: Litige[] = [
-  {
-    id: "LIT-001",
-    commande: "CMD-2024-006",
-    produit: "Transport frigorifique",
-    plaignant: "Export CI SARL",
-    type: "retard_livraison",
-    statut: "InMediation",
-    dateOuverture: "2024-01-16",
-    dateMaj: "2024-01-22",
-    montant: 75000,
-    montantPropose: 37500,
-    description: "Livraison avec 5 jours de retard, marchandises partiellement avariées à cause de la rupture de chaîne du froid.",
-    delaiReponse: "2024-01-25",
-    propositionMediation: "Le médiateur recommande un remboursement de 50% (37 500 FCFA) compte tenu du retard documenté et des dommages partiels.",
-    messages: [
-      { id: "M1", auteur: "Export CI SARL", role: "client", message: "La livraison a eu 5 jours de retard et une partie de la marchandise est avariée. Je demande un remboursement total.", date: "2024-01-16 10:30", pieces: ["constat_avarie.pdf"] },
-      { id: "M2", auteur: "Vous", role: "vendeur", message: "Le retard est dû à une panne mécanique imprévue. Nous proposons un avoir de 20% sur la prochaine commande.", date: "2024-01-17 14:15" },
-      { id: "M3", auteur: "Export CI SARL", role: "client", message: "20% n'est pas suffisant vu les pertes subies. Je refuse cette proposition.", date: "2024-01-18 09:00" },
-      { id: "M4", auteur: "Vous", role: "vendeur", message: "Nous comprenons votre frustration. Nous pouvons monter à 30% de remboursement direct.", date: "2024-01-18 16:00" },
-      { id: "M5", auteur: "Médiateur CPU-PME", role: "mediateur", message: "Après examen des preuves (photos, BL, GPS tracking), je recommande un remboursement de 50% soit 37 500 FCFA. Les deux parties ont 72h pour répondre.", date: "2024-01-22 09:00", pieces: ["rapport_mediation.pdf"] },
-    ],
-  },
-  {
-    id: "LIT-002",
-    commande: "CMD-2024-004",
-    produit: "Anacarde brut - 50kg",
-    plaignant: "Hôtel Ivoire",
-    type: "non_conforme",
-    statut: "VendeurResponse",
-    dateOuverture: "2024-01-22",
-    dateMaj: "2024-01-22",
-    montant: 180000,
-    description: "Taux d'humidité non conforme aux spécifications. Le client réclame le grade Premium mais le produit reçu est de grade Standard.",
-    delaiReponse: "2024-01-25",
-    messages: [
-      { id: "M1", auteur: "Hôtel Ivoire", role: "client", message: "Le taux d'humidité mesuré est de 15% au lieu des 8% maximum du grade Premium commandé.", date: "2024-01-22 08:30", pieces: ["analyse_humidite.pdf", "photo_lot.jpg"] },
-    ],
-  },
-  {
-    id: "LIT-003",
-    commande: "CMD-2024-002",
-    produit: "Cacao en poudre",
-    plaignant: "Pâtisserie Moderne",
-    type: "autre",
-    statut: "Resolved",
-    dateOuverture: "2024-01-10",
-    dateMaj: "2024-01-18",
-    montant: 50000,
-    montantPropose: 25000,
-    description: "Différend résolu par compensation partielle après médiation.",
-    messages: [
-      { id: "M1", auteur: "Pâtisserie Moderne", role: "client", message: "Le cacao en poudre a un goût altéré, non utilisable pour nos pâtisseries.", date: "2024-01-10 11:00" },
-      { id: "M2", auteur: "Vous", role: "vendeur", message: "Nous avons vérifié le lot et proposons un remplacement + avoir 10%.", date: "2024-01-12 10:00" },
-      { id: "M3", auteur: "Pâtisserie Moderne", role: "client", message: "D'accord pour le remplacement mais je demande 25% de compensation.", date: "2024-01-13 09:00" },
-      { id: "M4", auteur: "Médiateur CPU-PME", role: "mediateur", message: "Accord trouvé : remplacement du lot + 50% de compensation (25 000 FCFA). Dossier clos.", date: "2024-01-18 14:00" },
-    ],
-  },
-];
+function mapReturn(r: ReturnVendor): Retour {
+  const fmt = (d: string | null) => (d ? d.replace("T", " ").slice(0, 16) : "");
+  const timeline: TimelineEvent[] = [];
+  if (r.createdAt) timeline.push({ date: fmt(r.createdAt), action: "Demande de retour créée", auteur: r.buyer?.name || "Acheteur", role: "acheteur" });
+  if (r.approvedAt) timeline.push({ date: fmt(r.approvedAt), action: "Retour approuvé", auteur: "Vous", role: "vendeur" });
+  if (r.rejectedAt) timeline.push({ date: fmt(r.rejectedAt), action: `Retour refusé${r.decisionReason ? ` — ${r.decisionReason}` : ""}`, auteur: "Vous", role: "vendeur" });
+  if (r.returnedAt) timeline.push({ date: fmt(r.returnedAt), action: "Produit retourné", auteur: "Système", role: "systeme" });
+  if (r.refundedAt) timeline.push({ date: fmt(r.refundedAt), action: "Remboursement effectué", auteur: "Système", role: "systeme" });
+  if (r.closedAt) timeline.push({ date: fmt(r.closedAt), action: "Dossier clôturé", auteur: "Vous", role: "vendeur" });
+  return {
+    id: r.returnNumber || r.id,
+    apiId: r.id,
+    commande: r.order?.orderNumber || r.orderId || "",
+    produit: r.product?.name || (r.productId ? `Produit ${r.productId.slice(0, 8)}` : "—"),
+    client: r.buyer?.name || "Acheteur",
+    motif: r.reason || "—",
+    motifDetail: r.description || "",
+    statut: mapReturnStatus(r.status),
+    dateRetour: r.createdAt ? r.createdAt.split("T")[0] : "",
+    dateMaj: r.updatedAt ? r.updatedAt.split("T")[0] : "",
+    montant: r.amount || 0,
+    preuves: [],
+    timeline,
+    inspectionNotes: r.decisionReason || undefined,
+  };
+}
+
+/** Statut litige API → statut d'affichage. */
+function mapLitigeStatus(s: string): LitigeStatus {
+  const v = (s || "").toLowerCase();
+  if (v.includes("médiation") || v.includes("mediation")) return "InMediation";
+  if (v.includes("résolu") || v.includes("resolu")) return "Resolved";
+  if (v.includes("rembours")) return "Refunded";
+  if (v.includes("rejet") || v.includes("refus")) return "Rejected";
+  if (v.includes("clôtur") || v.includes("clotur") || v.includes("clos") || v.includes("fermé")) return "Closed";
+  return "Opened";
+}
+
+function mapLitigeType(reason: string): LitigeType {
+  const v = (reason || "").toLowerCase();
+  if (v.includes("retard")) return "retard_livraison";
+  if (v.includes("conform")) return "non_conforme";
+  if (v.includes("endommag") || v.includes("avari") || v.includes("dommage")) return "endommage";
+  if (v.includes("quantit")) return "quantite";
+  if (v.includes("qualit")) return "qualite";
+  if (v.includes("fraud")) return "fraude";
+  return "autre";
+}
+
+function mapMessageRole(t: string): "client" | "vendeur" | "mediateur" {
+  const v = (t || "").toLowerCase();
+  if (v.includes("vendor") || v.includes("vendeur")) return "vendeur";
+  if (v.includes("mediat") || v.includes("médiat")) return "mediateur";
+  return "client";
+}
+
+function mapLitige(l: LitigeVendor): Litige {
+  return {
+    id: l.litigeNumber || l.id,
+    apiId: l.id,
+    commande: l.order?.orderNumber || l.orderId || "",
+    produit: l.title || "—",
+    plaignant: l.buyer?.name || "Acheteur",
+    type: mapLitigeType(l.reason),
+    statut: mapLitigeStatus(l.status),
+    dateOuverture: l.createdAt ? l.createdAt.split("T")[0] : "",
+    dateMaj: l.updatedAt ? l.updatedAt.split("T")[0] : "",
+    montant: l.amount || 0,
+    messages: (l.messages ?? []).map((m) => ({
+      id: m.id,
+      auteur: m.senderName || "—",
+      role: mapMessageRole(m.senderType),
+      message: m.content,
+      date: m.createdAt ? m.createdAt.replace("T", " ").slice(0, 16) : "",
+      pieces: m.proofUrls,
+    })),
+    description: l.description || "",
+  };
+}
+
+
 
 export function RetoursLitiges() {
   const [activeTab, setActiveTab] = useState("retours");
@@ -301,24 +261,61 @@ export function RetoursLitiges() {
   const [showMediationDialog, setShowMediationDialog] = useState(false);
   const [showReponseDialog, setShowReponseDialog] = useState(false);
   const [newMessage, setNewMessage] = useState("");
+  const [litigeProof, setLitigeProof] = useState<File[]>([]);
   const [reponseType, setReponseType] = useState<string>("");
   const [montantPropose, setMontantPropose] = useState<number>(0);
   const [motifRefus, setMotifRefus] = useState("");
   const { toast } = useToast();
 
-  // KPIs vendeur
+  const [retours, setRetours] = useState<Retour[]>([]);
+  const [retoursStats, setRetoursStats] = useState<ReturnVendorStats>({ total: 0, byStatus: {}, refundExposure: 0 });
+  const [retoursLoading, setRetoursLoading] = useState(true);
+  const [retoursError, setRetoursError] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const loadRetours = useCallback(() => {
+    setRetoursLoading(true);
+    setRetoursError(null);
+    Promise.all([returnsApi.getVendorList(), returnsApi.getVendorStats()])
+      .then(([list, stats]) => {
+        setRetours(list.map(mapReturn));
+        setRetoursStats(stats);
+      })
+      .catch(() => setRetoursError("Impossible de charger les retours."))
+      .finally(() => setRetoursLoading(false));
+  }, []);
+
+  useEffect(() => { loadRetours(); }, [loadRetours]);
+
+  const [litiges, setLitiges] = useState<Litige[]>([]);
+  const [litigesLoading, setLitigesLoading] = useState(true);
+  const [litigesError, setLitigesError] = useState<string | null>(null);
+  const [litigeActionLoading, setLitigeActionLoading] = useState(false);
+
+  const loadLitiges = useCallback(() => {
+    setLitigesLoading(true);
+    setLitigesError(null);
+    litigesApi.getVendorList()
+      .then((list) => setLitiges(list.map(mapLitige)))
+      .catch(() => setLitigesError("Impossible de charger les litiges."))
+      .finally(() => setLitigesLoading(false));
+  }, []);
+
+  useEffect(() => { loadLitiges(); }, [loadLitiges]);
+
+  // KPIs vendeur (données API réelles)
   const kpis = {
-    retoursATraiter: mockRetours.filter(r => r.statut === "ReturnRequested").length,
-    retoursEnCours: mockRetours.filter(r => ["Approved", "InTransit", "Received", "Inspected"].includes(r.statut)).length,
-    litigesAttente: mockLitiges.filter(l => l.statut === "VendeurResponse").length,
-    litigesMediation: mockLitiges.filter(l => l.statut === "InMediation").length,
+    retoursATraiter: retours.filter(r => r.statut === "ReturnRequested").length,
+    retoursEnCours: retours.filter(r => ["Approved", "InTransit", "Received", "Inspected"].includes(r.statut)).length,
+    litigesAttente: litiges.filter(l => ["Opened", "VendeurResponse"].includes(l.statut)).length,
+    litigesMediation: litiges.filter(l => l.statut === "InMediation").length,
     tauxResolution: 85,
-    montantTotalLitiges: mockLitiges.reduce((s, l) => s + l.montant, 0),
-    montantRisque: mockLitiges.filter(l => ["Opened", "VendeurResponse", "InMediation"].includes(l.statut)).reduce((s, l) => s + l.montant, 0),
+    montantTotalLitiges: litiges.reduce((s, l) => s + l.montant, 0),
+    montantRisque: retoursStats.refundExposure || 0,
     scoreReputation: 4.7,
   };
 
-  const filteredRetours = mockRetours.filter(r => {
+  const filteredRetours = retours.filter(r => {
     const matchSearch = r.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.produit.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.client.toLowerCase().includes(searchQuery.toLowerCase());
@@ -326,7 +323,7 @@ export function RetoursLitiges() {
     return matchSearch && matchStatus;
   });
 
-  const filteredLitiges = mockLitiges.filter(l => {
+  const filteredLitiges = litiges.filter(l => {
     const matchSearch = l.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.produit.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.plaignant.toLowerCase().includes(searchQuery.toLowerCase());
@@ -334,17 +331,36 @@ export function RetoursLitiges() {
     return matchSearch && matchStatus;
   });
 
-  const handleApproveRetour = (retour: Retour) => {
-    toast({ title: "Retour approuvé", description: `Le retour ${retour.id} a été approuvé. Le client sera notifié pour l'expédition.` });
+  const handleApproveRetour = async (retour: Retour) => {
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.approve(retour.apiId);
+      toast({ title: "Retour approuvé", description: `Le retour ${retour.id} a été approuvé. Le client sera notifié pour l'expédition.` });
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de l'approbation.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
-  const handleRejectRetour = (retour: Retour) => {
+  const handleRejectRetour = async (retour: Retour) => {
     if (!motifRefus) {
       toast({ title: "Motif requis", description: "Veuillez indiquer le motif du refus.", variant: "destructive" });
       return;
     }
-    toast({ title: "Retour refusé", description: `Le retour ${retour.id} a été refusé. Le client peut escalader vers un litige.` });
-    setMotifRefus("");
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.reject(retour.apiId, motifRefus);
+      toast({ title: "Retour refusé", description: `Le retour ${retour.id} a été refusé. Le client peut escalader vers un litige.` });
+      setMotifRefus("");
+      setShowReponseDialog(false);
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec du refus.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   const handleConfirmReception = (retour: Retour) => {
@@ -355,24 +371,81 @@ export function RetoursLitiges() {
     toast({ title: "Inspection terminée", description: `L'inspection du retour ${retour.id} est enregistrée.` });
   };
 
-  const handleProcessRefund = (retour: Retour, montant: number) => {
-    toast({ title: "Remboursement initié", description: `Remboursement de ${montant.toLocaleString()} FCFA en cours pour ${retour.id}.` });
+  const handleProcessRefund = async (retour: Retour, montant: number) => {
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.refund(retour.apiId, montant);
+      toast({ title: "Remboursement initié", description: `Remboursement de ${montant.toLocaleString()} FCFA effectué pour ${retour.id}.` });
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec du remboursement.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
-  const handleSendResponse = () => {
-    if (!newMessage.trim()) return;
-    toast({ title: "Réponse envoyée", description: "Votre message a été transmis." });
-    setNewMessage("");
+  const handleCloseRetour = async (retour: Retour) => {
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.close(retour.apiId);
+      toast({ title: "Retour clôturé", description: `Le dossier ${retour.id} a été clôturé.` });
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de la clôture.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
-  const handleAcceptMediation = () => {
-    toast({ title: "Proposition acceptée", description: "Vous avez accepté la proposition de médiation." });
-    setShowMediationDialog(false);
+  // Ouvre le dialog d'un litige et récupère son détail (messages) depuis l'API.
+  const openLitige = (litige: Litige) => {
+    setSelectedLitige(litige);
+    setShowMediationDialog(true);
+    litigesApi.getVendorById(litige.apiId)
+      .then((full) => setSelectedLitige(mapLitige(full)))
+      .catch(() => { /* on garde les infos de la liste */ });
   };
 
-  const handleContestMediation = () => {
-    toast({ title: "Contestation enregistrée", description: "Votre contestation a été transmise au médiateur." });
+  const refreshSelectedLitige = (apiId: string) => {
+    litigesApi.getVendorById(apiId)
+      .then((full) => setSelectedLitige(mapLitige(full)))
+      .catch(() => {});
   };
+
+  const handleSendResponse = async () => {
+    if (!newMessage.trim() || !selectedLitige) return;
+    setLitigeActionLoading(true);
+    try {
+      await litigesApi.reply(selectedLitige.apiId, newMessage, litigeProof);
+      toast({ title: "Réponse envoyée", description: "Votre message a été transmis." });
+      setNewMessage("");
+      setLitigeProof([]);
+      refreshSelectedLitige(selectedLitige.apiId);
+      loadLitiges();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de l'envoi.", variant: "destructive" });
+    } finally {
+      setLitigeActionLoading(false);
+    }
+  };
+
+  const updateLitigeStatus = async (status: LitigeStatusApi, comment: string, successMsg: string) => {
+    if (!selectedLitige) return;
+    setLitigeActionLoading(true);
+    try {
+      await litigesApi.updateStatus(selectedLitige.apiId, status, comment);
+      toast({ title: successMsg });
+      setShowMediationDialog(false);
+      loadLitiges();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de la mise à jour.", variant: "destructive" });
+    } finally {
+      setLitigeActionLoading(false);
+    }
+  };
+
+  const handleAcceptMediation = () => updateLitigeStatus("Résolu", "Proposition de médiation acceptée.", "Proposition acceptée");
+  const handleContestMediation = () => updateLitigeStatus("En médiation", "Le vendeur conteste la proposition.", "Contestation enregistrée");
 
   const renderRetourProgress = (statut: RetourStatus) => {
     const steps = ["Demandé", "Approuvé", "En transit", "Reçu", "Inspecté", "Remboursé"];
@@ -479,7 +552,7 @@ export function RetoursLitiges() {
         <TabsList>
           <TabsTrigger value="retours" className="gap-2">
             <RotateCcw className="w-4 h-4" />
-            Retours ({mockRetours.length})
+            Retours ({retours.length})
             {kpis.retoursATraiter > 0 && (
               <Badge className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-red-500 text-white text-xs">
                 {kpis.retoursATraiter}
@@ -488,7 +561,7 @@ export function RetoursLitiges() {
           </TabsTrigger>
           <TabsTrigger value="litiges" className="gap-2">
             <Scale className="w-4 h-4" />
-            Litiges ({mockLitiges.length})
+            Litiges ({litiges.length})
             {kpis.litigesAttente > 0 && (
               <Badge className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-amber-500 text-white text-xs">
                 {kpis.litigesAttente}
@@ -521,6 +594,24 @@ export function RetoursLitiges() {
             </CardContent>
           </Card>
 
+          {retoursLoading ? (
+            <Card><CardContent className="py-12 flex items-center justify-center text-muted-foreground">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement des retours...
+            </CardContent></Card>
+          ) : retoursError ? (
+            <Card><CardContent className="py-12 text-center">
+              <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+              <p className="text-sm text-muted-foreground mb-4">{retoursError}</p>
+              <Button variant="outline" onClick={loadRetours}><RefreshCw className="w-4 h-4 mr-2" />Réessayer</Button>
+            </CardContent></Card>
+          ) : filteredRetours.length === 0 ? (
+            <Card><CardContent className="py-12 text-center">
+              <RotateCcw className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                {retours.length === 0 ? "Aucun retour pour le moment." : "Aucun retour ne correspond à vos filtres."}
+              </p>
+            </CardContent></Card>
+          ) : (
           <div className="space-y-4">
             {filteredRetours.map((retour) => {
               const status = retourStatusConfig[retour.statut];
@@ -571,13 +662,15 @@ export function RetoursLitiges() {
 
                     {/* Actions selon statut */}
                     <div className="flex items-center justify-end gap-2 border-t pt-3">
+                      {(() => { const busy = actionLoadingId === retour.apiId; return (
+                        <>
                       {retour.statut === "ReturnRequested" && (
                         <>
-                          <Button size="sm" className="gap-1" onClick={() => handleApproveRetour(retour)}>
-                            <CheckCircle2 className="w-3 h-3" />
+                          <Button size="sm" className="gap-1" disabled={busy} onClick={() => handleApproveRetour(retour)}>
+                            {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                             Approuver
                           </Button>
-                          <Button size="sm" variant="outline" className="gap-1" onClick={() => {
+                          <Button size="sm" variant="outline" className="gap-1" disabled={busy} onClick={() => {
                             setSelectedRetour(retour);
                             setShowReponseDialog(true);
                           }}>
@@ -586,39 +679,36 @@ export function RetoursLitiges() {
                           </Button>
                         </>
                       )}
-                      {retour.statut === "Approved" && (
-                        <Badge variant="secondary" className="text-xs">En attente du colis retour</Badge>
-                      )}
                       {retour.statut === "InTransit" && (
                         <Button size="sm" className="gap-1" onClick={() => handleConfirmReception(retour)}>
                           <Package className="w-3 h-3" />
                           Confirmer réception
                         </Button>
                       )}
-                      {retour.statut === "Received" && (
-                        <Button size="sm" className="gap-1" onClick={() => {
-                          setSelectedRetour(retour);
-                          setShowRetourDetail(true);
-                        }}>
-                          <Eye className="w-3 h-3" />
-                          Inspecter & décider
+                      {["Approved", "Received", "Inspected"].includes(retour.statut) && (
+                        <Button size="sm" className="gap-1" disabled={busy} onClick={() => handleProcessRefund(retour, retour.montantPropose || retour.montant)}>
+                          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CreditCard className="w-3 h-3" />}
+                          Rembourser ({(retour.montantPropose || retour.montant).toLocaleString()} FCFA)
                         </Button>
                       )}
-                      {retour.statut === "Inspected" && (
-                        <Button size="sm" className="gap-1" onClick={() => handleProcessRefund(retour, retour.montantPropose || retour.montant)}>
-                          <CreditCard className="w-3 h-3" />
-                          Procéder au remboursement ({(retour.montantPropose || retour.montant).toLocaleString()} FCFA)
+                      {["Refunded", "PartialRefund"].includes(retour.statut) && (
+                        <Button size="sm" variant="outline" className="gap-1" disabled={busy} onClick={() => handleCloseRetour(retour)}>
+                          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                          Clôturer
                         </Button>
                       )}
                       <Button size="sm" variant="ghost" onClick={() => { setSelectedRetour(retour); setShowRetourDetail(true); }}>
                         <Eye className="w-4 h-4" />
                       </Button>
+                        </>
+                      ); })()}
                     </div>
                   </CardContent>
                 </Card>
               );
             })}
           </div>
+          )}
         </TabsContent>
 
         {/* ===== TAB LITIGES ===== */}
@@ -645,11 +735,29 @@ export function RetoursLitiges() {
             </CardContent>
           </Card>
 
+          {litigesLoading ? (
+            <Card><CardContent className="py-12 flex items-center justify-center text-muted-foreground">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement des litiges...
+            </CardContent></Card>
+          ) : litigesError ? (
+            <Card><CardContent className="py-12 text-center">
+              <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+              <p className="text-sm text-muted-foreground mb-4">{litigesError}</p>
+              <Button variant="outline" onClick={loadLitiges}><RefreshCw className="w-4 h-4 mr-2" />Réessayer</Button>
+            </CardContent></Card>
+          ) : filteredLitiges.length === 0 ? (
+            <Card><CardContent className="py-12 text-center">
+              <Scale className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                {litiges.length === 0 ? "Aucun litige pour le moment." : "Aucun litige ne correspond à vos filtres."}
+              </p>
+            </CardContent></Card>
+          ) : (
           <div className="space-y-4">
             {filteredLitiges.map((litige) => {
               const status = litigeStatusConfig[litige.statut];
               const StatusIcon = status.icon;
-              const needsResponse = litige.statut === "VendeurResponse";
+              const needsResponse = ["VendeurResponse", "Opened"].includes(litige.statut);
               const inMediation = litige.statut === "InMediation";
 
               return (
@@ -716,30 +824,18 @@ export function RetoursLitiges() {
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-2 border-t pt-3">
                       {needsResponse && (
-                        <Button size="sm" className="gap-1" onClick={() => {
-                          setSelectedLitige(litige);
-                          setShowMediationDialog(true);
-                        }}>
+                        <Button size="sm" className="gap-1" onClick={() => openLitige(litige)}>
                           <Send className="w-3 h-3" />
                           Répondre
                         </Button>
                       )}
                       {inMediation && (
-                        <>
-                          <Button size="sm" className="gap-1" onClick={handleAcceptMediation}>
-                            <ThumbsUp className="w-3 h-3" />
-                            Accepter
-                          </Button>
-                          <Button size="sm" variant="outline" className="gap-1" onClick={handleContestMediation}>
-                            <ThumbsDown className="w-3 h-3" />
-                            Contester
-                          </Button>
-                        </>
+                        <Button size="sm" className="gap-1" onClick={() => openLitige(litige)}>
+                          <Scale className="w-3 h-3" />
+                          Médiation
+                        </Button>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => {
-                        setSelectedLitige(litige);
-                        setShowMediationDialog(true);
-                      }}>
+                      <Button size="sm" variant="ghost" onClick={() => openLitige(litige)}>
                         <Eye className="w-4 h-4" />
                       </Button>
                     </div>
@@ -748,6 +844,7 @@ export function RetoursLitiges() {
               );
             })}
           </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -1000,14 +1097,29 @@ export function RetoursLitiges() {
                       onChange={(e) => setNewMessage(e.target.value)}
                     />
                     <div className="flex items-center justify-between">
-                      <Button variant="outline" size="sm" className="gap-1">
-                        <Upload className="w-4 h-4" />
-                        Joindre preuve
-                      </Button>
+                      <label className="inline-flex">
+                        <input
+                          type="file"
+                          multiple
+                          accept=".pdf,.jpg,.jpeg,.png,.webp"
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            e.target.value = "";
+                            if (files.length) setLitigeProof((prev) => [...prev, ...files]);
+                          }}
+                        />
+                        <Button variant="outline" size="sm" className="gap-1" asChild>
+                          <span>
+                            <Upload className="w-4 h-4" />
+                            Joindre preuve{litigeProof.length > 0 ? ` (${litigeProof.length})` : ""}
+                          </span>
+                        </Button>
+                      </label>
                       <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => setShowMediationDialog(false)}>Fermer</Button>
-                        <Button className="gap-1" onClick={handleSendResponse}>
-                          <Send className="w-4 h-4" />
+                        <Button variant="outline" disabled={litigeActionLoading} onClick={() => setShowMediationDialog(false)}>Fermer</Button>
+                        <Button className="gap-1" disabled={litigeActionLoading || !newMessage.trim()} onClick={handleSendResponse}>
+                          {litigeActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                           Envoyer
                         </Button>
                       </div>

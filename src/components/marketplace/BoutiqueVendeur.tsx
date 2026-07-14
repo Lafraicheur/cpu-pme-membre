@@ -133,7 +133,7 @@ export function BoutiqueVendeur() {
             slogan: boutique.slogan,
             telephone: boutique.phone,
             email: boutique.email,
-            siteWeb: boutique.website ?? "",
+            siteWeb: boutique.vendor?.website_url ?? boutique.website ?? "",
             regionsServies: [],
             delaiPreparation: String(boutique.preparationDelayHours),
             politiqueRetour: boutique.returnPolicy,
@@ -202,13 +202,15 @@ export function BoutiqueVendeur() {
         </div>
       )}
       {/* Header avec stats */}
-      <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
+      {/* <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-secondary/5">
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row gap-6">
-            {/* Logo et infos principales */}
             <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-5xl shadow-lg">
-                {boutiqueData.logo}
+              <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-5xl shadow-lg overflow-hidden">
+                {boutiqueData.logo
+                  ? <img src={boutiqueData.logo} alt={boutiqueData.nom} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  : <Store className="w-8 h-8 text-muted-foreground/40" />
+                }
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -229,7 +231,6 @@ export function BoutiqueVendeur() {
               </div>
             </div>
 
-            {/* Stats rapides */}
             <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 md:ml-auto">
               <div className="text-center p-3 rounded-lg bg-background/80">
                 <p className="text-2xl font-bold text-primary">{mockStats.produitsActifs}</p>
@@ -250,7 +251,6 @@ export function BoutiqueVendeur() {
             </div>
           </div>
 
-          {/* Barre de complétion */}
           <div className="mt-6 p-4 rounded-lg bg-background/80">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Profil boutique complété à {completionScore}%</span>
@@ -263,7 +263,7 @@ export function BoutiqueVendeur() {
             <Progress value={completionScore} className="h-2" />
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       <Tabs defaultValue="profil" className="space-y-6">
         <TabsList>
@@ -576,8 +576,11 @@ export function BoutiqueVendeur() {
 
                   <div className="flex items-center gap-4">
                     <div className="relative">
-                      <div className="w-20 h-20 rounded-xl bg-background flex items-center justify-center text-5xl shadow-lg ring-2 ring-primary/30">
-                        {boutiqueData.logo}
+                      <div className="w-20 h-20 rounded-xl bg-background flex items-center justify-center text-5xl shadow-lg ring-2 ring-primary/30 overflow-hidden">
+                        {boutiqueData.logo
+                          ? <img src={boutiqueData.logo} alt={boutiqueData.nom} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                          : <Store className="w-8 h-8 text-muted-foreground/40" />
+                        }
                       </div>
                       {/* Petit badge certifié sur l'avatar */}
                       <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md ring-2 ring-background">
