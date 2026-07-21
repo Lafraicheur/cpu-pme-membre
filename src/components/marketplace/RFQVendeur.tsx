@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,13 +31,15 @@ import {
   XCircle,
   Calendar,
   MapPin,
-  Package,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { rfqApi, type RFQVendorReceived, type RFQVendorStats } from "@/lib/api";
 
 type RFQStatus = "Received" | "Quoted" | "Negotiating" | "Won" | "Lost" | "Expired";
 
 interface RFQ {
+  apiId: string;
   id: string;
   demandeur: string;
   besoin: string;
@@ -51,57 +53,33 @@ interface RFQ {
   details?: string;
 }
 
-const mockRFQs: RFQ[] = [
-  {
-    id: "RFQ-2024-001",
-    demandeur: "Hôtel Sofitel Abidjan",
-    besoin: "Cacao en poudre premium",
-    quantite: 500,
-    unite: "kg",
-    zone: "Abidjan",
-    deadline: "2024-02-15",
-    dateReception: "2024-01-20",
-    status: "Received",
-    budget: 1500000,
-    details: "Cacao 100% pur, certification bio souhaitée. Livraison hebdomadaire.",
-  },
-  {
-    id: "RFQ-2024-002",
-    demandeur: "Supermarché Carrefour",
-    besoin: "Huile de palme raffinée",
-    quantite: 1000,
-    unite: "litres",
-    zone: "Abidjan / Bingerville",
-    deadline: "2024-02-01",
-    dateReception: "2024-01-18",
-    status: "Quoted",
-    budget: 2000000,
-  },
-  {
-    id: "RFQ-2024-003",
-    demandeur: "Restaurant Chez Tante",
-    besoin: "Attiéké frais",
-    quantite: 100,
-    unite: "kg/semaine",
-    zone: "Abidjan",
-    deadline: "2024-01-30",
-    dateReception: "2024-01-15",
-    status: "Negotiating",
-    details: "Contrat longue durée possible.",
-  },
-  {
-    id: "RFQ-2024-004",
-    demandeur: "Export CI",
-    besoin: "Anacarde brut",
-    quantite: 50,
-    unite: "tonnes",
-    zone: "Korhogo",
-    deadline: "2024-01-25",
-    dateReception: "2024-01-10",
-    status: "Won",
-    budget: 9000000,
-  },
-];
+/** Mappe le statut renvoyé par l'API vers le statut d'affichage. */
+function mapRFQStatus(apiStatus: string): RFQStatus {
+  const s = (apiStatus || "").toLowerCase();
+  if (s.includes("négoc") || s.includes("negoc")) return "Negotiating";
+  if (s.includes("gagn") || s.includes("won") || s.includes("accept")) return "Won";
+  if (s.includes("perd") || s.includes("lost") || s.includes("refus") || s.includes("rejet")) return "Lost";
+  if (s.includes("expir")) return "Expired";
+  if (s.includes("devis") || s.includes("répond") || s.includes("repond") || s.includes("quot") || s.includes("attente")) return "Quoted";
+  return "Received";
+}
+
+function mapReceived(r: RFQVendorReceived): RFQ {
+  return {
+    apiId: r.id,
+    id: r.rfqNumber || r.id,
+    demandeur: r.buyer?.name || "Acheteur",
+    besoin: r.productNeed,
+    quantite: Number(r.quantity) || 0,
+    unite: r.unit,
+    zone: r.deliveryZone,
+    deadline: r.deadline,
+    dateReception: r.createdAt ? r.createdAt.split("T")[0] : "",
+    status: mapRFQStatus(r.status),
+    budget: r.estimatedBudget ?? undefined,
+    details: r.specifications ?? undefined,
+  };
+}
 
 const statusConfig: Record<RFQStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
   Received: { label: "Reçue", color: "text-blue-500", icon: Clock, bgColor: "bg-blue-500/10" },
@@ -124,7 +102,50 @@ export function RFQVendeur() {
     conditions: "",
   });
 
-  const filteredRFQs = mockRFQs.filter(rfq => {
+  const [rfqs, setRfqs] = useState<RFQ[]>([]);
+  const [stats, setStats] = useState<RFQVendorStats>({ aRepondre: 0, enNegociation: 0, gagnees: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const loadReceived = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    rfqApi.getVendorReceived()
+      .then((res) => {
+        setStats(res.stats ?? { aRepondre: 0, enNegociation: 0, gagnees: 0 });
+        setRfqs((res.data ?? []).map(mapReceived));
+      })
+      .catch(() => setError("Impossible de charger les demandes de devis."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { loadReceived(); }, [loadReceived]);
+
+  const handleSendQuote = async () => {
+    if (!selectedRFQ) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await rfqApi.respondToReceived(selectedRFQ.apiId, {
+        price: Number(quoteData.prix) || 0,
+        deliveryDays: parseInt(quoteData.delai, 10) || 0,
+        validityDays: parseInt(quoteData.validite, 10) || 15,
+        conditions: quoteData.conditions,
+      });
+      setShowQuoteDialog(false);
+      setSelectedRFQ(null);
+      setQuoteData({ prix: "", delai: "", validite: "15", conditions: "" });
+      loadReceived();
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : "Erreur lors de l'envoi du devis.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredRFQs = rfqs.filter(rfq => {
     const matchesSearch = rfq.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rfq.demandeur.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rfq.besoin.toLowerCase().includes(searchQuery.toLowerCase());
@@ -133,9 +154,9 @@ export function RFQVendeur() {
   });
 
   const rfqsByStatus = {
-    aRepondre: mockRFQs.filter(r => r.status === "Received").length,
-    enNegociation: mockRFQs.filter(r => ["Quoted", "Negotiating"].includes(r.status)).length,
-    gagnees: mockRFQs.filter(r => r.status === "Won").length,
+    aRepondre: stats.aRepondre,
+    enNegociation: stats.enNegociation,
+    gagnees: stats.gagnees,
   };
 
   return (
@@ -218,6 +239,28 @@ export function RFQVendeur() {
           <CardDescription>{filteredRFQs.length} demande(s)</CardDescription>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
+              Chargement des demandes...
+            </div>
+          ) : error ? (
+            <div className="py-12 text-center">
+              <AlertCircle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+              <p className="text-sm text-muted-foreground mb-4">{error}</p>
+              <Button variant="outline" onClick={loadReceived}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Réessayer
+              </Button>
+            </div>
+          ) : filteredRFQs.length === 0 ? (
+            <div className="py-12 text-center">
+              <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                {rfqs.length === 0 ? "Aucune demande de devis reçue pour le moment." : "Aucune demande ne correspond à vos filtres."}
+              </p>
+            </div>
+          ) : (
           <div className="space-y-3">
             {filteredRFQs.map((rfq) => {
               const status = statusConfig[rfq.status];
@@ -304,6 +347,7 @@ export function RFQVendeur() {
               );
             })}
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -378,13 +422,21 @@ export function RFQVendeur() {
               />
             </div>
 
+            {submitError && (
+              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {submitError}
+              </div>
+            )}
+
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setShowQuoteDialog(false)}>
+              <Button variant="outline" disabled={isSubmitting} onClick={() => setShowQuoteDialog(false)}>
                 Annuler
               </Button>
-              <Button onClick={() => setShowQuoteDialog(false)}>
-                <Send className="w-4 h-4 mr-1" />
-                Envoyer le devis
+              <Button onClick={handleSendQuote} disabled={isSubmitting || !quoteData.prix || !quoteData.delai}>
+                {isSubmitting
+                  ? <><RefreshCw className="w-4 h-4 mr-1 animate-spin" />Envoi...</>
+                  : <><Send className="w-4 h-4 mr-1" />Envoyer le devis</>}
               </Button>
             </div>
           </div>

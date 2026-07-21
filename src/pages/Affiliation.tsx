@@ -5,13 +5,11 @@ import { AffiliationOverview } from "@/components/affiliation/AffiliationOvervie
 import { AffiliationWizard } from "@/components/affiliation/AffiliationWizard";
 import { AffiliationHistory } from "@/components/affiliation/AffiliationHistory";
 import { AffiliationSettings } from "@/components/affiliation/AffiliationSettings";
-import { useAuth } from "@/contexts/AuthContext";
 
 type ViewMode = "overview" | "declare" | "change" | "history" | "settings";
 
 export default function Affiliation() {
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
-  const { isAuthenticated } = useAuth();
 
   const handleDeclare = () => setViewMode("declare");
   const handleChangeRequest = () => setViewMode("change");
@@ -37,7 +35,6 @@ export default function Affiliation() {
               onChangeRequest={handleChangeRequest}
               onViewHistory={handleViewHistory}
               onSettings={handleSettings}
-              isAccountActive={isAuthenticated}
             />
           )}
 

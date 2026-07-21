@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,166 +32,104 @@ import {
   MapPin,
   Package,
   Upload,
+  Loader2,
+  AlertCircle,
+  X,
+  Pencil,
+  MessageSquare,
+  ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { regions } from "@/data/regions";
-import { getSectorN1List } from "@/data/sectors";
+import { rfqApi, regionsApi, type RFQApiType, type Region, type RFQFromAPI, type RFQOffer } from "@/lib/api";
 
-type RFQStatus = "Draft" | "Published" | "OffersReceived" | "Accepted" | "Cancelled" | "Expired" | "ProformaSent" | "DepositPending" | "InProduction";
 type RFQType = "b2b_volume" | "service" | "custom_product" | "variable_price" | "standard";
 
-interface RFQ {
-  id: string;
-  besoin: string;
-  quantite: number;
-  unite: string;
-  zone: string;
-  deadline: string;
-  dateCreation: string;
-  status: RFQStatus;
-  budget?: number;
-  offresRecues: number;
-  type: RFQType;
-  recurrence?: string;
-  options?: string[];
-  proformaRequired?: boolean;
-  depositPercent?: number;
-}
+const RFQ_API_CATEGORIES = [
+  "Secteur Primaire : Agriculture, Élevage, Pêche",
+  "Secteur Secondaire : Industrie, BTP, Énergie",
+  "Secteur Tertiaire : Commerce, Services, Transport",
+  "Économie Numérique & Innovation",
+  "Artisanat & Industries Créatives",
+] as const;
 
-const mockRFQs: RFQ[] = [
-  {
-    id: "RFQ-2024-A01",
-    besoin: "Cacao en poudre premium",
-    quantite: 500,
-    unite: "kg",
-    zone: "Abidjan",
-    deadline: "2024-02-15",
-    dateCreation: "2024-01-20",
-    status: "OffersReceived",
-    budget: 1500000,
-    offresRecues: 3,
-    type: "b2b_volume",
-    recurrence: "mensuel",
-  },
-  {
-    id: "RFQ-2024-A02",
-    besoin: "Transport frigorifique",
-    quantite: 5,
-    unite: "trajets",
-    zone: "Abidjan - San-Pédro",
-    deadline: "2024-02-01",
-    dateCreation: "2024-01-18",
-    status: "Published",
-    offresRecues: 0,
-    type: "variable_price",
-    options: ["Camion 5T", "Camion 10T", "Express 24h"],
-  },
-  {
-    id: "RFQ-2024-A03",
-    besoin: "Formation qualité ISO 9001",
-    quantite: 1,
-    unite: "session",
-    zone: "Abidjan",
-    deadline: "2024-01-25",
-    dateCreation: "2024-01-10",
-    status: "Accepted",
-    budget: 500000,
-    offresRecues: 2,
-    type: "service",
-  },
-  {
-    id: "RFQ-2024-A04",
-    besoin: "Impression cartons personnalisés",
-    quantite: 1000,
-    unite: "pièces",
-    zone: "Abidjan",
-    deadline: "2024-02-20",
-    dateCreation: "2024-01-22",
-    status: "ProformaSent",
-    budget: 800000,
-    offresRecues: 2,
-    type: "custom_product",
-    proformaRequired: true,
-    depositPercent: 50,
-  },
-  {
-    id: "RFQ-2024-A05",
-    besoin: "Maintenance équipements industriels",
-    quantite: 12,
-    unite: "interventions/an",
-    zone: "Zone Industrielle Yopougon",
-    deadline: "2024-03-01",
-    dateCreation: "2024-01-25",
-    status: "DepositPending",
-    budget: 3600000,
-    offresRecues: 1,
-    type: "service",
-    recurrence: "annuel",
-    proformaRequired: true,
-    depositPercent: 30,
-  },
-];
-
-interface Offer {
-  id: string;
-  vendeur: string;
-  prix: number;
-  delai: string;
-  conditions: string;
-  dateOffre: string;
-}
-
-const mockOffers: Offer[] = [
-  {
-    id: "OFF-001",
-    vendeur: "Coopérative Aboisso Cacao",
-    prix: 1400000,
-    delai: "7 jours",
-    conditions: "Paiement 50% à la commande, 50% à livraison",
-    dateOffre: "2024-01-22",
-  },
-  {
-    id: "OFF-002",
-    vendeur: "Chocolaterie du Sud",
-    prix: 1550000,
-    delai: "5 jours",
-    conditions: "Livraison gratuite, certifié bio",
-    dateOffre: "2024-01-23",
-  },
-  {
-    id: "OFF-003",
-    vendeur: "Cacao Express",
-    prix: 1350000,
-    delai: "10 jours",
-    conditions: "Prix négociable pour commandes régulières",
-    dateOffre: "2024-01-24",
-  },
-];
-
-const statusConfig: Record<RFQStatus, { label: string; color: string; icon: typeof Clock }> = {
-  Draft: { label: "Brouillon", color: "text-muted-foreground", icon: FileText },
-  Published: { label: "Publiée", color: "text-blue-500", icon: Send },
-  OffersReceived: { label: "Offres reçues", color: "text-primary", icon: DollarSign },
-  Accepted: { label: "Acceptée", color: "text-green-500", icon: CheckCircle2 },
-  Cancelled: { label: "Annulée", color: "text-destructive", icon: XCircle },
-  Expired: { label: "Expirée", color: "text-muted-foreground", icon: Clock },
-  ProformaSent: { label: "Proforma reçue", color: "text-amber-500", icon: FileText },
-  DepositPending: { label: "Acompte en attente", color: "text-purple-500", icon: DollarSign },
-  InProduction: { label: "En production", color: "text-cyan-500", icon: Package },
+const TYPE_TO_API: Record<RFQType, RFQApiType> = {
+  b2b_volume: "B2B Volume",
+  service: "Service",
+  custom_product: "Sur mesure",
+  variable_price: "Prix variable",
+  standard: "Standard",
 };
 
-const typeConfig: Record<RFQType, { label: string; color: string; description: string }> = {
-  b2b_volume: { label: "B2B Volume", color: "bg-blue-500/10 text-blue-600", description: "Achats en lots/volumes" },
-  service: { label: "Service", color: "bg-purple-500/10 text-purple-600", description: "Prestation, maintenance, consulting" },
-  custom_product: { label: "Sur mesure", color: "bg-amber-500/10 text-amber-600", description: "Confection, fabrication" },
-  variable_price: { label: "Prix variable", color: "bg-green-500/10 text-green-600", description: "Transport, options, délais" },
-  standard: { label: "Standard", color: "bg-gray-500/10 text-gray-600", description: "Demande classique" },
+
+
+type StatusDisplay = { label: string; color: string; icon: typeof Clock };
+const statusConfig: Record<string, StatusDisplay> = {
+  "Brouillon":          { label: "Brouillon",          color: "text-muted-foreground", icon: FileText },
+  "Publiée":            { label: "Publiée",             color: "text-blue-500",         icon: Send },
+  "Offres reçues":      { label: "Offres reçues",       color: "text-primary",          icon: DollarSign },
+  "Acceptée":           { label: "Acceptée",            color: "text-green-500",        icon: CheckCircle2 },
+  "Annulée":            { label: "Annulée",             color: "text-destructive",      icon: XCircle },
+  "Clôturée":           { label: "Clôturée",            color: "text-muted-foreground", icon: CheckCircle2 },
+  "Expirée":            { label: "Expirée",             color: "text-muted-foreground", icon: Clock },
+  "Proforma reçue":     { label: "Proforma reçue",      color: "text-amber-500",        icon: FileText },
+  "Acompte en attente": { label: "Acompte en attente",  color: "text-purple-500",       icon: DollarSign },
+};
+const defaultStatus: StatusDisplay = { label: "Inconnu", color: "text-muted-foreground", icon: Clock };
+
+type TypeDisplay = { label: string; color: string; description: string };
+const typeConfig: Record<string, TypeDisplay> = {
+  "B2B Volume":  { label: "B2B Volume",  color: "bg-blue-500/10 text-blue-600",   description: "Achats en lots/volumes" },
+  "Service":     { label: "Service",     color: "bg-purple-500/10 text-purple-600", description: "Prestation, maintenance, consulting" },
+  "Sur mesure":  { label: "Sur mesure",  color: "bg-amber-500/10 text-amber-600", description: "Confection, fabrication" },
+  "Prix variable":{ label: "Prix variable", color: "bg-green-500/10 text-green-600", description: "Transport, options, délais" },
+  "Standard":    { label: "Standard",    color: "bg-gray-500/10 text-gray-600",   description: "Demande classique" },
+};
+const defaultType: TypeDisplay = { label: "Standard", color: "bg-gray-500/10 text-gray-600", description: "" };
+
+const typeConfigForm: Record<RFQType, { label: string; color: string; description: string }> = {
+  b2b_volume:    { label: "B2B Volume",   color: "bg-blue-500/10 text-blue-600",    description: "Achats en lots/volumes" },
+  service:       { label: "Service",      color: "bg-purple-500/10 text-purple-600", description: "Prestation, maintenance, consulting" },
+  custom_product:{ label: "Sur mesure",   color: "bg-amber-500/10 text-amber-600",  description: "Confection, fabrication" },
+  variable_price:{ label: "Prix variable",color: "bg-green-500/10 text-green-600",  description: "Transport, options, délais" },
+  standard:      { label: "Standard",     color: "bg-gray-500/10 text-gray-600",    description: "Demande classique" },
 };
 
 export function RFQAcheteur() {
+  const [rfqs, setRfqs] = useState<RFQFromAPI[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showOffersDialog, setShowOffersDialog] = useState(false);
-  const [selectedRFQ, setSelectedRFQ] = useState<RFQ | null>(null);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedRFQ, setSelectedRFQ] = useState<RFQFromAPI | null>(null);
+  const [editData, setEditData] = useState<Partial<{
+    productNeed: string; category: string; quantity: string; unit: string;
+    deliveryZone: string; deadline: string; estimatedBudget: string; specifications: string; type: string;
+  }>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [offers, setOffers] = useState<RFQOffer[]>([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
+  const [selectedOffer, setSelectedOffer] = useState<RFQOffer | null>(null);
+
+  // Dialog négocier
+  const [showNegotiateDialog, setShowNegotiateDialog] = useState(false);
+  const [negotiateCounterPrice, setNegotiateCounterPrice] = useState("");
+  const [negotiateMessage, setNegotiateMessage] = useState("");
+  const [isNegotiating, setIsNegotiating] = useState(false);
+  const [negotiateError, setNegotiateError] = useState<string | null>(null);
+
+  // Dialog rejeter
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
+
+  // Accepter offre
+  const [acceptingOfferId, setAcceptingOfferId] = useState<string | null>(null);
+
+  // Proforma
+  const [proformaActionId, setProformaActionId] = useState<string | null>(null);
   const [rfqData, setRfqData] = useState({
     besoin: "",
     categorie: "",
@@ -199,8 +137,8 @@ export function RFQAcheteur() {
     unite: "",
     zone: "",
     deadline: "",
-    budget: "",
-    details: "",
+    estimatedBudget: "",
+    specifications: "",
     type: "standard" as RFQType,
     recurrence: "",
     options: [] as string[],
@@ -208,8 +146,59 @@ export function RFQAcheteur() {
     depositPercent: "30",
   });
   const [newOption, setNewOption] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [apiRegions, setApiRegions] = useState<Region[]>([]);
 
-  const sectorsN1 = getSectorN1List();
+  const handleSubmit = async (publishNow: boolean) => {
+    setSubmitError(null);
+    const qty = parseFloat(rfqData.quantite);
+    if (isNaN(qty) || qty < 0.01) {
+      setSubmitError("La quantité doit être un nombre supérieur à 0.");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await rfqApi.create({
+        title: rfqData.besoin,
+        productNeed: rfqData.besoin,
+        description: rfqData.specifications || undefined,
+        category: rfqData.categorie,
+        quantity: qty,
+        unit: rfqData.unite,
+        deadline: new Date(rfqData.deadline).toISOString(),
+        type: TYPE_TO_API[rfqData.type],
+        deliveryZone: rfqData.zone,
+        publishNow,
+        files: files.length > 0 ? files : undefined,
+      });
+      setSubmitSuccess(true);
+      setShowCreateDialog(false);
+      rfqApi.getAll().then(setRfqs).catch(() => {});
+      setRfqData({
+        besoin: "", categorie: "", quantite: "", unite: "", zone: "",
+        deadline: "", estimatedBudget: "", specifications: "", type: "standard",
+        recurrence: "", options: [], proformaRequired: false, depositPercent: "30",
+      });
+      setFiles([]);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Erreur lors de la création");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  useEffect(() => {
+    regionsApi.getAll().then(setApiRegions).catch(() => {});
+    rfqApi.getAll()
+      .then(setRfqs)
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -227,8 +216,23 @@ export function RFQAcheteur() {
         </Button>
       </div>
 
+      {submitSuccess && (
+        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          Votre demande de devis a été publiée avec succès.
+          <button className="ml-auto hover:opacity-70" onClick={() => setSubmitSuccess(false)}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Liste RFQ */}
-      {mockRFQs.length === 0 ? (
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Chargement...
+        </div>
+      ) : rfqs.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -243,21 +247,21 @@ export function RFQAcheteur() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {mockRFQs.map((rfq) => {
-            const status = statusConfig[rfq.status];
+          {rfqs.map((rfq) => {
+            const status = statusConfig[rfq.status] ?? defaultStatus;
             const StatusIcon = status.icon;
-            const typeInfo = typeConfig[rfq.type];
+            const typeInfo = typeConfig[rfq.type] ?? defaultType;
 
             return (
               <Card key={rfq.id} className="flex flex-col">
                 <CardContent className="p-4 flex flex-col flex-1">
-                  {/* En-tête : ID + Statut + Type */}
+                  {/* En-tête : N° RFQ + Statut + Type */}
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className="p-2 rounded-lg bg-muted shrink-0">
                         <StatusIcon className={cn("w-4 h-4", status.color)} />
                       </div>
-                      <span className="font-mono text-sm font-medium">{rfq.id}</span>
+                      <span className="font-mono text-sm font-medium">{rfq.rfqNumber}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Badge variant="outline" className={cn("text-xs", status.color)}>
@@ -270,17 +274,17 @@ export function RFQAcheteur() {
                   </div>
 
                   {/* Besoin */}
-                  <p className="font-semibold mb-2 line-clamp-1">{rfq.besoin}</p>
+                  <p className="font-semibold mb-2 line-clamp-1">{rfq.productNeed}</p>
 
                   {/* Détails */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
                     <span className="flex items-center gap-1">
                       <Package className="w-3 h-3 shrink-0" />
-                      {rfq.quantite} {rfq.unite}
+                      {parseFloat(rfq.quantity).toLocaleString()} {rfq.unit}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 shrink-0" />
-                      {rfq.zone}
+                      {rfq.deliveryZone}
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 shrink-0" />
@@ -291,32 +295,68 @@ export function RFQAcheteur() {
                   {/* Budget + Offres */}
                   <div className="flex items-center justify-between mt-auto pt-3 border-t">
                     <div>
-                      {rfq.budget ? (
-                        <p className="font-bold text-primary">{rfq.budget.toLocaleString()} FCFA</p>
+                      {rfq.estimatedBudget ? (
+                        <p className="font-bold text-primary">{rfq.estimatedBudget.toLocaleString()} FCFA</p>
                       ) : (
                         <p className="text-sm text-muted-foreground">Budget non défini</p>
                       )}
-                      {rfq.offresRecues > 0 && (
+                      {rfq.offersCount > 0 && (
                         <Badge variant="default" className="mt-1">
-                          {rfq.offresRecues} offre(s)
+                          {rfq.offersCount} offre(s)
                         </Badge>
                       )}
                     </div>
                     <div className="flex gap-2">
-                      {rfq.offresRecues > 0 && (
+                      {rfq.status === "Brouillon" && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          disabled={publishingId === rfq.id}
+                          onClick={async () => {
+                            setPublishingId(rfq.id);
+                            try {
+                              await rfqApi.publish(rfq.id);
+                              rfqApi.getAll().then(setRfqs).catch(() => {});
+                            } catch {
+                              // silencieux, l'erreur peut être affichée plus tard
+                            } finally {
+                              setPublishingId(null);
+                            }
+                          }}
+                        >
+                          {publishingId === rfq.id
+                            ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            : <Send className="w-4 h-4 mr-1" />}
+                          Publier
+                        </Button>
+                      )}
+                      {rfq.offersCount > 0 && (
                         <Button
                           size="sm"
                           variant="default"
                           onClick={() => {
                             setSelectedRFQ(rfq);
+                            setOffers([]);
+                            setIsLoadingOffers(true);
                             setShowOffersDialog(true);
+                            rfqApi.getOffers(rfq.id)
+                              .then(setOffers)
+                              .catch(() => {})
+                              .finally(() => setIsLoadingOffers(false));
                           }}
                         >
                           <DollarSign className="w-4 h-4 mr-1" />
                           Offres
                         </Button>
                       )}
-                      <Button size="sm" variant="outline">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedRFQ(rfq);
+                          setShowDetailDialog(true);
+                        }}
+                      >
                         <Eye className="w-4 h-4" />
                       </Button>
                     </div>
@@ -342,7 +382,7 @@ export function RFQAcheteur() {
             <div className="space-y-2">
               <Label>Type de demande *</Label>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {Object.entries(typeConfig).map(([key, config]) => (
+                {Object.entries(typeConfigForm).map(([key, config]) => (
                   <div
                     key={key}
                     className={cn(
@@ -369,17 +409,17 @@ export function RFQAcheteur() {
             </div>
 
             <div className="space-y-2">
-              <Label>Catégorie</Label>
-              <Select 
-                value={rfqData.categorie} 
+              <Label>Catégorie *</Label>
+              <Select
+                value={rfqData.categorie}
                 onValueChange={(v) => setRfqData({ ...rfqData, categorie: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner" />
+                  <SelectValue placeholder="Sélectionner une catégorie" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sectorsN1.map((sector, idx) => (
-                    <SelectItem key={idx} value={sector.name}>{sector.name}</SelectItem>
+                  {RFQ_API_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -406,17 +446,17 @@ export function RFQAcheteur() {
                     <SelectValue placeholder="Unité" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="kg">Kilogramme</SelectItem>
-                    <SelectItem value="tonne">Tonne</SelectItem>
-                    <SelectItem value="litre">Litre</SelectItem>
-                    <SelectItem value="piece">Pièce</SelectItem>
-                    <SelectItem value="sac">Sac</SelectItem>
-                    <SelectItem value="carton">Carton</SelectItem>
-                    <SelectItem value="session">Session</SelectItem>
-                    <SelectItem value="heure">Heure</SelectItem>
-                    <SelectItem value="jour">Jour</SelectItem>
-                    <SelectItem value="intervention">Intervention</SelectItem>
-                    <SelectItem value="lot">Lot</SelectItem>
+                    <SelectItem value="Kilogramme">Kilogramme</SelectItem>
+                    <SelectItem value="Tonne">Tonne</SelectItem>
+                    <SelectItem value="Litre">Litre</SelectItem>
+                    <SelectItem value="Pièce">Pièce</SelectItem>
+                    <SelectItem value="Sac">Sac</SelectItem>
+                    <SelectItem value="Carton">Carton</SelectItem>
+                    <SelectItem value="Session">Session</SelectItem>
+                    <SelectItem value="Heure">Heure</SelectItem>
+                    <SelectItem value="Jour">Jour</SelectItem>
+                    <SelectItem value="Intervention">Intervention</SelectItem>
+                    <SelectItem value="Lot">Lot</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -490,16 +530,18 @@ export function RFQAcheteur() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Zone de livraison *</Label>
-                <Select 
-                  value={rfqData.zone} 
+                <Select
+                  value={rfqData.zone}
                   onValueChange={(v) => setRfqData({ ...rfqData, zone: v })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Région" />
+                    <SelectValue placeholder="Sélectionner une région" />
                   </SelectTrigger>
                   <SelectContent>
-                    {regions.map(region => (
-                      <SelectItem key={region} value={region}>{region}</SelectItem>
+                    {apiRegions.map((region) => (
+                      <SelectItem key={region.id} value={region.name}>
+                        {region.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -516,13 +558,13 @@ export function RFQAcheteur() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="budget">Budget estimé (FCFA) - optionnel</Label>
+              <Label htmlFor="estimatedBudget">Budget estimé (FCFA) - optionnel</Label>
               <Input
-                id="budget"
+                id="estimatedBudget"
                 type="number"
                 placeholder="1500000"
-                value={rfqData.budget}
-                onChange={(e) => setRfqData({ ...rfqData, budget: e.target.value })}
+                value={rfqData.estimatedBudget}
+                onChange={(e) => setRfqData({ ...rfqData, estimatedBudget: e.target.value })}
               />
             </div>
 
@@ -570,33 +612,407 @@ export function RFQAcheteur() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="details">Détails / Spécifications</Label>
+              <Label htmlFor="specifications">Détails / Spécifications</Label>
               <Textarea
-                id="details"
+                id="specifications"
                 placeholder="Précisez vos exigences: qualité, certifications, conditions..."
                 rows={3}
-                value={rfqData.details}
-                onChange={(e) => setRfqData({ ...rfqData, details: e.target.value })}
+                value={rfqData.specifications}
+                onChange={(e) => setRfqData({ ...rfqData, specifications: e.target.value })}
               />
             </div>
 
             <div className="space-y-2">
               <Label>Pièces jointes (optionnel)</Label>
-              <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files ?? []);
+                  setFiles((prev) => [...prev, ...selected]);
+                  e.target.value = "";
+                }}
+              />
+              <div
+                className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
                 <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mt-1">Cahier des charges, plans, spécifications...</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Cahier des charges, plans, spécifications...
+                </p>
+              </div>
+              {files.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {files.map((f, idx) => (
+                    <Badge key={idx} variant="secondary" className="gap-1 pr-1">
+                      {f.name}
+                      <button
+                        type="button"
+                        onClick={() => setFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {submitError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {submitError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={isSubmitting}>
+                Annuler
+              </Button>
+              {/* Bouton Brouillon masqué temporairement */}
+              <Button
+                disabled={isSubmitting || !rfqData.besoin || !rfqData.categorie || !rfqData.quantite || !rfqData.unite || !rfqData.zone || !rfqData.deadline}
+                onClick={() => handleSubmit(true)}
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                Publier
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Détail RFQ */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              {selectedRFQ?.rfqNumber}
+            </DialogTitle>
+            <DialogDescription>
+              Détails de la demande de devis
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRFQ && (
+            <div className="space-y-3 py-2">
+              {[
+                { label: "Besoin", value: selectedRFQ.productNeed },
+                { label: "Type", value: selectedRFQ.type },
+                { label: "Catégorie", value: selectedRFQ.category },
+                { label: "Quantité", value: `${parseFloat(selectedRFQ.quantity).toLocaleString()} ${selectedRFQ.unit}` },
+                { label: "Zone de livraison", value: selectedRFQ.deliveryZone },
+                { label: "Date limite", value: selectedRFQ.deadline },
+                { label: "Budget estimé", value: selectedRFQ.estimatedBudget ? `${selectedRFQ.estimatedBudget.toLocaleString()} FCFA` : "Non défini" },
+                { label: "Spécifications", value: selectedRFQ.specifications ?? "—" },
+                { label: "Statut", value: selectedRFQ.status },
+                { label: "Créé le", value: new Date(selectedRFQ.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex items-start gap-3 text-sm">
+                  <span className="w-36 shrink-0 text-muted-foreground">{label}</span>
+                  <span className="font-medium break-words">{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
+              Fermer
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedRFQ) return;
+                setEditData({
+                  productNeed: selectedRFQ.productNeed,
+                  category: selectedRFQ.category,
+                  quantity: selectedRFQ.quantity,
+                  unit: selectedRFQ.unit,
+                  deliveryZone: selectedRFQ.deliveryZone,
+                  deadline: selectedRFQ.deadline,
+                  estimatedBudget: selectedRFQ.estimatedBudget?.toString() ?? "",
+                  specifications: selectedRFQ.specifications ?? "",
+                  type: selectedRFQ.type,
+                });
+                setSaveError(null);
+                setShowDetailDialog(false);
+                setShowEditDialog(true);
+              }}
+            >
+              <Pencil className="w-4 h-4 mr-1" />
+              Modifier
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier RFQ */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Modifier la demande</DialogTitle>
+            <DialogDescription>{selectedRFQ?.rfqNumber}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Type de demande</Label>
+              <Select value={editData.type ?? ""} onValueChange={(v) => setEditData({ ...editData, type: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(typeConfig).map(([key]) => (
+                    <SelectItem key={key} value={key}>{key}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Besoin / Produit *</Label>
+              <Input value={editData.productNeed ?? ""} onChange={(e) => setEditData({ ...editData, productNeed: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Catégorie *</Label>
+              <Select value={editData.category ?? ""} onValueChange={(v) => setEditData({ ...editData, category: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {RFQ_API_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Quantité *</Label>
+                <Input type="number" value={editData.quantity ?? ""} onChange={(e) => setEditData({ ...editData, quantity: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Unité *</Label>
+                <Select value={editData.unit ?? ""} onValueChange={(v) => setEditData({ ...editData, unit: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Kilogramme","Tonne","Litre","Pièce","Sac","Carton","Session","Heure","Jour","Intervention","Lot"].map((u) => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Zone de livraison *</Label>
+                <Select value={editData.deliveryZone ?? ""} onValueChange={(v) => setEditData({ ...editData, deliveryZone: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {apiRegions.map((r) => (
+                      <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Date limite *</Label>
+                <Input type="date" value={editData.deadline ?? ""} onChange={(e) => setEditData({ ...editData, deadline: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Budget estimé (FCFA)</Label>
+              <Input type="number" placeholder="Optionnel" value={editData.estimatedBudget ?? ""} onChange={(e) => setEditData({ ...editData, estimatedBudget: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Spécifications</Label>
+              <Textarea rows={3} value={editData.specifications ?? ""} onChange={(e) => setEditData({ ...editData, specifications: e.target.value })} />
+            </div>
+
+            {saveError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {saveError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setShowEditDialog(false)} disabled={isSaving}>
                 Annuler
               </Button>
-              <Button onClick={() => setShowCreateDialog(false)}>
-                <Send className="w-4 h-4 mr-1" />
-                Publier la demande
+              <Button
+                disabled={isSaving || !editData.productNeed || !editData.category || !editData.quantity || !editData.unit || !editData.deliveryZone || !editData.deadline}
+                onClick={async () => {
+                  if (!selectedRFQ) return;
+                  setSaveError(null);
+                  const qty = parseFloat(editData.quantity ?? "");
+                  if (isNaN(qty) || qty < 0.01) {
+                    setSaveError("La quantité doit être un nombre supérieur à 0.");
+                    return;
+                  }
+                  setIsSaving(true);
+                  try {
+                    await rfqApi.update(selectedRFQ.id, {
+                      type: editData.type,
+                      productNeed: editData.productNeed,
+                      category: editData.category,
+                      quantity: qty,
+                      unit: editData.unit,
+                      deliveryZone: editData.deliveryZone,
+                      deadline: editData.deadline,
+                      estimatedBudget: editData.estimatedBudget ? parseFloat(editData.estimatedBudget) : null,
+                      specifications: editData.specifications || null,
+                    });
+                    setShowEditDialog(false);
+                    rfqApi.getAll().then(setRfqs).catch(() => {});
+                  } catch (err) {
+                    setSaveError(err instanceof Error ? err.message : "Erreur lors de la mise à jour");
+                  } finally {
+                    setIsSaving(false);
+                  }
+                }}
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                {isSaving ? "Enregistrement..." : "Enregistrer"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Négocier une offre */}
+      <Dialog open={showNegotiateDialog} onOpenChange={setShowNegotiateDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              Négocier cette offre
+            </DialogTitle>
+            <DialogDescription>
+              Proposez un contre-prix et un message au vendeur
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Contre-prix proposé (FCFA) *</Label>
+              <Input
+                type="number"
+                placeholder="Ex : 1 350 000"
+                value={negotiateCounterPrice}
+                onChange={(e) => setNegotiateCounterPrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Message *</Label>
+              <Textarea
+                rows={3}
+                placeholder="Ex: Pouvez-vous ajuster le prix et confirmer une livraison en 7 jours ?"
+                value={negotiateMessage}
+                onChange={(e) => setNegotiateMessage(e.target.value)}
+              />
+            </div>
+            {negotiateError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {negotiateError}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShowNegotiateDialog(false)} disabled={isNegotiating}>
+              Annuler
+            </Button>
+            <Button
+              disabled={isNegotiating || !negotiateCounterPrice || !negotiateMessage.trim()}
+              onClick={async () => {
+                if (!selectedOffer) return;
+                const counterPrice = parseFloat(negotiateCounterPrice);
+                if (isNaN(counterPrice) || counterPrice <= 0) {
+                  setNegotiateError("Le contre-prix doit être un nombre supérieur à 0.");
+                  return;
+                }
+                setNegotiateError(null);
+                setIsNegotiating(true);
+                try {
+                  await rfqApi.negotiateOffer(selectedOffer.id, counterPrice, negotiateMessage);
+                  setShowNegotiateDialog(false);
+                  if (selectedRFQ) {
+                    rfqApi.getOffers(selectedRFQ.id).then(setOffers).catch(() => {});
+                  }
+                } catch (err) {
+                  setNegotiateError(err instanceof Error ? err.message : "Erreur lors de la négociation");
+                } finally {
+                  setIsNegotiating(false);
+                }
+              }}
+            >
+              {isNegotiating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+              Envoyer la contre-offre
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Rejeter une offre */}
+      <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ThumbsDown className="w-5 h-5 text-destructive" />
+              Rejeter cette offre
+            </DialogTitle>
+            <DialogDescription>
+              Indiquez la raison du rejet (optionnel)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Raison du rejet</Label>
+              <Textarea
+                rows={3}
+                placeholder="Ex: Prix au-dessus du budget alloué"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+            </div>
+            {rejectError && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {rejectError}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShowRejectDialog(false)} disabled={isRejecting}>
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={isRejecting}
+              onClick={async () => {
+                if (!selectedOffer) return;
+                setRejectError(null);
+                setIsRejecting(true);
+                try {
+                  await rfqApi.rejectOffer(selectedOffer.id, rejectReason || "Rejet de l'offre");
+                  setShowRejectDialog(false);
+                  if (selectedRFQ) {
+                    rfqApi.getOffers(selectedRFQ.id).then(setOffers).catch(() => {});
+                    rfqApi.getAll().then(setRfqs).catch(() => {});
+                  }
+                } catch (err) {
+                  setRejectError(err instanceof Error ? err.message : "Erreur lors du rejet");
+                } finally {
+                  setIsRejecting(false);
+                }
+              }}
+            >
+              {isRejecting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Confirmer le rejet
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -607,40 +1023,146 @@ export function RFQAcheteur() {
           <DialogHeader>
             <DialogTitle>Offres reçues</DialogTitle>
             <DialogDescription>
-              {selectedRFQ?.besoin} - {selectedRFQ?.quantite} {selectedRFQ?.unite}
+              {selectedRFQ?.productNeed} — {selectedRFQ ? parseFloat(selectedRFQ.quantity).toLocaleString() : ""} {selectedRFQ?.unit}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-            {mockOffers.map((offer) => (
-              <Card key={offer.id} className="border-2 hover:border-primary/50 transition-colors">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">{offer.vendeur}</p>
-                      <p className="text-sm text-muted-foreground">Offre du {offer.dateOffre}</p>
+            {isLoadingOffers ? (
+              <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Chargement des offres...
+              </div>
+            ) : offers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <DollarSign className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Aucune offre reçue pour le moment</p>
+              </div>
+            ) : (
+              offers.map((offer) => (
+                <Card key={offer.id} className="border-2 hover:border-primary/50 transition-colors">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <Badge variant="outline" className="mb-1 text-xs">{offer.status}</Badge>
+                        <p className="text-sm text-muted-foreground">
+                          Offre du {new Date(offer.createdAt).toLocaleDateString("fr-FR")}
+                        </p>
+                        {offer.validityDate && (
+                          <p className="text-xs text-muted-foreground">
+                            Valide jusqu'au {new Date(offer.validityDate).toLocaleDateString("fr-FR")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-2xl font-bold text-primary">
+                          {offer.price.toLocaleString()} FCFA
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Délai : {offer.deliveryDays} jour{offer.deliveryDays > 1 ? "s" : ""}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-primary">
-                        {offer.prix.toLocaleString()} FCFA
-                      </p>
-                      <p className="text-sm text-muted-foreground">Délai: {offer.delai}</p>
+                    {offer.conditions && (
+                      <div className="mt-3 p-3 rounded-lg bg-muted/50">
+                        <p className="text-sm">{offer.conditions}</p>
+                      </div>
+                    )}
+                    {offer.proformaNumber && (
+                      <div className="mt-2 text-xs text-muted-foreground flex gap-4">
+                        <span>Proforma : {offer.proformaNumber}</span>
+                        <span>Total : {offer.proformaTotal.toLocaleString()} FCFA</span>
+                        <span>Acompte : {offer.proformaDepositRate}%</span>
+                      </div>
+                    )}
+                    {offer.proformaNumber && (
+                      <div className="flex justify-end gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={proformaActionId === offer.id}
+                          className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                          onClick={async () => {
+                            setProformaActionId(offer.id);
+                            try {
+                              await rfqApi.rejectProforma(offer.id);
+                              rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                            } catch { /* silencieux */ }
+                            finally { setProformaActionId(null); }
+                          }}
+                        >
+                          {proformaActionId === offer.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <XCircle className="w-3 h-3 mr-1" />}
+                          Refuser proforma
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          disabled={proformaActionId === offer.id}
+                          onClick={async () => {
+                            setProformaActionId(offer.id);
+                            try {
+                              await rfqApi.acceptProforma(offer.id);
+                              rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                            } catch { /* silencieux */ }
+                            finally { setProformaActionId(null); }
+                          }}
+                        >
+                          {proformaActionId === offer.id ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle2 className="w-3 h-3 mr-1" />}
+                          Accepter proforma
+                        </Button>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2 mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                        onClick={() => {
+                          setSelectedOffer(offer);
+                          setRejectReason("");
+                          setRejectError(null);
+                          setShowRejectDialog(true);
+                        }}
+                      >
+                        <ThumbsDown className="w-4 h-4 mr-1" />
+                        Rejeter
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedOffer(offer);
+                          setNegotiateCounterPrice(String(offer.price));
+                          setNegotiateMessage("");
+                          setNegotiateError(null);
+                          setShowNegotiateDialog(true);
+                        }}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-1" />
+                        Négocier
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={acceptingOfferId === offer.id}
+                        onClick={async () => {
+                          setAcceptingOfferId(offer.id);
+                          try {
+                            await rfqApi.acceptOffer(offer.id);
+                            rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                            rfqApi.getAll().then(setRfqs).catch(() => {});
+                          } catch { /* silencieux */ }
+                          finally { setAcceptingOfferId(null); }
+                        }}
+                      >
+                        {acceptingOfferId === offer.id
+                          ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                        Accepter
+                      </Button>
                     </div>
-                  </div>
-                  <div className="mt-3 p-3 rounded-lg bg-muted/50">
-                    <p className="text-sm">{offer.conditions}</p>
-                  </div>
-                  <div className="flex justify-end gap-2 mt-4">
-                    <Button variant="outline" size="sm">
-                      Négocier
-                    </Button>
-                    <Button size="sm">
-                      <CheckCircle2 className="w-4 h-4 mr-1" />
-                      Accepter
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </DialogContent>
       </Dialog>

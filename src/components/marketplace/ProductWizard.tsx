@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,95 @@ import { filieresApi, boutiquesApi, productsApi, madeInCIBadgeLevelsApi, type Fi
 import { regions } from "@/data/regions";
 
 type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges";
+
+/**
+ * Redimensionne et compresse une image côté client pour éviter les erreurs 413 (File too large).
+ * Réduit la plus grande dimension à `maxSize` px et exporte en JPEG.
+ */
+async function compressImage(file: File, maxSize = 1600, quality = 0.8): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+
+  let { width, height } = img;
+  if (width > maxSize || height > maxSize) {
+    const ratio = Math.min(maxSize / width, maxSize / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", quality)
+  );
+  if (!blob) return file;
+
+  const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+  return new File([blob], newName, { type: "image/jpeg" });
+}
+
+/** Zone d'upload de documents fonctionnelle (sélection multiple, liste, suppression). */
+function FileUploadZone({
+  hint,
+  accept,
+  files,
+  onChange,
+}: {
+  hint: string;
+  accept: string;
+  files: File[];
+  onChange: (files: File[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (selected.length) onChange([...files, ...selected]);
+  };
+
+  return (
+    <div className="space-y-2">
+      <input ref={inputRef} type="file" accept={accept} multiple className="hidden" onChange={handleAdd} />
+      <div
+        onClick={() => inputRef.current?.click()}
+        className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
+      >
+        <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
+        <p className="text-sm text-muted-foreground mt-1">{hint}</p>
+      </div>
+      {files.length > 0 && (
+        <div className="space-y-1.5">
+          {files.map((f, i) => (
+            <div key={i} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 bg-muted/40">
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="truncate flex-1">{f.name}</span>
+              <button type="button" onClick={() => onChange(files.filter((_, idx) => idx !== i))}>
+                <X className="w-4 h-4 text-destructive" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ProductWizardProps {
   open: boolean;
@@ -102,11 +191,13 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
       madeInCI: p.madeInCiRequested || false,
       badgeMadeInCI: p.madeInCiBadgeType || "",
       ficheTechnique: {
-        enabled: !!(p.technicalSpecifications?.length || p.certifications?.length),
+        enabled: !!(p.technicalSpecifications?.length || p.certifications?.length || p.technicalDocuments?.length),
         specifications: p.technicalSpecifications
-          ? p.technicalSpecifications.map(s => ({ label: s.name, value: s.value, unit: s.unit || "" }))
+          ? p.technicalSpecifications.map(s => ({ label: s.name, value: s.value, unit: s.unit || "", imagePreview: s.url }))
           : [],
-        certifications: p.certifications || [],
+        certifications: p.certifications
+          ? p.certifications.map(c => ({ name: c.name, url: c.url }))
+          : [],
         documents: [],
       },
       variantsEnabled: p.variantsEnabled || false,
@@ -140,6 +231,26 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
     setIsSubmitting(true);
     setSubmitError(null);
     try {
+      // Métadonnées des champs structurés. Les fichiers eux-mêmes partent dans "files"
+      // (un seul appel à /api/marketplace/products). On conserve les URLs déjà
+      // enregistrées (mode édition) ; les nouveaux fichiers sont dans "files".
+      const technicalSpecifications = formData.ficheTechnique.specifications.map((s) => ({
+        name: s.label,
+        value: s.value,
+        unit: s.unit,
+        ...(!s.image && s.imagePreview ? { url: s.imagePreview } : {}),
+      }));
+
+      const certifications = formData.ficheTechnique.certifications.map((c) => ({
+        name: c.name,
+        ...(!c.file && c.url ? { url: c.url } : {}),
+      }));
+
+      const technicalDocuments = [
+        ...(editInitialData?.technicalDocuments ?? []),
+        ...formData.technicalDocs.map((f) => ({ name: f.name })),
+      ];
+
       const payload = {
         boutiqueId,
         name: formData.nom,
@@ -165,9 +276,9 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
         deliveryZones: formData.zonesLivraison.map((name, i) => ({ id: i + 1, name, description: name })),
         shippingCost: parseFloat(formData.fraisLivraison) || 0,
         pickupAvailable: formData.optionRetrait,
-        technicalSpecifications: formData.ficheTechnique.specifications.map(s => ({ name: s.label, value: s.value, unit: s.unit })),
-        certifications: formData.ficheTechnique.certifications,
-        technicalDocuments: [],
+        technicalSpecifications,
+        certifications,
+        technicalDocuments,
         variantsEnabled: formData.variantes.enabled,
         quantityPricingEnabled: formData.prixQuantite.enabled,
         quantityPricingTiers: formData.prixQuantite.paliers.map(p => ({ minQuantity: parseFloat(p.quantiteMin) || 0, unitPrice: parseFloat(p.prix) || 0 })),
@@ -176,10 +287,29 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
           premiumDurationWeeks: Math.ceil(parseFloat(formData.miseEnVedette.duree) / 7) || 1,
         } : {}),
       };
+      // Tous les fichiers passent par le champ multipart "files" du même endpoint.
+      // (formData.images sont déjà compressées ; on compresse les autres images,
+      //  compressImage laissant les PDF/docs intacts.)
+      const specImages = formData.ficheTechnique.specifications
+        .map((s) => s.image)
+        .filter((f): f is File => !!f);
+      const certFiles = formData.ficheTechnique.certifications
+        .map((c) => c.file)
+        .filter((f): f is File => !!f);
+      const extraFiles = await Promise.all(
+        [
+          ...formData.documentsReglementaires,
+          ...formData.madeInCiPreuves,
+          ...specImages,
+          ...certFiles,
+          ...formData.technicalDocs,
+        ].map((f) => compressImage(f))
+      );
+      const allFiles = [...formData.images, ...extraFiles];
       if (isEditMode && editProductId) {
-        await productsApi.update(editProductId, payload);
+        await productsApi.update(editProductId, payload, allFiles);
       } else {
-        await productsApi.create(payload);
+        await productsApi.create(payload, allFiles);
       }
       onProductCreated?.();
       onOpenChange(false);
@@ -207,16 +337,19 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
     optionRetrait: false,
     produitReglemente: false,
     categorieReglementee: "",
-    documentsReglementaires: [] as string[],
+    documentsReglementaires: [] as File[],
     madeInCI: false,
     badgeMadeInCI: "",
     madeInCiTransformationProcess: "",
-    images: [] as string[],
+    madeInCiPreuves: [] as File[],
+    images: [] as File[],
+    imagePreviews: [] as string[],
+    technicalDocs: [] as File[],
     // Fiche technique
     ficheTechnique: {
       enabled: false,
-      specifications: [] as { label: string; value: string; unit: string }[],
-      certifications: [] as string[],
+      specifications: [] as { label: string; value: string; unit: string; image?: File; imagePreview?: string }[],
+      certifications: [] as { name: string; file?: File; url?: string }[],
       documents: [] as { name: string; type: string }[],
     },
     // Variantes
@@ -244,6 +377,56 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
 
   const updateForm = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const original = e.target.files?.[0];
+    e.target.value = ""; // permet de re-sélectionner le même fichier
+    if (!original) return;
+    const file = await compressImage(original);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFormData(prev => ({
+        ...prev,
+        images: [...prev.images, file],
+        imagePreviews: [...prev.imagePreviews, reader.result as string],
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+      imagePreviews: prev.imagePreviews.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Image associée à une spécification technique
+  const setSpecImage = (index: number, file: File | undefined) => {
+    const apply = (image: File | undefined, imagePreview: string | undefined) => {
+      setFormData(prev => {
+        const specifications = [...prev.ficheTechnique.specifications];
+        specifications[index] = { ...specifications[index], image, imagePreview };
+        return { ...prev, ficheTechnique: { ...prev.ficheTechnique, specifications } };
+      });
+    };
+    if (!file) { apply(undefined, undefined); return; }
+    const reader = new FileReader();
+    reader.onload = () => apply(file, reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  // Fichier (certificat) associé à une certification
+  const setCertFile = (index: number, file: File | undefined) => {
+    setFormData(prev => {
+      const certifications = [...prev.ficheTechnique.certifications];
+      certifications[index] = file
+        ? { ...certifications[index], file }
+        : { name: certifications[index].name }; // retire fichier + url existante
+      return { ...prev, ficheTechnique: { ...prev.ficheTechnique, certifications } };
+    });
   };
 
   const categoriesReglementees = [
@@ -369,12 +552,49 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
               <div className="space-y-2">
                 <Label>Médias</Label>
                 <div className="grid grid-cols-4 gap-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      {i === 1 ? (
+                  {/* Images déjà enregistrées (mode édition) */}
+                  {(editInitialData?.productMedia ?? [])
+                    .filter((m) => m.isActive)
+                    .map((m) => (
+                      <div key={m.id} className="relative aspect-square border-2 rounded-lg overflow-hidden">
+                        <img src={m.url} alt="" className="w-full h-full object-cover" />
+                        {m.isMain && (
+                          <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded">
+                            Principal
+                          </span>
+                        )}
+                      </div>
+                    ))}
+
+                  {/* Nouvelles images sélectionnées */}
+                  {formData.imagePreviews.map((preview, i) => (
+                    <div key={i} className="relative aspect-square border-2 rounded-lg overflow-hidden group">
+                      <img src={preview} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeImage(i)}
+                        className="absolute top-1 right-1 bg-background/80 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3 text-destructive" />
+                      </button>
+                      {i === 0 && (editInitialData?.productMedia ?? []).filter((m) => m.isActive).length === 0 && (
+                        <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded">
+                          Principal
+                        </span>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* Tuile d'ajout */}
+                  {(editInitialData?.productMedia ?? []).filter((m) => m.isActive).length + formData.images.length < 4 && (
+                    <label className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleAddImage}
+                      />
+                      {(editInitialData?.productMedia ?? []).filter((m) => m.isActive).length + formData.images.length === 0 ? (
                         <>
                           <Upload className="w-6 h-6 text-muted-foreground" />
                           <span className="text-xs text-muted-foreground mt-1">Principal</span>
@@ -382,8 +602,8 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
                       ) : (
                         <Plus className="w-5 h-5 text-muted-foreground" />
                       )}
-                    </div>
-                  ))}
+                    </label>
+                  )}
                 </div>
                 <p className="text-xs text-muted-foreground">Ajoutez jusqu'à 4 photos. La première sera la photo principale.</p>
               </div>
@@ -569,12 +789,12 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
                     </div>
                     <div className="space-y-2">
                       <Label>Documents obligatoires</Label>
-                      <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors">
-                        <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Uploader certificats, autorisations...
-                        </p>
-                      </div>
+                      <FileUploadZone
+                        hint="Uploader certificats, autorisations..."
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        files={formData.documentsReglementaires}
+                        onChange={(f) => updateForm("documentsReglementaires", f)}
+                      />
                       <p className="text-xs text-amber-600">
                         ⚠️ La publication sera bloquée tant que les documents ne sont pas validés
                       </p>
@@ -651,12 +871,12 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
                     </div>
                     <div className="space-y-2">
                       <Label>Preuves (factures intrants, photos, etc.)</Label>
-                      <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors">
-                        <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Uploader les justificatifs
-                        </p>
-                      </div>
+                      <FileUploadZone
+                        hint="Uploader les justificatifs"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        files={formData.madeInCiPreuves}
+                        onChange={(f) => updateForm("madeInCiPreuves", f)}
+                      />
                     </div>
                   </div>
                 )}
@@ -696,48 +916,73 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
                   <div className="space-y-3">
                     <Label>Caractéristiques</Label>
                     {formData.ficheTechnique.specifications.map((spec, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                        <Input
-                          className="col-span-4"
-                          placeholder="Caractéristique"
-                          value={spec.label}
-                          onChange={(e) => {
-                            const specs = [...formData.ficheTechnique.specifications];
-                            specs[index] = { ...specs[index], label: e.target.value };
-                            updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                          }}
-                        />
-                        <Input
-                          className="col-span-5"
-                          placeholder="Valeur"
-                          value={spec.value}
-                          onChange={(e) => {
-                            const specs = [...formData.ficheTechnique.specifications];
-                            specs[index] = { ...specs[index], value: e.target.value };
-                            updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                          }}
-                        />
-                        <Input
-                          className="col-span-2"
-                          placeholder="Unité"
-                          value={spec.unit}
-                          onChange={(e) => {
-                            const specs = [...formData.ficheTechnique.specifications];
-                            specs[index] = { ...specs[index], unit: e.target.value };
-                            updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                          }}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="col-span-1"
-                          onClick={() => {
-                            const specs = formData.ficheTechnique.specifications.filter((_, i) => i !== index);
-                            updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                          }}
-                        >
-                          <X className="w-4 h-4 text-destructive" />
-                        </Button>
+                      <div key={index} className="p-3 border rounded-lg space-y-2">
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          <Input
+                            className="col-span-4"
+                            placeholder="Caractéristique"
+                            value={spec.label}
+                            onChange={(e) => {
+                              const specs = [...formData.ficheTechnique.specifications];
+                              specs[index] = { ...specs[index], label: e.target.value };
+                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
+                            }}
+                          />
+                          <Input
+                            className="col-span-5"
+                            placeholder="Valeur"
+                            value={spec.value}
+                            onChange={(e) => {
+                              const specs = [...formData.ficheTechnique.specifications];
+                              specs[index] = { ...specs[index], value: e.target.value };
+                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
+                            }}
+                          />
+                          <Input
+                            className="col-span-2"
+                            placeholder="Unité"
+                            value={spec.unit}
+                            onChange={(e) => {
+                              const specs = [...formData.ficheTechnique.specifications];
+                              specs[index] = { ...specs[index], unit: e.target.value };
+                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
+                            }}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="col-span-1"
+                            onClick={() => {
+                              const specs = formData.ficheTechnique.specifications.filter((_, i) => i !== index);
+                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
+                            }}
+                          >
+                            <X className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                        {/* Image de la spécification */}
+                        {spec.imagePreview ? (
+                          <div className="relative w-16 h-16 rounded border overflow-hidden">
+                            <img src={spec.imagePreview} alt="" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setSpecImage(index, undefined)}
+                              className="absolute top-0 right-0 bg-background/80 rounded-bl p-0.5"
+                            >
+                              <X className="w-3 h-3 text-destructive" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="inline-flex items-center gap-1 text-xs text-muted-foreground border rounded-md px-2 py-1 cursor-pointer hover:bg-muted/50 w-fit">
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                              onChange={(e) => setSpecImage(index, e.target.files?.[0])}
+                            />
+                            <ImageIcon className="w-3.5 h-3.5" /> Ajouter une image
+                          </label>
+                        )}
                       </div>
                     ))}
                     <Button
@@ -757,36 +1002,83 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
                   <div className="space-y-2">
                     <Label>Certifications & Labels</Label>
                     <div className="flex flex-wrap gap-2">
-                      {["ISO 9001", "ISO 14001", "HACCP", "CE", "Bio", "Fair Trade", "Made in CI", "Halal"].map((cert) => (
-                        <Badge
-                          key={cert}
-                          variant={formData.ficheTechnique.certifications.includes(cert) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            const certs = formData.ficheTechnique.certifications.includes(cert)
-                              ? formData.ficheTechnique.certifications.filter(c => c !== cert)
-                              : [...formData.ficheTechnique.certifications, cert];
-                            updateForm("ficheTechnique", { ...formData.ficheTechnique, certifications: certs });
-                          }}
-                        >
-                          {formData.ficheTechnique.certifications.includes(cert) && (
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                          )}
-                          {cert}
-                        </Badge>
-                      ))}
+                      {["ISO 9001", "ISO 14001", "HACCP", "CE", "Bio", "Fair Trade", "Made in CI", "Halal"].map((cert) => {
+                        const selected = formData.ficheTechnique.certifications.some(c => c.name === cert);
+                        return (
+                          <Badge
+                            key={cert}
+                            variant={selected ? "default" : "outline"}
+                            className="cursor-pointer"
+                            onClick={() => {
+                              const certs = selected
+                                ? formData.ficheTechnique.certifications.filter(c => c.name !== cert)
+                                : [...formData.ficheTechnique.certifications, { name: cert }];
+                              updateForm("ficheTechnique", { ...formData.ficheTechnique, certifications: certs });
+                            }}
+                          >
+                            {selected && <CheckCircle2 className="w-3 h-3 mr-1" />}
+                            {cert}
+                          </Badge>
+                        );
+                      })}
                     </div>
+                    {/* Certificat (fichier) par certification sélectionnée */}
+                    {formData.ficheTechnique.certifications.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {formData.ficheTechnique.certifications.map((c, index) => (
+                          <div key={index} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5">
+                            <span className="flex-1 font-medium">{c.name}</span>
+                            {c.file || c.url ? (
+                              <span className="flex items-center gap-1.5 text-xs text-green-600">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                {c.file ? "Fichier ajouté" : "Document existant"}
+                                <button type="button" onClick={() => setCertFile(index, undefined)}>
+                                  <X className="w-3.5 h-3.5 text-destructive" />
+                                </button>
+                              </span>
+                            ) : (
+                              <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                <input
+                                  type="file"
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                                  className="hidden"
+                                  onChange={(e) => setCertFile(index, e.target.files?.[0])}
+                                />
+                                <Upload className="w-3.5 h-3.5" /> Joindre le certificat
+                              </label>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Documents */}
                   <div className="space-y-2">
                     <Label>Documents techniques</Label>
-                    <div className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors">
-                      <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground mt-1">
-                        PDF, schémas, plans, notices...
-                      </p>
-                    </div>
+                    {(editInitialData?.technicalDocuments ?? []).length > 0 && (
+                      <div className="space-y-1.5">
+                        {editInitialData!.technicalDocuments!.map((d, i) => (
+                          <a
+                            key={i}
+                            href={d.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 bg-muted/40 hover:bg-muted"
+                          >
+                            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span className="truncate flex-1">{d.name}</span>
+                            <span className="text-xs text-green-600">Enregistré</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    <FileUploadZone
+                      hint="PDF, schémas, plans, notices..."
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                      files={formData.technicalDocs}
+                      onChange={(f) => updateForm("technicalDocs", f)}
+                    />
                   </div>
                 </CardContent>
               )}

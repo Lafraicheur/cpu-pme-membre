@@ -1,12 +1,26 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
@@ -55,7 +69,6 @@ import { VendeurOnboarding } from "@/components/marketplace/VendeurOnboarding";
 import { MesProduits } from "@/components/marketplace/MesProduits";
 import { VendeurCommandes } from "@/components/marketplace/VendeurCommandes";
 import { RFQVendeur } from "@/components/marketplace/RFQVendeur";
-import { MadeInCI } from "@/components/marketplace/MadeInCI";
 import { AcheteurCommandes } from "@/components/marketplace/AcheteurCommandes";
 import { RFQAcheteur } from "@/components/marketplace/RFQAcheteur";
 import { VendeurPaiements } from "@/components/marketplace/VendeurPaiements";
@@ -141,15 +154,18 @@ const mockProducts = [
 
 const madeInCIBadges = {
   Or: { color: "bg-primary text-primary-foreground", label: "Made in CI - Or" },
-  Argent: { color: "bg-secondary text-secondary-foreground", label: "Made in CI - Argent" },
+  Argent: {
+    color: "bg-secondary text-secondary-foreground",
+    label: "Made in CI - Argent",
+  },
   Bronze: { color: "bg-amber-600 text-white", label: "Made in CI - Bronze" },
   Innovation: { color: "bg-cyan-500 text-white", label: "Innovation Ivoire" },
 };
 
-type MenuSection = 
-  | "apercu" 
+type MenuSection =
+  | "apercu"
   | "panier"
-  | "mes-commandes" 
+  | "mes-commandes"
   | "mes-devis"
   | "messagerie-rfq"
   | "retours-acheteur"
@@ -185,7 +201,9 @@ export default function Marketplace() {
   const navigate = useNavigate();
   const { canAccess, user } = useAuth();
   const canSell = canAccess("marketplace.seller");
-  const currentTierName = user?.subscription ? TIER_CONFIGS[user.subscription.tier].name : "Basic";
+  const currentTierName = user?.subscription
+    ? TIER_CONFIGS[user.subscription.tier].name
+    : "Basic";
 
   const addToCart = (productId: number) => {
     if (!cart.includes(productId)) {
@@ -194,39 +212,95 @@ export default function Marketplace() {
   };
 
   const filteredProducts = mockProducts.filter((product) => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.seller.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
-    const matchesRegion = selectedRegion === "all" || 
-      regions.some(r => r === selectedRegion && product.location);
+    const matchesCategory =
+      selectedCategory === "all" || product.category === selectedCategory;
+    const matchesRegion =
+      selectedRegion === "all" ||
+      regions.some((r) => r === selectedRegion && product.location);
     return matchesSearch && matchesCategory && matchesRegion;
   });
 
   const menuItems = {
     acheter: [
-      { id: "mes-commandes" as MenuSection, label: "Mes commandes", icon: ShoppingCart },
-      { id: "retours-acheteur" as MenuSection, label: "Retours & réclamations", icon: RotateCcw },
-      { id: "mes-devis" as MenuSection, label: "Mes devis (RFQ)", icon: FileText },
+      {
+        id: "mes-commandes" as MenuSection,
+        label: "Mes commandes",
+        icon: ShoppingCart,
+      },
+      {
+        id: "retours-acheteur" as MenuSection,
+        label: "Retours & réclamations",
+        icon: RotateCcw,
+      },
+      {
+        id: "mes-devis" as MenuSection,
+        label: "Mes devis (RFQ)",
+        icon: FileText,
+      },
       // { id: "messagerie-rfq" as MenuSection, label: "Négociations RFQ", icon: MessageSquare },
-      { id: "historique-achats" as MenuSection, label: "Historique achats", icon: FileText },
+      {
+        id: "historique-achats" as MenuSection,
+        label: "Historique achats",
+        icon: FileText,
+      },
       // { id: "panier" as MenuSection, label: "Panier", icon: ShoppingCart },
     ],
     vendre: [
-      { id: "onboarding-vendeur" as MenuSection, label: "Onboarding vendeur", icon: Users },
+      {
+        id: "onboarding-vendeur" as MenuSection,
+        label: "Onboarding vendeur",
+        icon: Users,
+      },
       { id: "ma-boutique" as MenuSection, label: "Ma boutique", icon: Store },
-      { id: "mes-produits" as MenuSection, label: "Catalogue produits", icon: Package },
-      { id: "gestion-stock" as MenuSection, label: "Gestion du stock", icon: BarChart3 },
-      { id: "commandes-vendeur" as MenuSection, label: "Commandes à traiter", icon: ShoppingCart },
+      {
+        id: "mes-produits" as MenuSection,
+        label: "Catalogue produits",
+        icon: Package,
+      },
+      {
+        id: "commandes-vendeur" as MenuSection,
+        label: "Commandes à traiter",
+        icon: ShoppingCart,
+      },
       { id: "rfq-vendeur" as MenuSection, label: "RFQ reçues", icon: FileText },
-      { id: "expeditions" as MenuSection, label: "Expéditions", icon: Truck },
-      { id: "retours-litiges" as MenuSection, label: "Retours & Litiges", icon: RotateCcw },
-      { id: "paiements" as MenuSection, label: "Paiements", icon: CreditCard },
-      { id: "certification-boutique" as MenuSection, label: "Certification boutique", icon: BadgeCheck },
-      { id: "made-in-ci" as MenuSection, label: "Made in CI (produits)", icon: Award },
-      { id: "produits-reglementes" as MenuSection, label: "Produits réglementés", icon: AlertTriangle },
-      { id: "historique-ventes" as MenuSection, label: "Historique ventes", icon: FileText },
-      { id: "facturation-vedette" as MenuSection, label: "Facturation vedette", icon: FileText },
-      { id: "dashboard-commissions" as MenuSection, label: "Dashboard commissions", icon: BarChart3 },
+      {
+        id: "retours-litiges" as MenuSection,
+        label: "Retours & Litiges",
+        icon: RotateCcw,
+      },
+      // {
+      //   id: "gestion-stock" as MenuSection,
+      //   label: "Gestion du stock",
+      //   icon: BarChart3,
+      // },
+      // { id: "expeditions" as MenuSection, label: "Expéditions", icon: Truck },
+
+      // { id: "paiements" as MenuSection, label: "Paiements", icon: CreditCard },
+      {
+        id: "certification-boutique" as MenuSection,
+        label: "Certification boutique",
+        icon: BadgeCheck,
+      },
+      // {
+      //   id: "made-in-ci" as MenuSection,
+      //   label: "Made in CI (produits)",
+      //   icon: Award,
+      // },
+      // {
+      //   id: "produits-reglementes" as MenuSection,
+      //   label: "Produits réglementés",
+      //   icon: AlertTriangle,
+      // },
+      // {
+      //   id: "historique-ventes" as MenuSection,
+      //   label: "Historique ventes",
+      //   icon: FileText,
+      // },
+      // { id: "facturation-vedette" as MenuSection, label: "Facturation vedette", icon: FileText },
+      // { id: "dashboard-commissions" as MenuSection, label: "Dashboard commissions", icon: BarChart3 },
       // { id: "analytics" as MenuSection, label: "Analytics", icon: BarChart3 },
     ],
     admin: [
@@ -237,79 +311,84 @@ export default function Marketplace() {
   const renderContent = () => {
     switch (activeSection) {
       case "apercu":
-        return <MarketplaceOverview isVendeur={canSell} onNavigate={(tab) => setActiveSection(tab as MenuSection)} />;
+        return (
+          <MarketplaceOverview
+            isVendeur={canSell}
+            onNavigate={(tab) => setActiveSection(tab as MenuSection)}
+          />
+        );
 
       case "mes-commandes":
         return <AcheteurCommandes />;
-      
+
       case "historique-achats":
       case "historique-ventes":
         return <HistoriqueTransactions />;
-      
+
       case "mes-devis":
         return <RFQAcheteur />;
-      
+
       case "messagerie-rfq":
         return <RFQMessaging />;
-      
+
       case "panier":
         return <PanierCheckout />;
-      
+
       case "onboarding-vendeur":
         return <VendeurOnboarding />;
-      
+
       case "ma-boutique":
         return <BoutiqueVendeur />;
-      
+
       case "mes-produits":
         return <MesProduits />;
-      
-      case "gestion-stock":
-        return <GestionStock />;
-      
+
       case "commandes-vendeur":
         return <VendeurCommandes />;
-      
+
+      case "gestion-stock":
+        return <GestionStock />;
+
       case "expeditions":
         return <ExpeditionsVendeur />;
-      
+
       case "rfq-vendeur":
         return <RFQVendeur />;
-      
+
       case "made-in-ci":
-        return <MadeInCI />;
-      
       case "certification-boutique":
         return <CertificationBoutique />;
-      
+
       case "paiements":
         return <VendeurPaiements />;
-      
+
       case "retours-litiges":
         return <RetoursLitiges />;
-      
+
       case "retours-acheteur":
         return <ReclamationsAcheteur />;
-      
+
       case "produits-reglementes":
         return <ProduitsReglementes />;
-      
+
       case "facturation-vedette":
         return <FacturationVedette />;
-      
+
       case "dashboard-commissions":
         return <DashboardCommissions />;
-      
+
       case "admin":
         return <AdminMarketplace />;
-      
+
       default:
         return (
           <Card>
             <CardContent className="p-12 text-center">
               <Settings className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <h3 className="font-semibold mb-2">Section en construction</h3>
-              <p className="text-sm text-muted-foreground">Cette fonctionnalité sera bientôt disponible</p>
+              <p className="text-sm text-muted-foreground">
+                Cette fonctionnalité sera bientôt disponible
+              </p>
             </CardContent>
           </Card>
         );
@@ -341,14 +420,18 @@ export default function Marketplace() {
                   </Button>
 
                   <div className="pt-4 pb-2">
-                    <p className="text-xs font-semibold text-muted-foreground px-3">ACHETER</p>
+                    <p className="text-xs font-semibold text-muted-foreground px-3">
+                      ACHETER
+                    </p>
                   </div>
                   {menuItems.acheter.map((item) => {
                     const Icon = item.icon;
                     return (
                       <Button
                         key={item.id}
-                        variant={activeSection === item.id ? "secondary" : "ghost"}
+                        variant={
+                          activeSection === item.id ? "secondary" : "ghost"
+                        }
                         className="w-full justify-start gap-2"
                         onClick={() => setActiveSection(item.id)}
                       >
@@ -370,7 +453,9 @@ export default function Marketplace() {
                       return (
                         <Button
                           key={item.id}
-                          variant={activeSection === item.id ? "secondary" : "ghost"}
+                          variant={
+                            activeSection === item.id ? "secondary" : "ghost"
+                          }
                           className="w-full justify-start gap-2"
                           onClick={() => setActiveSection(item.id)}
                         >
@@ -391,7 +476,9 @@ export default function Marketplace() {
                             onClick={() => setShowUpgradeModal(true)}
                           >
                             <Icon className="w-4 h-4" />
-                            <span className="flex-1 text-left">{item.label}</span>
+                            <span className="flex-1 text-left">
+                              {item.label}
+                            </span>
                             <Lock className="w-3 h-3" />
                           </Button>
                         );
@@ -416,7 +503,10 @@ export default function Marketplace() {
         <div className="flex-1 min-w-0">
           {/* Navigation mobile */}
           <div className="lg:hidden mb-4">
-            <Select value={activeSection} onValueChange={(v) => setActiveSection(v as MenuSection)}>
+            <Select
+              value={activeSection}
+              onValueChange={(v) => setActiveSection(v as MenuSection)}
+            >
               <SelectTrigger className="w-full">
                 <Store className="w-4 h-4 mr-2 flex-shrink-0" />
                 <SelectValue placeholder="Choisir une section" />
@@ -427,26 +517,36 @@ export default function Marketplace() {
                 <SelectGroup>
                   <SelectLabel>— ACHETER —</SelectLabel>
                   {menuItems.acheter.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.label}
+                    </SelectItem>
                   ))}
                 </SelectGroup>
                 {canSell ? (
                   <SelectGroup>
                     <SelectLabel>— VENDRE —</SelectLabel>
                     {menuItems.vendre.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
                     ))}
                   </SelectGroup>
                 ) : (
                   <SelectGroup>
-                    <SelectLabel>— VENDRE (plan supérieur requis) —</SelectLabel>
+                    <SelectLabel>
+                      — VENDRE (plan supérieur requis) —
+                    </SelectLabel>
                     {menuItems.vendre.slice(0, 4).map((item) => (
-                      <SelectItem key={item.id} value={item.id} disabled>{item.label}</SelectItem>
+                      <SelectItem key={item.id} value={item.id} disabled>
+                        {item.label}
+                      </SelectItem>
                     ))}
                   </SelectGroup>
                 )}
                 {menuItems.admin.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -458,11 +558,17 @@ export default function Marketplace() {
                 <Store className="w-6 h-6 sm:w-7 sm:h-7 text-primary flex-shrink-0" />
                 Marketplace CPU-PME
               </h1>
-              <p className="text-muted-foreground text-sm">Achetez et vendez entre membres</p>
+              <p className="text-muted-foreground text-sm">
+                Achetez et vendez entre membres
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {/* <NotificationsRetoursLitiges onNavigate={(section) => setActiveSection(section as MenuSection)} /> */}
-              <NotificationsRFQ onNavigate={(section) => setActiveSection(section as MenuSection)} />
+              <NotificationsRFQ
+                onNavigate={(section) =>
+                  setActiveSection(section as MenuSection)
+                }
+              />
               {/* <Button variant="outline" size="sm" className="gap-2 relative" onClick={() => setActiveSection("panier")}>
                 <ShoppingCart className="w-4 h-4" />
                 <span className="hidden sm:inline">Panier</span>
@@ -488,9 +594,12 @@ export default function Marketplace() {
             </div>
             <DialogTitle>Accès Vendeur verrouillé</DialogTitle>
             <DialogDescription className="pt-2">
-              Pour vendre sur la Marketplace, vous devez passer au plan <span className="font-semibold text-primary">Argent</span> ou supérieur.
+              Pour vendre sur la Marketplace, vous devez passer au plan{" "}
+              <span className="font-semibold text-primary">Argent</span> ou
+              supérieur.
               <br />
-              Vous êtes actuellement sur le plan <span className="font-semibold">{currentTierName}</span>.
+              Vous êtes actuellement sur le plan{" "}
+              <span className="font-semibold">{currentTierName}</span>.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2 pt-4">

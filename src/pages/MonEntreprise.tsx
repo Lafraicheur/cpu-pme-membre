@@ -57,7 +57,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { TeamLimitIndicator } from "@/components/subscription/TeamLimitIndicator";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { authApi } from "@/lib/api";
+import { authApi, affiliationApi } from "@/lib/api";
 import { CarteMembre } from "@/components/dashboard/CarteMembre";
 
 interface Branch {
@@ -161,6 +161,12 @@ export default function MonEntreprise() {
         return stored ? JSON.parse(stored) : undefined;
       } catch { return undefined; }
     },
+  });
+
+  const { data: affiliationData } = useQuery({
+    queryKey: ["affiliation", "me"],
+    queryFn: affiliationApi.getMe,
+    staleTime: 2 * 60 * 1000,
   });
 
   const logoUrl = profile?.logo
@@ -270,9 +276,9 @@ export default function MonEntreprise() {
               Gérez votre profil, vos sites et votre équipe
             </p>
           </div>
-          <Badge variant="outline" className="text-secondary border-secondary">
+          {/* <Badge variant="outline" className="text-secondary border-secondary">
             Profil complet à 85%
-          </Badge>
+          </Badge> */}
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
@@ -361,7 +367,6 @@ export default function MonEntreprise() {
                     <F label="Nom complet" value={String(profile?.name ?? "")} />
                     <F label="Poste / Fonction" value={String(profile?.position ?? "")} />
                     <F label="Nom de l'organisation" value={String(profile?.customOrganisationName ?? "")} />
-                    <F label="Type d'organisation" value={String(profile?.organisationType ?? "")} />
                     <F label="Nombre d'employés" value={String(profile?.nombre_employee ?? "")} />
                     <F label="Type de membre" value={String(typeMembre?.name ?? "")} />
                     <F label="Profil" value={String(profil?.name ?? "")} />
@@ -421,8 +426,8 @@ export default function MonEntreprise() {
               abonnementCreatedAt={String((profile?.created_at as string | undefined) ?? "")}
               modaliteAbonnement={(profile?.modalite_abonnement as "abonnement_mensuel" | "abonnement_annuel" | undefined)}
               typeMembreNom={String(typeMembre?.name ?? "")}
-              hasAffiliation={!!profile?.hasAffiliation}
-              affiliationName={String(profile?.organisationName ?? "")}
+              hasAffiliation={!!affiliationData?.currentAffiliation && affiliationData.currentAffiliation.status.toLowerCase() === "approved"}
+              affiliationName={affiliationData?.currentAffiliation?.organization?.name ?? ""}
             />
           </TabsContent>
 

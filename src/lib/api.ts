@@ -6,6 +6,47 @@ function getToken(): string | null {
   return localStorage.getItem("cpu-access-token") ?? getCookie("cpu-access-token");
 }
 
+function decodeHtmlPass(str: string): string {
+  return str
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"');
+}
+
+/**
+ * Décode les entités HTML encodées par l'API (&#x27; → ', &amp; → &, etc.).
+ * L'API renvoie parfois du texte double-encodé (ex: "&amp;#x27;" au lieu de "&#x27;"),
+ * donc on répète le décodage jusqu'à stabilisation pour gérer n'importe quel niveau d'imbrication.
+ */
+export function decodeHtml(str: string): string {
+  let current = str;
+  for (let next = decodeHtmlPass(current); next !== current; next = decodeHtmlPass(current)) {
+    current = next;
+  }
+  return current;
+}
+
+/** Applique decodeHtml récursivement sur toutes les chaînes d'une réponse API (objets/tableaux imbriqués). */
+export function decodeHtmlDeep<T>(value: T): T {
+  if (typeof value === "string") {
+    return decodeHtml(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => decodeHtmlDeep(item)) as unknown as T;
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = decodeHtmlDeep(val);
+    }
+    return result as T;
+  }
+  return value;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit & { skipAuth?: boolean } = {}
@@ -42,7 +83,8 @@ async function request<T>(
 
   // 204 No Content
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const data = await res.json();
+  return decodeHtmlDeep(data) as T;
 }
 
 async function requestMultipart<T>(
@@ -74,7 +116,8 @@ async function requestMultipart<T>(
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json();
+  const data = await res.json();
+  return decodeHtmlDeep(data) as T;
 }
 
 export interface Evenement {
@@ -134,17 +177,6 @@ export interface Evenement {
       logo: string | null;
     } | null;
   } | null;
-}
-
-/** Décode les entités HTML encodées par l'API (&#x27; → ', &amp; → &, etc.) */
-export function decodeHtml(str: string): string {
-  return str
-    .replace(/&#x27;/g, "'")
-    .replace(/&#x2F;/g, "/")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"');
 }
 
 export interface ParticipantTicket {
@@ -564,7 +596,7 @@ export const registrationsApi = {
       `/api/registrations?user_id=${encodeURIComponent(userId)}`
     );
     const list = Array.isArray(res) ? res : (res as { data: Registration[] }).data;
-    return list.filter((r) => r.user_id === userId);
+    return list ?? [];
   },
 
   getAll: async (): Promise<RegistrationParticipant[]> => {
@@ -850,12 +882,15 @@ export interface Secteur {
   id: string;
   name: string;
   description: string;
+  icon?: string;
+  isActive?: boolean;
 }
 
 export const secteursApi = {
   getAll: async (): Promise<Secteur[]> => {
     const res = await request<{ success: boolean; data: Secteur[] } | Secteur[]>("/api/secteurs");
-    return Array.isArray(res) ? res : ((res as { data: Secteur[] }).data ?? []);
+    const list = Array.isArray(res) ? res : ((res as { data: Secteur[] }).data ?? []);
+    return list.filter((s) => s.isActive !== false);
   },
 };
 
@@ -1085,14 +1120,32 @@ export interface Boutique {
   returnPolicy: string;
   created_at: string;
   updated_at: string;
+  vendor?: {
+    website_url: string | null;
+  } | null;
+}
+
+export interface BoutiqueCertificationCurrent {
+  id: string;
+  boutiqueId: string;
+  badgeType: string;
+  status: string; // submitted | in_audit | rejected | approved | ...
+  scoreLocal: string | number | null;
+  validUntil: string | null;
+  processDescription: string | null;
+  progress: number;
+  adminComment: string | null;
+  submittedAt: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BoutiqueCertificationStatus {
   boutiqueId: string;
-  current: unknown;
+  current: BoutiqueCertificationCurrent | null;
   certified: boolean;
   badgeType: string | null;
-  scoreLocal: number | null;
+  scoreLocal: number | string | null;
   validUntil: string | null;
 }
 
@@ -1114,13 +1167,13 @@ export interface CertificationDocumentsData {
 }
 
 export interface CertificationProductBadge {
-  id: string;
+  productId: string;
   name: string;
-  boutiqueId: string;
-  boutiqueBadgeType: string | null;
-  productBadgeType: string | null;
-  effectiveBadgeType: string | null;
   inheritFromBoutique: boolean;
+  boutiqueBadge: string | null;
+  ownBadge: string | null;
+  effectiveBadge: string | null;
+  source: string; // "none" | "boutique" | "product"
 }
 
 export const boutiqueCertificationApi = {
@@ -1166,53 +1219,25 @@ export const boutiqueCertificationApi = {
   },
 
   /**
-   * Upload un ou plusieurs fichiers en multipart puis soumet les URLs au PUT JSON.
-   * Endpoint d'upload : POST /api/media/upload (champ "file" par fichier).
+   * Soumet un document de certification : envoi multipart direct des fichiers.
+   * PUT /api/marketplace/boutiques/{boutiqueId}/certification/documents
+   * Champs : type (string), note (string, optionnel), files (fichiers).
    */
   uploadDocumentFiles: async (
     boutiqueId: string,
     type: string,
     files: File[],
-    existingUrls: string[] = []
+    note?: string
   ): Promise<unknown> => {
-    const token = getToken();
-    const authHeaders: Record<string, string> = {};
-    if (token) authHeaders["Authorization"] = `Bearer ${token}`;
-
-    // 1. Upload chaque fichier et récupère son URL
-    const uploadedUrls: string[] = [];
-    for (const file of files) {
-      const fd = new FormData();
-      fd.append("file", file);
-      const upRes = await fetch(`${API_BASE}/api/media/upload`, {
-        method: "POST",
-        headers: authHeaders,
-        body: fd,
-      });
-      if (!upRes.ok) {
-        let msg = `Erreur upload ${upRes.status}`;
-        try { const b = await upRes.json(); msg = b?.message || b?.error || msg; } catch { /* ignore */ }
-        throw new Error(msg);
-      }
-      const upJson = await upRes.json();
-      const url: string = upJson?.url ?? upJson?.data?.url ?? upJson?.data?.fileUrl ?? upJson?.fileUrl;
-      if (!url) throw new Error("L'API n'a pas retourné d'URL pour le fichier uploadé.");
-      uploadedUrls.push(url);
-    }
-
-    // 2. PUT JSON avec toutes les URLs (existantes + nouvelles)
-    const res = await request<{ success: boolean; data: unknown }>(
+    const fd = new FormData();
+    fd.append("type", type);
+    if (note) fd.append("note", note);
+    files.forEach((f) => fd.append("files", f));
+    return requestMultipart<{ success: boolean; data: unknown }>(
       `/api/marketplace/boutiques/${boutiqueId}/certification/documents`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          type,
-          status: "pending",
-          fileUrls: [...existingUrls, ...uploadedUrls],
-        }),
-      }
+      fd,
+      "PUT"
     );
-    return res;
   },
 
   getProductsBadges: async (boutiqueId: string): Promise<CertificationProductBadge[]> => {
@@ -1241,7 +1266,7 @@ export const boutiqueCertificationApi = {
 export const boutiquesApi = {
   getMyShop: async (): Promise<Boutique | null> => {
     const res = await request<{ success: boolean; data: { boutique: Boutique } }>(
-      "/api/marketplace/vendeur/shop"
+      "/api/marketplace/vendeur/profil-boutique"
     );
     return res.data?.boutique ?? null;
   },
@@ -1263,7 +1288,7 @@ export const boutiquesApi = {
     }
   ): Promise<Boutique> => {
     const res = await request<{ success: boolean; data: Boutique }>(
-      `/api/boutiques/${id}`,
+      `/api/marketplace/boutiques/${id}`,
       { method: "PATCH", body: JSON.stringify(body) }
     );
     return res.data;
@@ -1293,13 +1318,20 @@ export interface Product {
   deliveryZones?: unknown[];
   shippingCost?: number;
   pickupAvailable?: boolean;
-  technicalSpecifications?: { name: string; value: string; unit?: string }[];
-  certifications?: string[];
+  technicalSpecifications?: { name: string; value: string; unit?: string; url?: string }[];
+  certifications?: { name: string; url?: string }[];
+  technicalDocuments?: { name: string; url: string }[];
   variantsEnabled?: boolean;
   quantityPricingEnabled?: boolean;
   quantityPricingTiers?: { minQuantity: number; unitPrice: number }[];
   premiumOption?: string;
   premiumDurationWeeks?: number;
+  productMedia?: {
+    id: string;
+    url: string;
+    isActive: boolean;
+    isMain: boolean;
+  }[];
   created_at?: string;
   updated_at?: string;
 }
@@ -1311,9 +1343,27 @@ export interface ProductsPage {
   totalPages: number;
 }
 
+/**
+ * Construit un FormData pour attacher les images à un produit.
+ * En multipart, le backend ne reconvertit que les scalaires (string/number).
+ * Les booléens et les objets/tableaux (specs, certifs, paliers…) sont donc
+ * envoyés séparément via un appel JSON — ici on ne met que scalaires + fichiers.
+ */
+function buildProductFormData(body: Record<string, unknown>, files: File[]): FormData {
+  const fd = new FormData();
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "boolean") continue;        // → via JSON
+    if (typeof value === "object") continue;          // tableaux/objets → via JSON
+    fd.append(key, String(value));
+  }
+  files.forEach((f) => fd.append("files", f));
+  return fd;
+}
+
 export const productsApi = {
   getById: async (id: string): Promise<Product> => {
-    const res = await request<{ success: boolean; data: Product }>(`/api/products/${id}`);
+    const res = await request<{ success: boolean; data: Product }>(`/api/marketplace/products/${id}`);
     return res.data;
   },
 
@@ -1331,29 +1381,58 @@ export const productsApi = {
     if (params?.page) query.set("page", String(params.page));
     query.set("limit", String(params?.limit ?? 50));
     const res = await request<{ success: boolean; data: ProductsPage }>(
-      `/api/products?${query.toString()}`
+      `/api/marketplace/products?${query.toString()}`
     );
     return res.data;
   },
 
-  create: async (body: Record<string, unknown>): Promise<Product> => {
-    const res = await request<{ success: boolean; data: Product } | Product>(
-      "/api/products",
-      { method: "POST", body: JSON.stringify(body) }
+  create: async (body: Record<string, unknown>, files?: File[]): Promise<Product> => {
+    // Sans image : un seul POST JSON (toutes les infos passent nativement).
+    if (!files?.length) {
+      const res = await request<{ success: boolean; data: Product } | Product>(
+        "/api/marketplace/products",
+        { method: "POST", body: JSON.stringify(body) }
+      );
+      return (res as { data: Product }).data ?? (res as Product);
+    }
+    // Avec image : 1) POST multipart (scalaires + image) pour créer + attacher l'image…
+    const fd = buildProductFormData(body, files);
+    const createdRes = await requestMultipart<{ success: boolean; data: Product } | Product>(
+      "/api/marketplace/products", fd
     );
-    return (res as { data: Product }).data ?? (res as Product);
+    const created = (createdRes as { data: Product }).data ?? (createdRes as Product);
+    // …2) puis PATCH JSON pour garantir toutes les infos (booléens, specs, certifs, paliers…).
+    try {
+      const res = await request<{ success: boolean; data: Product } | Product>(
+        `/api/marketplace/products/${created.id}`,
+        { method: "PATCH", body: JSON.stringify(body) }
+      );
+      return (res as { data: Product }).data ?? (res as Product);
+    } catch {
+      return created; // l'image est au moins enregistrée
+    }
   },
 
-  update: async (id: string, body: Record<string, unknown>): Promise<Product> => {
+  update: async (id: string, body: Record<string, unknown>, files?: File[]): Promise<Product> => {
+    // Avec image : on attache d'abord l'image en multipart (scalaires + fichiers).
+    if (files?.length) {
+      const fd = buildProductFormData(body, files);
+      try {
+        await requestMultipart<{ success: boolean; data: Product } | Product>(
+          `/api/marketplace/products/${id}`, fd, "PATCH"
+        );
+      } catch { /* on tente quand même la mise à jour JSON ci-dessous */ }
+    }
+    // Toujours un PATCH JSON pour enregistrer l'intégralité des infos.
     const res = await request<{ success: boolean; data: Product } | Product>(
-      `/api/products/${id}`,
+      `/api/marketplace/products/${id}`,
       { method: "PATCH", body: JSON.stringify(body) }
     );
     return (res as { data: Product }).data ?? (res as Product);
   },
 
   delete: async (id: string): Promise<void> => {
-    await request<void>(`/api/products/${id}`, { method: "DELETE" });
+    await request<void>(`/api/marketplace/products/${id}`, { method: "DELETE" });
   },
 };
 
@@ -2329,6 +2408,29 @@ export const authApi = {
     );
     return (res as { data: Record<string, unknown> }).data ?? (res as Record<string, unknown>);
   },
+
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  forgotPassword: async (email: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+      skipAuth: true,
+    });
+  },
+
+  resetPassword: async (token: string, password: string): Promise<void> => {
+    await request<unknown>("/api/auth/adhesion/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+      skipAuth: true,
+    });
+  },
 };
 
 // ── Certificats ───────────────────────────────────────────────────────────────
@@ -2581,7 +2683,7 @@ export const adhesionsApi = {
 
   changeStatut: async (
     id: string,
-    statut: "pending" | "in_review" | "approved" | "rejected" | "completed",
+    statut: "pending" | "in_review" | "approved" | "rejected" | "completed" | "suspended" | "inactive",
     notes?: string,
     clientBaseUrl = "https://membre.cpupme.ci/"
   ): Promise<AdhesionDetail> => {
@@ -2874,5 +2976,838 @@ export const kycApi = {
       body: JSON.stringify({}),
     });
     return res.data;
+  },
+};
+
+// ── Affiliation ───────────────────────────────────────────────────────────────
+
+export type AffiliationEventType =
+  | "AFF_DECLARED_DRAFT_SAVED"
+  | "AFF_REQUEST_SENT"
+  | "AFF_REQUEST_CANCELLED_BY_MEMBER"
+  | "AFF_APPROVED_BY_ORG"
+  | "AFF_REJECTED_BY_ORG_REASON"
+  | "AFF_CHANGE_REQUESTED"
+  | "AFF_REVOKED_BY_ORG_REASON"
+  | "AFF_SUSPENDED_BY_CPU_PME_REASON"
+  | "AFF_OVERRIDE_BY_CPU_PME_REASON";
+
+export interface AffiliationHistoryEvent {
+  id: string;
+  type: AffiliationEventType;
+  organization: string;
+  actor: string;
+  actorRole: string;
+  timestamp: string;
+  reason?: string;
+  previousValue?: string;
+  newValue?: string;
+  attachments?: string[];
+}
+
+export interface AffiliationHistoryStats {
+  organizationsCount: number;
+  approvalsCount: number;
+  rejectionsCount: number;
+}
+
+export interface AffiliationHistoryResponse {
+  data: AffiliationHistoryEvent[];
+  stats: AffiliationHistoryStats;
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export type AffiliationStatus =
+  | "None"
+  | "Declared"
+  | "PendingConfirmation"
+  | "Approved"
+  | "Rejected"
+  | "CancelledByMember"
+  | "RevokedByOrg"
+  | "Suspended"
+  | "Overridden";
+
+export interface AffiliationOrganization {
+  id: string;
+  name: string;
+  type: "cooperative" | "federation" | "association";
+  sector: string;
+  region: string;
+  memberCount: number;
+  logo: string | null;
+}
+
+export interface AffiliationRecord {
+  id: string;
+  organization: AffiliationOrganization;
+  status: AffiliationStatus;
+  role: string;
+  sectors: string[];
+  effectiveDate: string;
+  requestDate?: string;
+  approvalDate?: string;
+  rejectionReason?: string;
+}
+
+export interface AffiliationSettings {
+  adhesionId: string;
+  profileVisible: boolean;
+  showInDirectory: boolean;
+  shareStatistics: boolean;
+  shareContactInfo: boolean;
+  shareLocation: boolean;
+  receiveOpportunities: boolean;
+  receiveEventInvites: boolean;
+  receiveNewsletters: boolean;
+  updatedAt: string;
+}
+
+export interface AffiliationRequestPayload {
+  requestType: "declare" | "change";
+  organizationId?: string;
+  customOrganizationName?: string;
+  role?: string;
+  sectors?: string[];
+  region?: string;
+  changeReason?: string;
+  effectiveDate?: string;
+  endCurrentAffiliation?: boolean;
+  saveAsDraft?: boolean;
+  dataSharingConsent?: boolean;
+  termsAccepted?: boolean;
+}
+
+export interface AffiliationRequestRecord {
+  id: string;
+  requestType: "declare" | "change";
+  status: "draft" | "pending" | "approved" | "rejected" | string;
+  organizationId: string | null;
+  organization: AffiliationOrganization | null;
+  role: string | null;
+  sectors: string[];
+  region: string | null;
+  changeReason: string | null;
+  effectiveDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AffiliationMeResponse {
+  currentAffiliation: AffiliationRecord | null;
+  pendingRequest: AffiliationRecord | null;
+  suggestedOrganizations: AffiliationOrganization[];
+  isAccountActive: boolean;
+}
+
+export const affiliationApi = {
+  getOrganizations: async (params?: {
+    search?: string;
+    type?: string;
+    sector?: string;
+    region?: string;
+    limit?: number;
+    suggest?: boolean;
+  }): Promise<AffiliationOrganization[]> => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set("search", params.search);
+    if (params?.type) qs.set("type", params.type);
+    if (params?.sector) qs.set("sector", params.sector);
+    if (params?.region) qs.set("region", params.region);
+    qs.set("limit", String(params?.limit ?? 20));
+    if (params?.suggest) qs.set("suggest", "true");
+    const res = await request<{ success: boolean; data: AffiliationOrganization[] }>(
+      `/api/affiliations/organizations?${qs.toString()}`
+    );
+    return res.data ?? [];
+  },
+
+  createRequest: async (payload: AffiliationRequestPayload): Promise<AffiliationRequestRecord> => {
+    const res = await request<{ success: boolean; data: AffiliationRequestRecord }>(
+      "/api/affiliations/requests",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  cancelRequest: async (id: string): Promise<void> => {
+    await request<void>(`/api/affiliations/requests/${encodeURIComponent(id)}/cancel`, {
+      method: "PATCH",
+    });
+  },
+
+  uploadRequestDocument: async (requestId: string, file: File): Promise<unknown> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${API_BASE}/api/affiliations/requests/${encodeURIComponent(requestId)}/documents`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    if (!res.ok) {
+      let msg = `Erreur ${res.status}`;
+      try { const b = await res.json(); msg = b?.message || b?.error || msg; } catch { /* ignore */ }
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  getMe: async (): Promise<AffiliationMeResponse> => {
+    const res = await request<{ success: boolean; data: AffiliationMeResponse }>(
+      "/api/affiliations/me"
+    );
+    return res.data;
+  },
+
+  getSettings: async (): Promise<AffiliationSettings> => {
+    const res = await request<{ success: boolean; data: AffiliationSettings }>(
+      "/api/affiliations/settings"
+    );
+    return res.data;
+  },
+
+  updateSettings: async (payload: Omit<AffiliationSettings, "adhesionId" | "updatedAt">): Promise<AffiliationSettings> => {
+    const res = await request<{ success: boolean; data: AffiliationSettings }>(
+      "/api/affiliations/settings",
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  getHistory: async (params?: { page?: number; limit?: number }): Promise<AffiliationHistoryResponse> => {
+    const qs = new URLSearchParams();
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 30));
+    const res = await request<{ success: boolean; data: AffiliationHistoryResponse }>(
+      `/api/affiliations/history?${qs.toString()}`
+    );
+    return res.data;
+  },
+};
+
+// ── Mailing Preferences ───────────────────────────────────────────────────────
+
+export interface MailingPreferences {
+  id: string;
+  adhesionId: string;
+  timezone: string;
+  newsletterOptIn: boolean;
+  subscribedTopics: string[] | null;
+  contentAlertOptIn: boolean;
+  alertHour: number;
+  alertMinute: number;
+  lastAlertLocalDate: string | null;
+  lastAlertSentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateMailingPreferences {
+  timezone?: string;
+  newsletterOptIn?: boolean;
+  subscribedTopics?: string[];
+  contentAlertOptIn?: boolean;
+  alertHour?: number;
+  alertMinute?: number;
+}
+
+export const mailingApi = {
+  getPreferences: async (): Promise<MailingPreferences> => {
+    const res = await request<{ success: boolean; data: MailingPreferences }>(
+      "/api/mailing/preferences/me"
+    );
+    return res.data;
+  },
+
+  updatePreferences: async (payload: UpdateMailingPreferences): Promise<MailingPreferences> => {
+    const res = await request<{ success: boolean; data: MailingPreferences }>(
+      "/api/mailing/preferences/me",
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+};
+
+// ── RFQ (Acheteur) ────────────────────────────────────────────────────────────
+
+export type RFQApiType = "B2B Volume" | "Service" | "Sur mesure" | "Prix variable" | "Standard";
+export type RFQApiCategory = string;
+
+export interface RFQFromAPI {
+  id: string;
+  rfqNumber: string;
+  buyerId: string;
+  type: string;
+  productNeed: string;
+  category: string;
+  quantity: string;
+  unit: string;
+  deliveryZone: string;
+  deadline: string;
+  estimatedBudget: number | null;
+  specifications: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  quotes: unknown[];
+  attachments: unknown[];
+  offersCount: number;
+}
+
+export interface RFQCreatePayload {
+  title: string;
+  productNeed: string;
+  description?: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  deadline: string;
+  type: RFQApiType;
+  deliveryZone: string;
+  publishNow?: boolean;
+  files?: File[];
+}
+
+export interface RFQOffer {
+  id: string;
+  rfqId: string;
+  vendorId: string;
+  price: number;
+  deliveryDays: number;
+  conditions: string;
+  validityDate: string;
+  status: string;
+  negotiationOpenedAt: string | null;
+  proformaNumber: string | null;
+  proformaTotal: number;
+  proformaDepositRate: number;
+  proformaDepositAmount: number;
+  proformaValidUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  rfq: string;
+}
+
+export interface RFQNegotiationMessage {
+  id: string;
+  quoteId: string;
+  senderRole: "vendor" | "buyer";
+  type: string;
+  content: string;
+  attachmentsUrls: string[];
+  proformaNumber: string | null;
+  proformaTotal: number;
+  proformaDepositRate: number;
+  proformaDepositAmount: number;
+  proformaValidUntil: string | null;
+  createdAt: string;
+  quote: RFQOffer;
+}
+
+export interface RFQVendorStats {
+  aRepondre: number;
+  enNegociation: number;
+  gagnees: number;
+}
+
+export interface RFQVendorReceived {
+  id: string;
+  rfqNumber: string;
+  buyerId?: string;
+  type?: string;
+  productNeed: string;
+  category?: string;
+  quantity: number | string;
+  unit: string;
+  deliveryZone: string;
+  deadline: string;
+  estimatedBudget: number | null;
+  specifications: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt?: string;
+  buyer?: { id?: string; name?: string; email?: string } | null;
+  myQuote?: RFQOffer | null;
+  attachments?: { fileUrl: string; originalName: string; mimeType: string; fileSize: number }[];
+}
+
+export const rfqApi = {
+  getAll: async (): Promise<RFQFromAPI[]> => {
+    const res = await request<{ success: boolean; data: RFQFromAPI[] }>("/api/marketplace/rfq");
+    return res.data ?? [];
+  },
+
+  create: async (payload: RFQCreatePayload): Promise<unknown> => {
+    const jsonBody = {
+      title: payload.title,
+      productNeed: payload.productNeed,
+      ...(payload.description ? { description: payload.description } : {}),
+      category: payload.category,
+      quantity: payload.quantity,
+      unit: payload.unit,
+      deadline: payload.deadline,
+      type: payload.type,
+      deliveryZone: payload.deliveryZone,
+      ...(payload.publishNow !== undefined ? { publishNow: payload.publishNow } : {}),
+    };
+
+    // Toujours envoyer en multipart pour être compatible avec le FilesInterceptor backend.
+    // On encode les champs dans un champ "data" JSON pour préserver les types numériques.
+    const fd = new FormData();
+    fd.append("data", JSON.stringify(jsonBody));
+    if (payload.files?.length) {
+      payload.files.forEach((f) => fd.append("files", f));
+    }
+    return requestMultipart<unknown>("/api/marketplace/rfq", fd);
+  },
+
+  publish: async (id: string): Promise<RFQFromAPI> => {
+    const res = await request<{ success: boolean; data: RFQFromAPI } | RFQFromAPI>(
+      `/api/marketplace/rfq/${encodeURIComponent(id)}/publish`,
+      { method: "POST" }
+    );
+    return (res as { data: RFQFromAPI }).data ?? (res as RFQFromAPI);
+  },
+
+  getOffers: async (rfqId: string): Promise<RFQOffer[]> => {
+    const res = await request<RFQOffer[] | { success: boolean; data: RFQOffer[] }>(
+      `/api/marketplace/rfq/${encodeURIComponent(rfqId)}/offers`
+    );
+    return Array.isArray(res) ? res : ((res as { data: RFQOffer[] }).data ?? []);
+  },
+
+  getById: async (id: string): Promise<RFQFromAPI> => {
+    const res = await request<{ success: boolean; data: RFQFromAPI }>(`/api/marketplace/rfq/${encodeURIComponent(id)}`);
+    return res.data;
+  },
+
+  update: async (id: string, payload: {
+    type?: string;
+    productNeed?: string;
+    category?: string;
+    quantity?: number;
+    unit?: string;
+    deliveryZone?: string;
+    deadline?: string;
+    estimatedBudget?: number | null;
+    specifications?: string | null;
+    publishNow?: boolean;
+    attachments?: { fileUrl: string; originalName: string; mimeType: string; fileSize: number }[];
+  }): Promise<RFQFromAPI> => {
+    const res = await request<{ success: boolean; data: RFQFromAPI }>(
+      `/api/marketplace/rfq/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  // ── Négociations acheteur ──────────────────────────────────────────
+
+  getNegotiations: async (): Promise<RFQOffer[]> => {
+    const res = await request<{ success: boolean; data: RFQOffer[] }>("/api/marketplace/rfq/buyer/negotiations");
+    return res.data ?? [];
+  },
+
+  getNegotiationMessages: async (quoteId: string): Promise<RFQNegotiationMessage[]> => {
+    const res = await request<RFQNegotiationMessage[] | { success: boolean; data: RFQNegotiationMessage[] }>(
+      `/api/marketplace/rfq/buyer/negotiations/${encodeURIComponent(quoteId)}/messages`
+    );
+    return Array.isArray(res) ? res : ((res as { data: RFQNegotiationMessage[] }).data ?? []);
+  },
+
+  sendNegotiationMessage: async (quoteId: string, message: string, files?: File[]): Promise<RFQNegotiationMessage[]> => {
+    const fd = new FormData();
+    fd.append("message", message);
+    files?.forEach((f) => fd.append("files", f));
+    const res = await requestMultipart<RFQNegotiationMessage[] | { success: boolean; data: RFQNegotiationMessage[] }>(
+      `/api/marketplace/rfq/buyer/negotiations/${encodeURIComponent(quoteId)}/messages`, fd
+    );
+    return Array.isArray(res) ? res : ((res as { data: RFQNegotiationMessage[] }).data ?? []);
+  },
+
+  acceptProforma: async (quoteId: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/buyer/negotiations/${encodeURIComponent(quoteId)}/proforma/accept`,
+      { method: "POST" }
+    );
+  },
+
+  rejectProforma: async (quoteId: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/buyer/negotiations/${encodeURIComponent(quoteId)}/proforma/reject`,
+      { method: "POST" }
+    );
+  },
+
+  // ── Actions sur les offres ─────────────────────────────────────────
+
+  acceptOffer: async (quoteId: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/offers/${encodeURIComponent(quoteId)}/accept`,
+      { method: "POST" }
+    );
+  },
+
+  rejectOffer: async (quoteId: string, reason: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/offers/${encodeURIComponent(quoteId)}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) }
+    );
+  },
+
+  negotiateOffer: async (quoteId: string, counterPrice: number, message: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/offers/${encodeURIComponent(quoteId)}/negotiate`,
+      { method: "POST", body: JSON.stringify({ counterPrice, message }) }
+    );
+  },
+
+  convertToOrder: async (quoteId: string, body: {
+    boutiqueId: string;
+    productVariantId: string;
+    deliveryMode: string;
+  }): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/rfq/offers/${encodeURIComponent(quoteId)}/convert-to-order`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+  },
+
+  // ── Côté vendeur : RFQ reçus ───────────────────────────────────────
+  getVendorReceived: async (): Promise<{ stats: RFQVendorStats; data: RFQVendorReceived[] }> => {
+    const res = await request<{ success: boolean; data: { stats: RFQVendorStats; data: RFQVendorReceived[] } }>(
+      "/api/marketplace/rfq/vendor/received"
+    );
+    return res.data ?? { stats: { aRepondre: 0, enNegociation: 0, gagnees: 0 }, data: [] };
+  },
+
+  getVendorReceivedById: async (id: string): Promise<RFQVendorReceived> => {
+    const res = await request<{ success: boolean; data: RFQVendorReceived } | RFQVendorReceived>(
+      `/api/marketplace/rfq/vendor/received/${encodeURIComponent(id)}`
+    );
+    return (res as { data: RFQVendorReceived }).data ?? (res as RFQVendorReceived);
+  },
+
+  respondToReceived: async (id: string, payload: {
+    price: number;
+    deliveryDays: number;
+    validityDays: number;
+    conditions: string;
+  }): Promise<unknown> => {
+    return request<unknown>(
+      `/api/marketplace/rfq/vendor/received/${encodeURIComponent(id)}/respond`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
+  // ── Côté vendeur : négociations ────────────────────────────────────
+  getVendorNegotiations: async (): Promise<RFQOffer[]> => {
+    const res = await request<{ success: boolean; data: RFQOffer[] }>(
+      "/api/marketplace/rfq/vendor/negotiations"
+    );
+    return res.data ?? [];
+  },
+
+  getVendorNegotiationMessages: async (quoteId: string): Promise<RFQNegotiationMessage[]> => {
+    const res = await request<RFQNegotiationMessage[] | { success: boolean; data: RFQNegotiationMessage[] }>(
+      `/api/marketplace/rfq/vendor/negotiations/${encodeURIComponent(quoteId)}/messages`
+    );
+    return Array.isArray(res) ? res : ((res as { data: RFQNegotiationMessage[] }).data ?? []);
+  },
+
+  sendVendorNegotiationMessage: async (quoteId: string, message: string, files?: File[]): Promise<RFQNegotiationMessage[]> => {
+    const fd = new FormData();
+    fd.append("message", message);
+    files?.forEach((f) => fd.append("files", f));
+    const res = await requestMultipart<RFQNegotiationMessage[] | { success: boolean; data: RFQNegotiationMessage[] }>(
+      `/api/marketplace/rfq/vendor/negotiations/${encodeURIComponent(quoteId)}/messages`, fd
+    );
+    return Array.isArray(res) ? res : ((res as { data: RFQNegotiationMessage[] }).data ?? []);
+  },
+
+  openVendorNegotiation: async (quoteId: string, message: string, files?: File[]): Promise<unknown> => {
+    const fd = new FormData();
+    fd.append("message", message);
+    files?.forEach((f) => fd.append("files", f));
+    return requestMultipart<unknown>(
+      `/api/marketplace/rfq/vendor/negotiations/${encodeURIComponent(quoteId)}/open`, fd
+    );
+  },
+
+  sendVendorProforma: async (quoteId: string, payload: {
+    proformaNumber: string;
+    totalAmount: number;
+    depositRate: number;
+    depositAmount: number;
+    validUntil: string;
+    note?: string;
+  }): Promise<unknown> => {
+    return request<unknown>(
+      `/api/marketplace/rfq/vendor/negotiations/${encodeURIComponent(quoteId)}/proforma`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+};
+
+// ── Retours (Vendeur) ─────────────────────────────────────────────────────────
+
+export interface ReturnVendor {
+  id: string;
+  returnNumber: string;
+  orderId: string;
+  buyerId: string;
+  vendorId: string;
+  productId: string;
+  variantId: string | null;
+  quantity: number;
+  reason: string;
+  description: string | null;
+  amount: number;
+  status: string;
+  decisionReason: string | null;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  returnedAt: string | null;
+  refundedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  product?: { id: string; name: string } | null;
+  buyer?: { id: string; name: string } | null;
+  order?: { id: string; orderNumber?: string } | null;
+}
+
+export interface ReturnVendorStats {
+  total: number;
+  byStatus: Record<string, number>;
+  refundExposure: number;
+}
+
+export const returnsApi = {
+  getVendorList: async (): Promise<ReturnVendor[]> => {
+    const res = await request<{ success: boolean; data: ReturnVendor[] } | ReturnVendor[]>(
+      "/api/marketplace/returns/vendor/list"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ReturnVendor[] }).data ?? []);
+  },
+
+  getVendorStats: async (): Promise<ReturnVendorStats> => {
+    const res = await request<{ success: boolean; data: ReturnVendorStats }>(
+      "/api/marketplace/returns/vendor/stats"
+    );
+    return res.data ?? { total: 0, byStatus: {}, refundExposure: 0 };
+  },
+
+  getVendorById: async (id: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}`
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  approve: async (id: string, comment?: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  reject: async (id: string, reason: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  refund: async (id: string, amount: number, comment?: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/refund`,
+      { method: "POST", body: JSON.stringify({ amount, comment: comment ?? "" }) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  close: async (id: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/close`,
+      { method: "POST" }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+};
+
+// ── Litiges (Vendeur) ─────────────────────────────────────────────────────────
+
+export type LitigeStatusApi = "Ouvert" | "En médiation" | "Résolu" | "Remboursé" | "Rejeté" | "Clôturé";
+
+export interface LitigeMessage {
+  id: string;
+  litigeId: string;
+  senderType: string; // buyer | vendor | mediator
+  senderId: string;
+  senderName: string;
+  content: string;
+  proposedAmount: number | null;
+  createdAt: string;
+  proofUrls?: string[];
+}
+
+export interface LitigeVendor {
+  id: string;
+  litigeNumber: string;
+  orderId: string;
+  buyerId: string;
+  vendorId: string;
+  title: string;
+  reason: string;
+  description: string;
+  amount: number;
+  status: string;
+  resolvedAt: string | null;
+  refundedAt: string | null;
+  rejectedAt: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  order?: { id: string; orderNumber?: string } | null;
+  buyer?: { id: string; name: string } | null;
+  messages?: LitigeMessage[];
+  medias?: { id: string; url: string; name?: string }[];
+}
+
+export const litigesApi = {
+  getVendorList: async (): Promise<LitigeVendor[]> => {
+    const res = await request<{ success: boolean; data: LitigeVendor[] } | LitigeVendor[]>(
+      "/api/marketplace/litiges/vendor/list"
+    );
+    return Array.isArray(res) ? res : ((res as { data: LitigeVendor[] }).data ?? []);
+  },
+
+  getVendorById: async (id: string): Promise<LitigeVendor> => {
+    const res = await request<{ success: boolean; data: LitigeVendor } | LitigeVendor>(
+      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}`
+    );
+    return (res as { data: LitigeVendor }).data ?? (res as LitigeVendor);
+  },
+
+  reply: async (id: string, message: string, proof?: File[]): Promise<LitigeMessage> => {
+    const fd = new FormData();
+    fd.append("message", message);
+    proof?.forEach((f) => fd.append("proof", f));
+    const res = await requestMultipart<{ success: boolean; data: LitigeMessage } | LitigeMessage>(
+      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}/reply`, fd
+    );
+    return (res as { data: LitigeMessage }).data ?? (res as LitigeMessage);
+  },
+
+  updateStatus: async (id: string, status: LitigeStatusApi, comment?: string): Promise<LitigeVendor> => {
+    const res = await request<{ success: boolean; data: LitigeVendor } | LitigeVendor>(
+      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status, ...(comment ? { comment } : {}) }) }
+    );
+    return (res as { data: LitigeVendor }).data ?? (res as LitigeVendor);
+  },
+};
+
+// ── Commandes (Vendeur) ───────────────────────────────────────────────────────
+
+export interface VendorOrder {
+  id: string;
+  orderNumber: string;
+  userId: string;
+  adhesionId?: string;
+  boutiqueId: string;
+  productVariantId: string;
+  quantity: number;
+  totalPrice: number;
+  status: string;
+  trackingNumber: string | null;
+  rejectionReason: string | null;
+  cancelledReason: string | null;
+  confirmedAt: string | null;
+  preparedAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  shippingCost: number;
+  deliveryMode: string;
+  deliveryAddress: string | null;
+  created_at: string;
+  updated_at: string;
+  user?: { id: string; name?: string; email?: string } | null;
+  product?: { id: string; name: string } | null;
+  productVariant?: { id: string; name?: string; product?: { id: string; name: string } } | null;
+}
+
+export interface VendorOrdersStats {
+  nouvelles: number;
+  enCours: number;
+  livrees: number;
+}
+
+export interface VendorOrdersPage {
+  stats: VendorOrdersStats;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: VendorOrder[];
+}
+
+export const ordersApi = {
+  getVendorList: async (params?: { status?: string; q?: string; page?: number; limit?: number }): Promise<VendorOrdersPage> => {
+    const qs = new URLSearchParams();
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.q) qs.set("q", params.q);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: VendorOrdersPage }>(
+      `/api/marketplace/orders/vendor-orders/list?${qs.toString()}`
+    );
+    return res.data ?? { stats: { nouvelles: 0, enCours: 0, livrees: 0 }, page: 1, limit: 20, total: 0, totalPages: 1, data: [] };
+  },
+
+  getVendorById: async (id: string): Promise<VendorOrder> => {
+    const res = await request<{ success: boolean; data: VendorOrder } | VendorOrder>(
+      `/api/marketplace/orders/vendor-orders/${encodeURIComponent(id)}`
+    );
+    return (res as { data: VendorOrder }).data ?? (res as VendorOrder);
+  },
+
+  accept: async (id: string): Promise<VendorOrder> => {
+    const res = await request<{ success: boolean; data: VendorOrder } | VendorOrder>(
+      `/api/marketplace/orders/vendor-orders/${encodeURIComponent(id)}/accept`,
+      { method: "POST" }
+    );
+    return (res as { data: VendorOrder }).data ?? (res as VendorOrder);
+  },
+
+  reject: async (id: string, reason?: string): Promise<VendorOrder> => {
+    const res = await request<{ success: boolean; data: VendorOrder } | VendorOrder>(
+      `/api/marketplace/orders/vendor-orders/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify(reason ? { reason } : {}) }
+    );
+    return (res as { data: VendorOrder }).data ?? (res as VendorOrder);
+  },
+
+  updateStatus: async (id: string, status: string, opts?: { trackingNumber?: string; reason?: string }): Promise<VendorOrder> => {
+    const res = await request<{ success: boolean; data: VendorOrder } | VendorOrder>(
+      `/api/marketplace/orders/vendor-orders/${encodeURIComponent(id)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status, ...(opts?.trackingNumber ? { trackingNumber: opts.trackingNumber } : {}), ...(opts?.reason ? { reason: opts.reason } : {}) }) }
+    );
+    return (res as { data: VendorOrder }).data ?? (res as VendorOrder);
   },
 };

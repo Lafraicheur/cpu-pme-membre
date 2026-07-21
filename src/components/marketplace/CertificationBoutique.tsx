@@ -44,6 +44,7 @@ import {
   boutiqueCertificationApi,
   boutiquesApi,
   madeInCIBadgeLevelsApi,
+  madeInCIRequestsApi,
   type CertificationDocument,
 } from "@/lib/api";
 import { toast } from "@/components/ui/use-toast";
@@ -65,15 +66,16 @@ function getBadgeCfg(id: string | null | undefined) {
 
 type DisplayStatus = "NonCertifie" | "EnCours" | "Audit" | "Certifie" | "Refuse" | "Expire";
 
-function resolveStatus(cert: { certified: boolean; current: unknown; validUntil: string | null }): DisplayStatus {
+function resolveStatus(cert: { certified: boolean; current: { status?: string } | null; validUntil: string | null }): DisplayStatus {
   if (cert.certified) {
     if (cert.validUntil && new Date(cert.validUntil) < new Date()) return "Expire";
     return "Certifie";
   }
-  const c = (typeof cert.current === "string" ? cert.current : "").toLowerCase();
+  const c = (cert.current?.status ?? "").toLowerCase();
   if (c === "submitted") return "EnCours";
-  if (c === "in_audit" || c === "inaudit") return "Audit";
+  if (c === "in_audit" || c === "inaudit" || c === "in_review") return "Audit";
   if (c === "rejected" || c === "refused") return "Refuse";
+  if (c === "approved" || c === "certified") return "Certifie";
   return "NonCertifie";
 }
 
@@ -85,6 +87,27 @@ const statusConfig: Record<DisplayStatus, { label: string; color: string; icon: 
   Refuse:      { label: "Refusé",             color: "text-destructive",      icon: XCircle,      bgColor: "bg-destructive/10"  },
   Expire:      { label: "Expiré",             color: "text-amber-600",        icon: AlertCircle,  bgColor: "bg-amber-500/10"    },
 };
+
+// ─── Statut des demandes de badge Made in CI (par produit) ──────────────────
+
+type ReqStatusKey = "draft" | "submitted" | "in_audit" | "approved" | "rejected";
+
+const reqStatusConfig: Record<ReqStatusKey, { label: string; color: string; icon: typeof Clock }> = {
+  draft:     { label: "Brouillon", color: "text-muted-foreground", icon: FileText },
+  submitted: { label: "Soumis",    color: "text-blue-500",         icon: Clock },
+  in_audit:  { label: "En audit",  color: "text-amber-500",        icon: Eye },
+  approved:  { label: "Approuvé",  color: "text-green-500",        icon: CheckCircle2 },
+  rejected:  { label: "Refusé",    color: "text-destructive",      icon: XCircle },
+};
+
+function normalizeReqStatus(status: string): ReqStatusKey {
+  const s = (status || "").toLowerCase();
+  if (s === "submitted") return "submitted";
+  if (s === "in_audit" || s === "inaudit") return "in_audit";
+  if (s === "approved") return "approved";
+  if (s === "rejected") return "rejected";
+  return "draft";
+}
 
 // ─── Checklist d'icônes pour les types de document ──────────────────────────
 
@@ -107,6 +130,13 @@ export function CertificationBoutique() {
   const queryClient = useQueryClient();
   const [showDemandeDialog, setShowDemandeDialog] = useState(false);
   const [showPropagationDialog, setShowPropagationDialog] = useState(false);
+  const [showBadgeRequestDialog, setShowBadgeRequestDialog] = useState(false);
+  const [badgeRequestForm, setBadgeRequestForm] = useState({
+    productId: "",
+    badgeType: "",
+    transformationProcess: "",
+    localValueAdded: "",
+  });
   const [uploadingDoc, setUploadingDoc] = useState<CertificationDocument | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -153,6 +183,12 @@ export function CertificationBoutique() {
     queryFn: madeInCIBadgeLevelsApi.getAll,
   });
 
+  // 6. Demandes de badge Made in CI par produit (fusion MadeInCI)
+  const { data: myRequests = [] } = useQuery({
+    queryKey: ["madeInCI", "myRequests"],
+    queryFn: madeInCIRequestsApi.getMyRequests,
+  });
+
   // Mutations
   const submitRequestMutation = useMutation({
     mutationFn: (body: { badgeType: string; processDescription: string; scoreLocal: number }) =>
@@ -176,6 +212,20 @@ export function CertificationBoutique() {
       setUploadingDoc(null);
       setPendingFiles([]);
       toast({ title: "Document envoyé", description: "Votre document a été soumis pour vérification." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erreur", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const submitBadgeRequestMutation = useMutation({
+    mutationFn: madeInCIRequestsApi.submit,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["madeInCI", "myRequests"] });
+      queryClient.invalidateQueries({ queryKey: ["boutiqueCertProducts", boutiqueId] });
+      setShowBadgeRequestDialog(false);
+      setBadgeRequestForm({ productId: "", badgeType: "", transformationProcess: "", localValueAdded: "" });
+      toast({ title: "Demande soumise", description: "Votre demande de badge Made in CI a été envoyée." });
     },
     onError: (err: Error) => {
       toast({ title: "Erreur", description: err.message, variant: "destructive" });
@@ -216,8 +266,7 @@ export function CertificationBoutique() {
       await boutiqueCertificationApi.uploadDocumentFiles(
         boutiqueId,
         uploadingDoc.type,
-        pendingFiles,
-        uploadingDoc.fileUrls ?? []
+        pendingFiles
       );
       queryClient.invalidateQueries({ queryKey: ["boutiqueCertDocs", boutiqueId] });
       setUploadingDoc(null);
@@ -246,7 +295,34 @@ export function CertificationBoutique() {
   const statusCfg = statusConfig[displayStatus];
   const StatusIcon = statusCfg.icon;
   const badgeTypeCfg = getBadgeCfg(certData?.badgeType);
-  const produitsAvecBadge = productsBadges.filter((p) => p.effectiveBadgeType !== null).length;
+  const produitsAvecBadge = productsBadges.filter((p) => p.effectiveBadge !== null).length;
+
+  // Demande Made in CI la plus récente par produit (fusion MadeInCI)
+  const requestByProduct = new Map<string, (typeof myRequests)[number]>();
+  for (const r of myRequests) {
+    const existing = requestByProduct.get(r.productId);
+    if (!existing || new Date(r.submittedAt) > new Date(existing.submittedAt)) {
+      requestByProduct.set(r.productId, r);
+    }
+  }
+
+  function openBadgeRequest(productId: string) {
+    setBadgeRequestForm({ productId, badgeType: "", transformationProcess: "", localValueAdded: "" });
+    setShowBadgeRequestDialog(true);
+  }
+
+  function handleSubmitBadgeRequest() {
+    if (!badgeRequestForm.productId || !badgeRequestForm.badgeType || !badgeRequestForm.transformationProcess || !badgeRequestForm.localValueAdded) {
+      toast({ title: "Champs requis", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
+      return;
+    }
+    submitBadgeRequestMutation.mutate({
+      productId: badgeRequestForm.productId,
+      badgeType: badgeRequestForm.badgeType,
+      transformationProcess: badgeRequestForm.transformationProcess,
+      localValueAdded: parseFloat(badgeRequestForm.localValueAdded),
+    });
+  }
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -289,7 +365,7 @@ export function CertificationBoutique() {
   return (
     <div className="space-y-6">
       {/* Header Certification */}
-      <Card className={cn(
+      {/* <Card className={cn(
         "border-2",
         isCertifie && "border-green-500/50 bg-gradient-to-r from-green-500/5 to-primary/5",
         displayStatus === "EnCours" && "border-blue-500/50 bg-blue-500/5",
@@ -352,7 +428,7 @@ export function CertificationBoutique() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       <Tabs defaultValue={isCertifie ? "produits" : "processus"} className="space-y-6">
         <TabsList>
@@ -367,7 +443,78 @@ export function CertificationBoutique() {
 
         {/* ── Onglet : Processus ── */}
         <TabsContent value="processus" className="space-y-4">
-          <Card>
+          {/* Demande de certification déjà soumise */}
+          {certData?.current && (
+            <Card className={cn(
+              "border-2",
+              displayStatus === "EnCours" && "border-blue-500/40 bg-blue-500/5",
+              displayStatus === "Audit" && "border-amber-500/40 bg-amber-500/5",
+              displayStatus === "Refuse" && "border-destructive/40 bg-destructive/5",
+              displayStatus === "Certifie" && "border-green-500/40 bg-green-500/5",
+            )}>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-primary" />
+                    Demande de certification
+                  </CardTitle>
+                  <Badge className={cn(statusCfg.bgColor, statusCfg.color, "border-0")}>
+                    <StatusIcon className="w-3 h-3 mr-1" />
+                    {statusCfg.label}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  {certData.current.submittedAt
+                    ? `Soumise le ${new Date(certData.current.submittedAt).toLocaleDateString("fr-FR")}`
+                    : "Demande enregistrée"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Niveau demandé</p>
+                    <Badge className={getBadgeCfg(certData.current.badgeType).color}>
+                      <Award className="w-3 h-3 mr-1" />
+                      Made in CI - {badgeLevels.find(l => l.id === certData.current!.badgeType)?.label ?? certData.current.badgeType}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Score local estimé</p>
+                    <p className="text-lg font-bold text-primary">{certData.current.scoreLocal ?? "—"}%</p>
+                  </div>
+                </div>
+
+                {certData.current.processDescription && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Processus de transformation</p>
+                    <p className="text-sm">{certData.current.processDescription}</p>
+                  </div>
+                )}
+
+                {typeof certData.current.progress === "number" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-muted-foreground">Avancement du traitement</p>
+                      <span className="text-xs font-medium">{certData.current.progress}%</span>
+                    </div>
+                    <Progress value={certData.current.progress} className="h-2" />
+                  </div>
+                )}
+
+                {certData.current.adminComment && (
+                  <div className="p-3 rounded-lg bg-muted/50 border flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium">Commentaire de l'équipe CPU-PME</p>
+                      <p className="text-sm text-muted-foreground">{certData.current.adminComment}</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-primary" />
@@ -404,7 +551,7 @@ export function CertificationBoutique() {
                 ))}
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Niveaux expliqués */}
           <Card>
@@ -417,7 +564,7 @@ export function CertificationBoutique() {
                 {badgeLevels.map((level) => {
                   const cfg = getBadgeCfg(level.id);
                   const isCurrentLevel = certData?.badgeType === level.id;
-                  const score = certData?.scoreLocal ?? 0;
+                  const score = Number(certData?.scoreLocal ?? certData?.current?.scoreLocal ?? 0) || 0;
                   return (
                     <div key={level.id} className={cn(
                       "p-4 rounded-xl border-2 transition-all",
@@ -595,96 +742,119 @@ export function CertificationBoutique() {
 
         {/* ── Onglet : Produits badgés ── */}
         <TabsContent value="produits" className="space-y-4">
-          {!isCertifie ? (
+          {/* Propagation du badge boutique (uniquement si la boutique est certifiée) */}
+          {isCertifie && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                    <div>
+                      <p className="font-medium">Propagation des badges</p>
+                      <p className="text-sm text-muted-foreground">
+                        Vos produits peuvent hériter du badge boutique. Un produit avec son propre badge garde le badge le plus élevé.
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowPropagationDialog(true)}>
+                    Gérer
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {isLoadingProducts ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : productsBadges.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
-                <Award className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <h3 className="font-semibold mb-2">Certification requise</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Obtenez d'abord la certification boutique pour propager les badges à vos produits
+                <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="font-semibold mb-2">Aucun produit</h3>
+                <p className="text-sm text-muted-foreground">
+                  Ajoutez des produits à votre boutique pour gérer leurs badges Made in CI.
                 </p>
-                <Button onClick={() => setShowDemandeDialog(true)}>
-                  Demander la certification
-                </Button>
               </CardContent>
             </Card>
           ) : (
-            <>
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Sparkles className="w-5 h-5 text-primary" />
-                      <div>
-                        <p className="font-medium">Propagation des badges</p>
-                        <p className="text-sm text-muted-foreground">
-                          Vos produits peuvent hériter du badge boutique. Un produit avec son propre badge garde le badge le plus élevé.
-                        </p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => setShowPropagationDialog(true)}>
-                      Gérer
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {isLoadingProducts ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {productsBadges.map((produit) => {
-                    const effectiveCfg = getBadgeCfg(produit.effectiveBadgeType);
-                    const effectiveLabel = badgeLevels.find(l => l.id === produit.effectiveBadgeType)?.label ?? produit.effectiveBadgeType;
-                    return (
-                      <Card key={produit.id}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                              <Package className="w-6 h-6 text-muted-foreground" />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold">{produit.name}</p>
-                              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                {produit.effectiveBadgeType ? (
-                                  <Badge className={effectiveCfg.color}>
-                                    <Award className="w-3 h-3 mr-1" />
-                                    Made in CI - {effectiveLabel}
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-muted-foreground">Pas de badge</Badge>
-                                )}
-                                {produit.inheritFromBoutique && !produit.productBadgeType && (
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Store className="w-3 h-3" /> Hérité de la boutique
-                                  </span>
-                                )}
-                                {produit.productBadgeType && (
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Package className="w-3 h-3" /> Badge propre au produit
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {productsBadges.map((produit) => {
+                const effectiveCfg = getBadgeCfg(produit.effectiveBadge);
+                const effectiveLabel = badgeLevels.find(l => l.id === produit.effectiveBadge)?.label ?? produit.effectiveBadge;
+                const req = requestByProduct.get(produit.productId);
+                const reqKey = req ? normalizeReqStatus(req.status) : null;
+                const reqCfg = reqKey ? reqStatusConfig[reqKey] : null;
+                const ReqIcon = reqCfg?.icon;
+                const canRequest = !req || reqKey === "rejected";
+                return (
+                  <Card key={produit.productId}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                          <Package className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold">{produit.name}</p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {produit.effectiveBadge ? (
+                              <Badge className={effectiveCfg.color}>
+                                <Award className="w-3 h-3 mr-1" />
+                                Made in CI - {effectiveLabel}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-muted-foreground">Pas de badge</Badge>
+                            )}
+                            {produit.inheritFromBoutique && !produit.ownBadge && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Store className="w-3 h-3" /> Hérité de la boutique
+                              </span>
+                            )}
+                            {produit.ownBadge && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Package className="w-3 h-3" /> Badge propre au produit
+                              </span>
+                            )}
+                            {reqCfg && ReqIcon && (
+                              <span className={cn("text-xs flex items-center gap-1", reqCfg.color)}>
+                                <ReqIcon className="w-3 h-3" />
+                                Demande : {reqCfg.label}
+                                {reqKey === "in_audit" && req && req.progress > 0 ? ` (${req.progress}%)` : ""}
+                              </span>
+                            )}
+                          </div>
+                          {req?.adminComment && reqKey === "rejected" && (
+                            <p className="text-xs text-destructive mt-1 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3 shrink-0" /> {req.adminComment}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          {isCertifie && (
                             <div className="text-right">
                               <p className="text-xs text-muted-foreground mb-1">Badge boutique</p>
                               <Switch
                                 checked={produit.inheritFromBoutique}
                                 onCheckedChange={(v) => {
-                                  setProductOverrides((prev) => ({ ...prev, [produit.id]: v }));
+                                  setProductOverrides((prev) => ({ ...prev, [produit.productId]: v }));
                                 }}
                               />
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </>
+                          )}
+                          {canRequest && (
+                            <Button variant="outline" size="sm" onClick={() => openBadgeRequest(produit.productId)}>
+                              <Award className="w-4 h-4 mr-1" />
+                              Demander un badge
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </TabsContent>
       </Tabs>
@@ -823,16 +993,16 @@ export function CertificationBoutique() {
             {!propagateAll && (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {productsBadges.map((p) => {
-                  const isChecked = productOverrides[p.id] ?? p.inheritFromBoutique;
-                  const effectiveLabel = badgeLevels.find(l => l.id === p.effectiveBadgeType)?.label ?? p.effectiveBadgeType;
+                  const isChecked = productOverrides[p.productId] ?? p.inheritFromBoutique;
+                  const effectiveLabel = badgeLevels.find(l => l.id === p.effectiveBadge)?.label ?? p.effectiveBadge;
                   return (
-                    <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border">
+                    <div key={p.productId} className="flex items-center justify-between p-3 rounded-lg border">
                       <div className="flex items-center gap-3">
                         <Package className="w-5 h-5 text-muted-foreground" />
                         <div>
                           <p className="text-sm font-medium">{p.name}</p>
-                          {p.effectiveBadgeType && (
-                            <Badge className={cn(getBadgeCfg(p.effectiveBadgeType).color, "text-xs mt-0.5")}>
+                          {p.effectiveBadge && (
+                            <Badge className={cn(getBadgeCfg(p.effectiveBadge).color, "text-xs mt-0.5")}>
                               {effectiveLabel}
                             </Badge>
                           )}
@@ -840,7 +1010,7 @@ export function CertificationBoutique() {
                       </div>
                       <Switch
                         checked={isChecked}
-                        onCheckedChange={(v) => setProductOverrides((prev) => ({ ...prev, [p.id]: v }))}
+                        onCheckedChange={(v) => setProductOverrides((prev) => ({ ...prev, [p.productId]: v }))}
                       />
                     </div>
                   );
@@ -857,6 +1027,83 @@ export function CertificationBoutique() {
                   ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                   : <CheckCircle2 className="w-4 h-4 mr-1" />}
                 Appliquer
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog : Demande de badge Made in CI (par produit) ── */}
+      <Dialog open={showBadgeRequestDialog} onOpenChange={setShowBadgeRequestDialog}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" />
+              Demander un badge Made in CI
+            </DialogTitle>
+            <DialogDescription>
+              Produit : {productsBadges.find((p) => p.productId === badgeRequestForm.productId)?.name ?? "—"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Niveau de badge */}
+            <div className="space-y-2">
+              <Label>Niveau de badge souhaité *</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {badgeLevels.map((level) => {
+                  const cfg = getBadgeCfg(level.id);
+                  return (
+                    <div
+                      key={level.id}
+                      className={cn(
+                        "p-3 rounded-lg border cursor-pointer transition-all text-center",
+                        badgeRequestForm.badgeType === level.id ? "ring-2 ring-primary border-primary" : "border-muted hover:border-primary/50"
+                      )}
+                      onClick={() => setBadgeRequestForm((f) => ({ ...f, badgeType: level.id }))}
+                    >
+                      <Badge className={cn(cfg.color, "mb-1")}>{level.label}</Badge>
+                      <p className="text-xs text-muted-foreground">{level.description}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Processus de transformation */}
+            <div className="space-y-2">
+              <Label htmlFor="reqProcess">Processus de transformation *</Label>
+              <Textarea
+                id="reqProcess"
+                rows={3}
+                placeholder="Décrivez les étapes de transformation réalisées en Côte d'Ivoire..."
+                value={badgeRequestForm.transformationProcess}
+                onChange={(e) => setBadgeRequestForm((f) => ({ ...f, transformationProcess: e.target.value }))}
+              />
+            </div>
+
+            {/* Valeur ajoutée locale */}
+            <div className="space-y-2">
+              <Label htmlFor="reqValue">% de valeur ajoutée locale *</Label>
+              <Input
+                id="reqValue"
+                type="number"
+                min={0}
+                max={100}
+                placeholder="Ex: 75"
+                value={badgeRequestForm.localValueAdded}
+                onChange={(e) => setBadgeRequestForm((f) => ({ ...f, localValueAdded: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button variant="outline" onClick={() => setShowBadgeRequestDialog(false)} disabled={submitBadgeRequestMutation.isPending}>
+                Annuler
+              </Button>
+              <Button onClick={handleSubmitBadgeRequest} disabled={submitBadgeRequestMutation.isPending}>
+                {submitBadgeRequestMutation.isPending
+                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  : <Award className="w-4 h-4 mr-1" />}
+                Soumettre la demande
               </Button>
             </div>
           </div>

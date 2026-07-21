@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,14 @@ import {
   AlertCircle,
   XCircle,
   Eye,
-  ChevronRight,
   Upload,
   MessageSquare,
   Calendar,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { ordersApi, type VendorOrder, type VendorOrdersStats } from "@/lib/api";
 
 type OrderStatus = 
   | "Placed" 
@@ -47,6 +49,7 @@ type OrderStatus =
 
 interface Order {
   id: string;
+  apiId: string;
   client: string;
   produit: string;
   quantite: number;
@@ -55,54 +58,44 @@ interface Order {
   date: string;
   adresse: string;
   modeLivraison: "domicile" | "retrait" | "relais";
+  trackingNumber?: string | null;
 }
 
-const mockOrders: Order[] = [
-  {
-    id: "CMD-2024-001",
-    client: "Entreprise Alpha SARL",
-    produit: "Cacao Premium Grade A",
-    quantite: 2,
-    total: 1700000,
-    status: "Placed",
-    date: "2024-01-20",
-    adresse: "Abidjan, Cocody",
-    modeLivraison: "domicile",
-  },
-  {
-    id: "CMD-2024-002",
-    client: "Restaurant Le Gourmet",
-    produit: "Attiéké séché - 25kg",
-    quantite: 10,
-    total: 150000,
-    status: "Preparing",
-    date: "2024-01-19",
-    adresse: "Abidjan, Plateau",
-    modeLivraison: "domicile",
-  },
-  {
-    id: "CMD-2024-003",
-    client: "Supermarché Bonprix",
-    produit: "Huile de palme raffinée - 20L",
-    quantite: 20,
-    total: 500000,
-    status: "Shipped",
-    date: "2024-01-18",
-    adresse: "San-Pédro",
-    modeLivraison: "relais",
-  },
-  {
-    id: "CMD-2024-004",
-    client: "Hôtel Ivoire",
-    produit: "Anacarde brut - 50kg",
-    quantite: 5,
-    total: 900000,
-    status: "Delivered",
-    date: "2024-01-15",
-    adresse: "Abidjan, Plateau",
-    modeLivraison: "retrait",
-  },
-];
+/** Statut API (lowercase) → statut d'affichage. */
+function mapOrderStatus(s: string): OrderStatus {
+  const v = (s || "").toLowerCase();
+  if (v.includes("accept") || v.includes("confirm")) return "Accepted";
+  if (v.includes("prepar")) return "Preparing";
+  if (v.includes("ship") || v.includes("expédi") || v.includes("expedi")) return "Shipped";
+  if (v.includes("pickup") || v.includes("retrait") || v.includes("ready")) return "ReadyForPickup";
+  if (v.includes("deliver") || v.includes("livr")) return "Delivered";
+  if (v.includes("clos") || v.includes("clôtur") || v.includes("clotur")) return "Closed";
+  if (v.includes("cancel") || v.includes("annul") || v.includes("reject") || v.includes("refus")) return "Cancelled";
+  return "Placed";
+}
+
+function mapDeliveryMode(m: string): "domicile" | "retrait" | "relais" {
+  const v = (m || "").toLowerCase();
+  if (v.includes("retrait") || v.includes("pickup")) return "retrait";
+  if (v.includes("relais") || v.includes("relay")) return "relais";
+  return "domicile";
+}
+
+function mapOrder(o: VendorOrder): Order {
+  return {
+    id: o.orderNumber || o.id,
+    apiId: o.id,
+    client: o.user?.name || o.user?.email || "Client",
+    produit: o.productVariant?.product?.name || o.product?.name || o.productVariant?.name || (o.productVariantId ? `Article ${o.productVariantId.slice(0, 8)}` : "—"),
+    quantite: o.quantity || 0,
+    total: o.totalPrice || 0,
+    status: mapOrderStatus(o.status),
+    date: o.created_at ? o.created_at.split("T")[0] : "",
+    adresse: o.deliveryAddress || "—",
+    modeLivraison: mapDeliveryMode(o.deliveryMode),
+    trackingNumber: o.trackingNumber,
+  };
+}
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
   Placed: { label: "Nouvelle", color: "text-blue-500", icon: Clock, bgColor: "bg-blue-500/10" },
@@ -120,8 +113,55 @@ export function VendeurCommandes() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showExpeditionDialog, setShowExpeditionDialog] = useState(false);
+  const { toast } = useToast();
 
-  const filteredOrders = mockOrders.filter(order => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [stats, setStats] = useState<VendorOrdersStats>({ nouvelles: 0, enCours: 0, livrees: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [expeditionTracking, setExpeditionTracking] = useState("");
+
+  const loadOrders = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    ordersApi.getVendorList({ limit: 50 })
+      .then((res) => {
+        setOrders((res.data ?? []).map(mapOrder));
+        setStats(res.stats ?? { nouvelles: 0, enCours: 0, livrees: 0 });
+      })
+      .catch(() => setError("Impossible de charger les commandes."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  const runAction = async (order: Order, fn: () => Promise<unknown>, successMsg: string) => {
+    setActionLoadingId(order.apiId);
+    try {
+      await fn();
+      toast({ title: successMsg });
+      loadOrders();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Action échouée.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleAccept = (order: Order) => runAction(order, () => ordersApi.accept(order.apiId), `Commande ${order.id} acceptée.`);
+  const handleReject = (order: Order) => runAction(order, () => ordersApi.reject(order.apiId), `Commande ${order.id} rejetée.`);
+  const handlePrepare = (order: Order) => runAction(order, () => ordersApi.updateStatus(order.apiId, "preparing"), `Commande ${order.id} en préparation.`);
+  const handleDeliver = (order: Order) => runAction(order, () => ordersApi.updateStatus(order.apiId, "delivered"), `Commande ${order.id} marquée livrée.`);
+
+  const handleConfirmExpedition = async () => {
+    if (!selectedOrder) return;
+    await runAction(selectedOrder, () => ordersApi.updateStatus(selectedOrder.apiId, "shipped", { trackingNumber: expeditionTracking || undefined }), `Commande ${selectedOrder.id} expédiée.`);
+    setShowExpeditionDialog(false);
+    setExpeditionTracking("");
+  };
+
+  const filteredOrders = orders.filter(order => {
     const matchesSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.produit.toLowerCase().includes(searchQuery.toLowerCase());
@@ -130,9 +170,9 @@ export function VendeurCommandes() {
   });
 
   const ordersByStatus = {
-    nouvelles: mockOrders.filter(o => o.status === "Placed").length,
-    enCours: mockOrders.filter(o => ["Accepted", "Preparing", "Shipped", "ReadyForPickup"].includes(o.status)).length,
-    livrees: mockOrders.filter(o => ["Delivered", "Closed"].includes(o.status)).length,
+    nouvelles: stats.nouvelles,
+    enCours: stats.enCours,
+    livrees: stats.livrees,
   };
 
   return (
@@ -215,6 +255,24 @@ export function VendeurCommandes() {
           <CardDescription>{filteredOrders.length} commande(s)</CardDescription>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="py-12 flex items-center justify-center text-muted-foreground">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement des commandes...
+            </div>
+          ) : error ? (
+            <div className="py-12 text-center">
+              <AlertCircle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+              <p className="text-sm text-muted-foreground mb-4">{error}</p>
+              <Button variant="outline" onClick={loadOrders}><RefreshCw className="w-4 h-4 mr-2" />Réessayer</Button>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="py-12 text-center">
+              <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                {orders.length === 0 ? "Aucune commande pour le moment." : "Aucune commande ne correspond à vos filtres."}
+              </p>
+            </div>
+          ) : (
           <div className="space-y-3">
             {filteredOrders.map((order) => {
               const status = statusConfig[order.status];
@@ -247,17 +305,31 @@ export function VendeurCommandes() {
                       <p className="text-xs text-muted-foreground capitalize">{order.modeLivraison}</p>
                     </div>
                     <div className="flex gap-2">
+                      {(() => { const busy = actionLoadingId === order.apiId; return (<>
                       {order.status === "Placed" && (
-                        <Button size="sm" variant="default">
-                          Accepter
+                        <>
+                          <Button size="sm" variant="default" disabled={busy} onClick={() => handleAccept(order)}>
+                            {busy ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Accepter"}
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={busy} onClick={() => handleReject(order)}>
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                      {order.status === "Accepted" && (
+                        <Button size="sm" variant="default" disabled={busy} onClick={() => handlePrepare(order)}>
+                          {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Package className="w-4 h-4 mr-1" />}
+                          Préparer
                         </Button>
                       )}
                       {order.status === "Preparing" && (
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="default"
+                          disabled={busy}
                           onClick={() => {
                             setSelectedOrder(order);
+                            setExpeditionTracking("");
                             setShowExpeditionDialog(true);
                           }}
                         >
@@ -265,19 +337,27 @@ export function VendeurCommandes() {
                           Expédier
                         </Button>
                       )}
-                      <Button 
-                        size="sm" 
+                      {order.status === "Shipped" && (
+                        <Button size="sm" variant="default" disabled={busy} onClick={() => handleDeliver(order)}>
+                          {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                          Marquer livrée
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => setSelectedOrder(order)}
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
+                      </>); })()}
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+          )}
         </CardContent>
       </Card>
 
@@ -306,7 +386,11 @@ export function VendeurCommandes() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Numéro de suivi (optionnel)</label>
-              <Input placeholder="Ex: TRK-12345678" />
+              <Input
+                placeholder="Ex: TRK-12345678"
+                value={expeditionTracking}
+                onChange={(e) => setExpeditionTracking(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Bordereau / Bon de livraison</label>
@@ -316,11 +400,11 @@ export function VendeurCommandes() {
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setShowExpeditionDialog(false)}>
+              <Button variant="outline" disabled={!!actionLoadingId} onClick={() => setShowExpeditionDialog(false)}>
                 Annuler
               </Button>
-              <Button onClick={() => setShowExpeditionDialog(false)}>
-                <Truck className="w-4 h-4 mr-1" />
+              <Button disabled={!!actionLoadingId} onClick={handleConfirmExpedition}>
+                {actionLoadingId ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Truck className="w-4 h-4 mr-1" />}
                 Confirmer l'expédition
               </Button>
             </div>

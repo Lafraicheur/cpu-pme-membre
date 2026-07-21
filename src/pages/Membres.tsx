@@ -43,14 +43,17 @@ const statutConfig: Record<string, { label: string; className: string }> = {
   in_review: { label: "En révision", className: "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100" },
   completed: { label: "Complété",    className: "bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100" },
   rejected:  { label: "Rejeté",      className: "bg-red-100 text-red-700 border-red-200 hover:bg-red-100" },
-  suspended: { label: "Suspendu",    className: "bg-red-100 text-red-700 border-red-200 hover:bg-red-100" },
+  suspended: { label: "Suspendu",    className: "bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100" },
+  inactive:  { label: "Inactif",     className: "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-100" },
 };
 
-type StatutValue = "pending" | "in_review" | "approved" | "rejected" | "completed";
+type StatutValue = "pending" | "in_review" | "approved" | "rejected" | "completed" | "suspended" | "inactive";
 
 const statutOptions: { value: StatutValue; label: string; dot: string }[] = [
-  { value: "approved", label: "Validé",  dot: "bg-green-500" },
-  { value: "rejected", label: "Rejeté",  dot: "bg-red-500"   },
+  { value: "approved",  label: "Activer",       dot: "bg-green-500"  },
+  { value: "rejected",  label: "Refuser",        dot: "bg-red-500"    },
+  { value: "suspended", label: "Suspendre",      dot: "bg-orange-500" },
+  { value: "inactive",  label: "Rendre inactif", dot: "bg-gray-400"   },
 ];
 
 const scopeLabels: Record<string, string> = {
@@ -326,7 +329,11 @@ export default function Membres() {
   // ── Changer statut ───────────────────────────────────────────────────────
   const handleOpenStatut = (membre: AdhesionMembre) => {
     setstatutTarget(membre);
-    setNewStatut("approved");
+    const defaultAction: StatutValue =
+      membre.statut === "approved" ? "suspended"
+      : membre.statut === "suspended" || membre.statut === "inactive" ? "approved"
+      : "approved";
+    setNewStatut(defaultAction);
     setStatutNotes("");
   };
 
@@ -440,7 +447,11 @@ export default function Membres() {
                 <SelectItem value="all">Tous les statuts</SelectItem>
                 <SelectItem value="approved">Approuvé</SelectItem>
                 <SelectItem value="pending">En attente</SelectItem>
+                <SelectItem value="in_review">En révision</SelectItem>
+                <SelectItem value="completed">Complété</SelectItem>
                 <SelectItem value="rejected">Rejeté</SelectItem>
+                <SelectItem value="suspended">Suspendu</SelectItem>
+                <SelectItem value="inactive">Inactif</SelectItem>
               </SelectContent>
             </Select>
 
@@ -541,11 +552,9 @@ export default function Membres() {
                             <DropdownMenuItem className="gap-2" onSelect={() => handleOpenEdit(membre)}>
                               <Edit className="h-4 w-4" /> Modifier
                             </DropdownMenuItem>
-                            {membre.statut === "pending" && (
-                              <DropdownMenuItem className="gap-2" onSelect={() => handleOpenStatut(membre)}>
-                                <RefreshCw className="h-4 w-4" /> Changer le statut
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem className="gap-2" onSelect={() => handleOpenStatut(membre)}>
+                              <RefreshCw className="h-4 w-4" /> Changer le statut
+                            </DropdownMenuItem>
                             <DropdownMenuItem className="gap-2 text-destructive focus:text-destructive"
                               onSelect={() => setDeleteTarget(membre)}>
                               <Trash2 className="h-4 w-4" /> Supprimer

@@ -232,6 +232,10 @@ export default function Auth() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [setpwdDone, setSetpwdDone] = useState(false);
 
+  // ── État mot de passe oublié
+  const [forgotMode, setForgotMode]   = useState<"none" | "form" | "sent">("none");
+  const [forgotEmail, setForgotEmail] = useState("");
+
   const [isLoading, setIsLoading] = useState(false);
 
   const { sendOtp, login, loginWithPassword, isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -370,6 +374,21 @@ export default function Auth() {
     } catch (err) {
       toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible de renvoyer le code.", variant: "destructive" });
     } finally { setIsLoading(false); }
+  };
+
+  // ── Mot de passe oublié ───────────────────────────────────────────────────
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await authApi.forgotPassword(forgotEmail);
+      setForgotMode("sent");
+    } catch {
+      // L'API renvoie toujours une réponse générique — on affiche toujours "sent"
+      setForgotMode("sent");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // ── Connexion par mot de passe ─────────────────────────────────────────────
@@ -545,7 +564,80 @@ export default function Auth() {
               )}
             </div>
 
-          /* ══ CAS 2 : vérification OTP (plein écran, sans tabs) ══ */
+          /* ══ CAS 2 : mot de passe oublié ══ */
+          ) : forgotMode === "sent" ? (
+            <div className="space-y-7 text-center">
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="w-8 h-8 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold">E-mail envoyé !</h2>
+                <p className="text-muted-foreground text-sm">
+                  Si un compte existe avec <span className="font-semibold text-foreground">{forgotEmail}</span>,
+                  un lien de réinitialisation a été envoyé. Vérifiez vos spams.
+                </p>
+                <p className="text-xs text-muted-foreground">Le lien est valide pendant 1 heure.</p>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full h-12"
+                onClick={() => { setForgotMode("none"); setForgotEmail(""); }}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" /> Retour à la connexion
+              </Button>
+            </div>
+
+          ) : forgotMode === "form" ? (
+            <div className="space-y-7">
+              <div className="space-y-1">
+                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
+                  <KeyRound className="w-6 h-6 text-primary" />
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight">Mot de passe oublié ?</h2>
+                <p className="text-muted-foreground text-sm">
+                  Renseignez votre e-mail d'adhésion — nous vous enverrons un lien de réinitialisation.
+                </p>
+              </div>
+              <form onSubmit={handleForgotPassword} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email" className="text-sm font-medium">E-mail d'adhésion</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="forgot-email"
+                      type="email"
+                      placeholder="votre@email.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                      autoComplete="email"
+                      autoFocus
+                      className="pl-10 h-12 text-sm"
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full h-12 gap-2 font-semibold text-sm"
+                  disabled={isLoading || !forgotEmail}
+                >
+                  {isLoading ? (
+                    <span className="flex items-center gap-2"><RefreshCw className="w-4 h-4 animate-spin" /> Envoi en cours...</span>
+                  ) : (
+                    <span className="flex items-center gap-2">Envoyer le lien <ArrowRight className="w-4 h-4" /></span>
+                  )}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => { setForgotMode("none"); setForgotEmail(""); }}
+                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mx-auto"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Retour à la connexion
+                </button>
+              </form>
+            </div>
+
+          /* ══ CAS 3 : vérification OTP (plein écran, sans tabs) ══ */
           ) : otpStep === "otp" ? (
             <div className="space-y-7">
               <div className="space-y-1">
@@ -717,6 +809,15 @@ export default function Auth() {
                           {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => { setForgotEmail(pwdEmail); setForgotMode("form"); }}
+                        className="text-xs text-primary hover:text-primary/80 transition-colors"
+                      >
+                        Mot de passe oublié ?
+                      </button>
                     </div>
                     <Button
                       type="submit"

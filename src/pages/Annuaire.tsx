@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { decodeHtmlDeep } from "@/lib/api";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -90,14 +91,6 @@ interface Filiere {
   name: string;
 }
 
-function decodeHtml(str: string): string {
-  return str
-    .replace(/&amp;#x27;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"');
-}
-
 async function apiFetch<T>(path: string): Promise<T> {
   const token = getToken();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -107,7 +100,8 @@ async function apiFetch<T>(path: string): Promise<T> {
     },
   });
   if (!res.ok) throw new Error(`Erreur ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  return decodeHtmlDeep(data) as T;
 }
 
 async function fetchAdhesions(params: {
@@ -132,7 +126,8 @@ async function fetchAdhesions(params: {
     },
   });
   if (!res.ok) throw new Error(`Erreur ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  return decodeHtmlDeep(data) as AdhesionsResponse;
 }
 
 const planBanners: Record<string, string> = {
@@ -381,10 +376,10 @@ export default function Annuaire() {
                     <SelectItem value="all">Toutes les régions</SelectItem>
                     {regions
                       .slice()
-                      .sort((a, b) => decodeHtml(a.name).localeCompare(decodeHtml(b.name), "fr"))
+                      .sort((a, b) => a.name.localeCompare(b.name, "fr"))
                       .map((r) => (
                         <SelectItem key={r.id} value={r.id}>
-                          {decodeHtml(r.name)}
+                          {r.name}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -399,7 +394,7 @@ export default function Annuaire() {
                     <SelectItem value="all">Tous les secteurs</SelectItem>
                     {secteurs.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {decodeHtml(s.name)}
+                        {s.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -421,7 +416,7 @@ export default function Annuaire() {
                       .sort((a, b) => a.name.localeCompare(b.name, "fr"))
                       .map((f) => (
                         <SelectItem key={f.id} value={f.id}>
-                          {decodeHtml(f.name)}
+                          {f.name}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -464,7 +459,7 @@ export default function Annuaire() {
                       onClick={() => setSelectedRegionId("all")}
                       className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                     >
-                      {decodeHtml(regions.find((r) => r.id === selectedRegionId)?.name ?? "")}
+                      {regions.find((r) => r.id === selectedRegionId)?.name ?? ""}
                       <span className="ml-0.5 font-bold">×</span>
                     </button>
                   )}
@@ -473,7 +468,7 @@ export default function Annuaire() {
                       onClick={() => setSelectedSecteurId("all")}
                       className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                     >
-                      {decodeHtml(secteurs.find((s) => s.id === selectedSecteurId)?.name ?? "")}
+                      {secteurs.find((s) => s.id === selectedSecteurId)?.name ?? ""}
                       <span className="ml-0.5 font-bold">×</span>
                     </button>
                   )}
@@ -482,7 +477,7 @@ export default function Annuaire() {
                       onClick={() => setSelectedFiliereId("all")}
                       className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                     >
-                      {decodeHtml(allFilieres.find((f) => f.id === selectedFiliereId)?.name ?? "")}
+                      {allFilieres.find((f) => f.id === selectedFiliereId)?.name ?? ""}
                       <span className="ml-0.5 font-bold">×</span>
                     </button>
                   )}

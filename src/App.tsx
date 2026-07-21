@@ -26,6 +26,7 @@ import Historique from "./pages/Historique";
 import Parametres from "./pages/Parametres";
 import NotFound from "./pages/NotFound";
 import EvenementParticipants from "./pages/EvenementParticipants";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
               <Route path="/subscription-selector" element={<SubscriptionSelector />} />
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/adhesion/reset-password" element={<ResetPassword />} />
               <Route path="/abonnement" element={<Abonnement />} />
               <Route path="/mon-entreprise" element={<MonEntreprise />} />
               <Route path="/marketplace" element={<Marketplace />} />
