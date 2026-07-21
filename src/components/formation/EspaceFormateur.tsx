@@ -89,6 +89,8 @@ import {
   Check,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 import {
   formationsApi,
   centreFormationsApi,
@@ -223,6 +225,9 @@ const DEVENIR_FORM_INIT = {
 
 export function EspaceFormateur() {
   const { user } = useAuth();
+  const { allowed: canSellFormations, reason: sellFormationsReason } = useKycGate(
+    "Veuillez compléter votre KYC Formateur."
+  );
   const [activeTab, setActiveTab] = useState("dashboard");
   const [courses, setCourses] = useState<FormationAPI[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(true);
@@ -2319,15 +2324,16 @@ export function EspaceFormateur() {
                 placeholder="Rechercher un cours..."
                 className="max-w-sm"
               />
-              <Button
+              <RestrictedButton
                 onClick={() => {
                   setCreationStep(1);
                   setCreateOpen(true);
                 }}
-                disabled={!canCreateMore}
+                allowed={canSellFormations && canCreateMore}
+                reason={!canSellFormations ? sellFormationsReason : "Limite de formations de votre abonnement atteinte."}
               >
                 <Plus className="w-4 h-4 mr-2" /> Nouvelle formation
-              </Button>
+              </RestrictedButton>
             </div>
 
             {/* Liste des formations */}
@@ -2343,16 +2349,18 @@ export function EspaceFormateur() {
                   <p className="font-medium">
                     Vous n'avez pas encore créé de formation.
                   </p>
-                  <Button
+                  <RestrictedButton
                     size="sm"
                     className="mt-2 gap-2"
                     onClick={() => {
                       setCreationStep(1);
                       setCreateOpen(true);
                     }}
+                    allowed={canSellFormations && canCreateMore}
+                    reason={!canSellFormations ? sellFormationsReason : "Limite de formations de votre abonnement atteinte."}
                   >
                     <Plus className="w-4 h-4" /> Créer ma première formation
-                  </Button>
+                  </RestrictedButton>
                 </CardContent>
               </Card>
             )}
@@ -2567,14 +2575,16 @@ export function EspaceFormateur() {
               <h2 className="text-lg font-semibold">
                 Mes formateurs ({formateurs.length})
               </h2>
-              <Button
+              <RestrictedButton
                 variant="outline"
                 size="sm"
                 className="gap-2 rounded-sm"
                 onClick={openDevenir}
+                allowed={canSellFormations}
+                reason={sellFormationsReason}
               >
                 <Plus className="w-4 h-4" /> Ajouter un formateur
-              </Button>
+              </RestrictedButton>
             </div>
 
             {coursesLoading ? (

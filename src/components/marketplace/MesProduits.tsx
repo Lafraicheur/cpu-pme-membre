@@ -64,6 +64,8 @@ import {
 import { cn } from "@/lib/utils";
 import { boutiquesApi, productsApi, madeInCIBadgeLevelsApi, madeInCIRequestsApi, type Product as ApiProduct, type MadeInCIBadgeLevel } from "@/lib/api";
 import { ProductWizard } from "./ProductWizard";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 
 type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges" | "Paused" | "OutOfStock" | "Archived";
 
@@ -266,6 +268,9 @@ function UrlOrFileList({
 }
 
 export function MesProduits({ onOpenWizard }: MesProduitsProps) {
+  const { allowed: canPublish, reason: publishReason } = useKycGate(
+    "Veuillez compléter votre KYC Marketplace afin de publier vos produits."
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -632,10 +637,10 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
               <Button variant="outline" size="icon">
                 <Download className="w-4 h-4" />
               </Button>
-              <Button onClick={openWizard}>
+              <RestrictedButton onClick={openWizard} allowed={canPublish} reason={publishReason}>
                 <Plus className="w-4 h-4 mr-1" />
                 Nouveau
-              </Button>
+              </RestrictedButton>
             </div>
           </div>
         </CardContent>
@@ -652,10 +657,10 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                 ? "Modifiez vos filtres pour voir plus de résultats"
                 : "Publiez votre premier produit ou service"}
             </p>
-            <Button onClick={openWizard}>
+            <RestrictedButton onClick={openWizard} allowed={canPublish} reason={publishReason}>
               <Plus className="w-4 h-4 mr-1" />
               Ajouter un produit
-            </Button>
+            </RestrictedButton>
           </CardContent>
         </Card>
       ) : (

@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rfqApi, regionsApi, type RFQApiType, type Region, type RFQFromAPI, type RFQOffer } from "@/lib/api";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 
 type RFQType = "b2b_volume" | "service" | "custom_product" | "variable_price" | "standard";
 
@@ -95,6 +97,9 @@ const typeConfigForm: Record<RFQType, { label: string; color: string; descriptio
 };
 
 export function RFQAcheteur() {
+  const { allowed: canCreateRFQ, reason: createRFQReason } = useKycGate(
+    "Veuillez compléter votre KYC afin de déposer un appel d'offres."
+  );
   const [rfqs, setRfqs] = useState<RFQFromAPI[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -210,10 +215,10 @@ export function RFQAcheteur() {
             Créez des RFQ et recevez des offres des vendeurs
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
+        <RestrictedButton onClick={() => setShowCreateDialog(true)} allowed={canCreateRFQ} reason={createRFQReason}>
           <Plus className="w-4 h-4 mr-1" />
           Nouvelle demande
-        </Button>
+        </RestrictedButton>
       </div>
 
       {submitSuccess && (
@@ -240,9 +245,9 @@ export function RFQAcheteur() {
             <p className="text-sm text-muted-foreground mb-4">
               Créez une RFQ pour recevoir des offres de nos vendeurs
             </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
+            <RestrictedButton onClick={() => setShowCreateDialog(true)} allowed={canCreateRFQ} reason={createRFQReason}>
               Créer une demande
-            </Button>
+            </RestrictedButton>
           </CardContent>
         </Card>
       ) : (

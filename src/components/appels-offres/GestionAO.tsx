@@ -38,6 +38,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 
 type AOStatus = "draft" | "published" | "closing_soon" | "closed" | "evaluating" | "awarded";
 type SubmissionStatus = "pending" | "reviewed" | "shortlisted" | "rejected" | "awarded";
@@ -203,6 +205,9 @@ interface GestionAOProps {
 }
 
 export function GestionAO({ onCreateAO }: GestionAOProps) {
+  const { allowed: canCreateAO, reason: createAOReason } = useKycGate(
+    "Veuillez compléter votre KYC afin de déposer un appel d'offres."
+  );
   const [activeTab, setActiveTab] = useState("mes-ao");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAO, setSelectedAO] = useState<ManagedAO | null>(null);
@@ -243,10 +248,10 @@ export function GestionAO({ onCreateAO }: GestionAOProps) {
             <TabsTrigger value="mes-ao">Mes Appels d'Offres</TabsTrigger>
             <TabsTrigger value="soumissions">Soumissions Reçues</TabsTrigger>
           </TabsList>
-          <Button onClick={onCreateAO} className="gap-2">
+          <RestrictedButton onClick={onCreateAO} className="gap-2" allowed={canCreateAO} reason={createAOReason}>
             <Plus className="w-4 h-4" />
             Créer un AO
-          </Button>
+          </RestrictedButton>
         </div>
 
         {/* Mes AO Tab */}
@@ -435,10 +440,10 @@ export function GestionAO({ onCreateAO }: GestionAOProps) {
                   <p className="text-sm text-muted-foreground mb-4">
                     Créez votre premier AO pour recevoir des soumissions
                   </p>
-                  <Button onClick={onCreateAO} className="gap-2">
+                  <RestrictedButton onClick={onCreateAO} className="gap-2" allowed={canCreateAO} reason={createAOReason}>
                     <Plus className="w-4 h-4" />
                     Créer un AO
-                  </Button>
+                  </RestrictedButton>
                 </CardContent>
               </Card>
             )}

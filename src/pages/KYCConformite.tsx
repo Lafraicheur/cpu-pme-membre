@@ -585,7 +585,7 @@ export default function KYCConformite() {
           </Card>
         ) : (
           <Tabs value={activeLevelId} onValueChange={setActiveLevelId}>
-            <TabsList className={`grid w-full grid-cols-${Math.min(kycLevelsList.length, 4)}`}>
+            <TabsList className={`grid w-full grid-cols-${Math.min(kycLevelsList.length, 7)}`}>
               {kycLevelsList.map((level) => {
                 const visual = getVisual(level.code);
                 const LevelIcon = visual.icon;

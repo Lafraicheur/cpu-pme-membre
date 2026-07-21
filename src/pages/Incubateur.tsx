@@ -61,6 +61,8 @@ import {
 import { regions } from "@/data/regions";
 import { getSectorN1List } from "@/data/sectors";
 import { PasserellesHub } from "@/components/incubateur/PasserellesHub";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 
 // Statuts du pipeline incubateur
 const pipelineStatus: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -161,6 +163,9 @@ const mockPIItems = [
 ];
 
 export default function Incubateur() {
+  const { allowed: canManageIncubator, reason: manageIncubatorReason } = useKycGate(
+    "Veuillez compléter votre KYC afin de gérer un incubateur."
+  );
   const [activeTab, setActiveTab] = useState("accueil");
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showCandidature, setShowCandidature] = useState(false);
@@ -620,10 +625,10 @@ export default function Incubateur() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Mes Projets</h3>
-        <Button onClick={() => setShowCreateProject(true)}>
+        <RestrictedButton onClick={() => setShowCreateProject(true)} allowed={canManageIncubator} reason={manageIncubatorReason}>
           <Plus className="h-4 w-4 mr-2" />
           Nouveau projet
-        </Button>
+        </RestrictedButton>
       </div>
 
       <div className="space-y-3">
@@ -983,10 +988,15 @@ export default function Incubateur() {
                   <CardTitle className="text-lg">Actions rapides</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <Button className="w-full justify-start" onClick={() => setShowCreateProject(true)}>
+                  <RestrictedButton
+                    className="w-full justify-start"
+                    onClick={() => setShowCreateProject(true)}
+                    allowed={canManageIncubator}
+                    reason={manageIncubatorReason}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Créer un projet
-                  </Button>
+                  </RestrictedButton>
                   <Button variant="outline" className="w-full justify-start" onClick={() => setShowDiagnostic(true)}>
                     <ClipboardList className="h-4 w-4 mr-2" />
                     Lancer un diagnostic 360°
