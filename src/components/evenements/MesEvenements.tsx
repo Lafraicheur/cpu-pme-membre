@@ -13,6 +13,8 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { EditEvenementModal } from "./EditEvenementModal";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 import {
   Calendar, MapPin, Clock, PlusCircle, CalendarX, Banknote, Users, Ticket,
   Search, CheckCircle2, XCircle, AlertCircle, Loader2, ScanLine, ShieldCheck,
@@ -1149,6 +1151,7 @@ interface MesEvenementsProps {
 export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { allowed: canCreateEvent, reason: createEventReason } = useKycGate("Veuillez compléter votre KYC Organisateur.");
 
   const [editingEvent, setEditingEvent] = useState<Evenement | null>(null);
   const [deletingEvent, setDeletingEvent] = useState<Evenement | null>(null);
@@ -1217,9 +1220,14 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">Les événements que vous avez créés</p>
               </div>
-              <Button onClick={onCreateEvent} className="gap-2">
+              <RestrictedButton
+                onClick={onCreateEvent}
+                className="gap-2"
+                allowed={canCreateEvent}
+                reason={createEventReason}
+              >
                 <PlusCircle className="w-4 h-4" /> Créer un événement
-              </Button>
+              </RestrictedButton>
             </div>
 
             {isLoading && (
@@ -1237,9 +1245,15 @@ export function MesEvenements({ onCreateEvent }: MesEvenementsProps) {
                   <h3 className="font-semibold text-lg">Aucun événement créé</h3>
                   <p className="text-sm text-muted-foreground">Vous n'avez pas encore créé d'événement. Commencez maintenant !</p>
                 </div>
-                <Button onClick={onCreateEvent} size="lg" className="gap-2 px-8 rounded-xl">
+                <RestrictedButton
+                  onClick={onCreateEvent}
+                  size="lg"
+                  className="gap-2 px-8 rounded-xl"
+                  allowed={canCreateEvent}
+                  reason={createEventReason}
+                >
                   <PlusCircle className="w-5 h-5" /> Créer mon premier événement
-                </Button>
+                </RestrictedButton>
               </div>
             )}
 

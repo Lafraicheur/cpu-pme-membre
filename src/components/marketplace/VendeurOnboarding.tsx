@@ -33,6 +33,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { marketplaceVendeurApi } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { RestrictedButton } from "@/components/shared/RestrictedButton";
+import { useKycGate } from "@/hooks/useKycStatus";
 
 type VendeurStatus = "NotEligible" | "Eligible" | "PendingReview" | "Active" | "Rejected" | "Suspended";
 
@@ -52,6 +54,9 @@ export function VendeurOnboarding({ onActivated }: VendeurOnboardingProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { allowed: canCreateBoutique, reason: createBoutiqueReason } = useKycGate(
+    "Veuillez compléter votre KYC Marketplace afin de publier votre boutique."
+  );
 
   const [showBoutiqueDialog, setShowBoutiqueDialog] = useState(false);
   const [boutiqueStep, setBoutiqueStep] = useState<1 | 2>(1);
@@ -401,11 +406,16 @@ export function VendeurOnboarding({ onActivated }: VendeurOnboardingProps) {
                   <Button variant="outline" onClick={() => setBoutiqueStep(1)} disabled={isSubmitting}>
                     <ChevronLeft className="w-4 h-4 mr-1" /> Retour
                   </Button>
-                  <Button onClick={handleCreateBoutique} disabled={isSubmitting}>
+                  <RestrictedButton
+                    onClick={handleCreateBoutique}
+                    disabled={isSubmitting}
+                    allowed={canCreateBoutique}
+                    reason={createBoutiqueReason}
+                  >
                     {isSubmitting ? (
                       <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Création en cours...</>
                     ) : "Créer la boutique"}
-                  </Button>
+                  </RestrictedButton>
                 </div>
               </>
             )}

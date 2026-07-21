@@ -1,6 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { KycAccessModal } from "./KycAccessModal";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 interface DashboardLayoutProps {
@@ -34,6 +35,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         style={{ paddingLeft }}
       >
         <Header onMobileMenuToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)} />
+        <KycAccessModal />
         <main className="p-3 sm:p-4 md:p-6">{children}</main>
       </div>
     </div>

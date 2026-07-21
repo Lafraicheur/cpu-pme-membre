@@ -1098,7 +1098,7 @@ export const marketplaceVendeurApi = {
     returnPolicy?: string;
   }): Promise<unknown> => {
     const res = await request<{ success: boolean; data: unknown }>(
-      "/api/boutiques",
+      "/api/marketplace/boutiques",
       { method: "POST", body: JSON.stringify({ status: "active", ...body }) }
     );
     return res;
@@ -2886,6 +2886,8 @@ export interface KycCase {
   targetKycLevel: KycLevelInfo | null;
   currentKycLevel: KycLevelInfo | null;
   documents: KycUploadedDocument[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface KycMyRequiredDocumentsResponse {
