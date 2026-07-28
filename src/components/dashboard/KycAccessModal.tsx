@@ -7,8 +7,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { useKycStatus } from "@/hooks/useKycStatus";
 
-// N'affiche la modale qu'une fois par session (le layout se remonte à chaque changement de page).
-const SESSION_FLAG = "cpu-kyc-overdue-modal-shown";
+// Ré-affiche la modale toutes les 60s tant que le KYC est en retard (persiste entre les remontages du layout).
+const LAST_SHOWN_KEY = "cpu-kyc-overdue-modal-last-shown";
+const REMINDER_INTERVAL_MS = 60_000;
 
 /** Modale KYC Niveau 1 : affichée quand le compte a dépassé le délai de 30 jours
  * sans dossier KYC validé (profil masqué de l'annuaire, services Marketplace suspendus côté back). */
@@ -18,13 +19,22 @@ export function KycAccessModal() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (isOverdue && !sessionStorage.getItem(SESSION_FLAG)) {
-      setOpen(true);
-    }
+    if (!isOverdue) return;
+
+    const tryOpen = () => {
+      const lastShown = Number(sessionStorage.getItem(LAST_SHOWN_KEY) || 0);
+      if (Date.now() - lastShown >= REMINDER_INTERVAL_MS) {
+        sessionStorage.setItem(LAST_SHOWN_KEY, String(Date.now()));
+        setOpen(true);
+      }
+    };
+
+    tryOpen();
+    const id = setInterval(tryOpen, REMINDER_INTERVAL_MS);
+    return () => clearInterval(id);
   }, [isOverdue]);
 
   const handleOpenChange = (next: boolean) => {
-    if (!next) sessionStorage.setItem(SESSION_FLAG, "1");
     setOpen(next);
   };
 
