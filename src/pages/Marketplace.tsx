@@ -190,7 +190,7 @@ type MenuSection =
   | "admin";
 
 export default function Marketplace() {
-  const [activeSection, setActiveSection] = useState<MenuSection>("apercu");
+  const [activeSection, setActiveSection] = useState<MenuSection>("mes-commandes");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
