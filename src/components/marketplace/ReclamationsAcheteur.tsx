@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,11 +55,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { ordersApi, returnsApi, type BuyerOrder, type ReturnReason } from "@/lib/api";
 
 // Types
 type ReclamationStatus = "brouillon" | "soumise" | "en_examen" | "approuvee" | "retour_en_cours" | "recue_vendeur" | "remboursee" | "refusee" | "escalade" | "cloturee";
 type ReclamationType = "retour" | "reclamation" | "litige";
-type ReclamationMotif = "produit_endommage" | "non_conforme" | "quantite_incorrecte" | "retard_livraison" | "produit_manquant" | "qualite_insuffisante" | "erreur_commande" | "autre";
+type ReclamationMotif = ReturnReason;
 
 interface Reclamation {
   id: string;
@@ -120,14 +121,12 @@ const statutConfig: Record<ReclamationStatus, { label: string; color: string; ic
 };
 
 const motifLabels: Record<ReclamationMotif, string> = {
-  produit_endommage: "Produit endommagé à la réception",
-  non_conforme: "Produit non conforme à la description",
-  quantite_incorrecte: "Quantité incorrecte",
-  retard_livraison: "Retard de livraison excessif",
-  produit_manquant: "Produit manquant dans la commande",
-  qualite_insuffisante: "Qualité insuffisante",
-  erreur_commande: "Erreur dans la commande",
-  autre: "Autre motif",
+  "Produit endommagé": "Produit endommagé à la réception",
+  "Non conforme": "Produit non conforme à la description",
+  "Quantité incorrecte": "Quantité incorrecte",
+  "Mauvais produit": "Mauvais produit reçu",
+  "Produit défectueux": "Produit défectueux",
+  "Autre": "Autre motif",
 };
 
 const typeLabels: Record<ReclamationType, { label: string; color: string }> = {
@@ -136,13 +135,27 @@ const typeLabels: Record<ReclamationType, { label: string; color: string }> = {
   litige: { label: "Litige", color: "text-red-500" },
 };
 
-// Mock commandes pour le formulaire
-const mockCommandesAcheteur = [
-  { id: "CMD-2024-045", vendeur: "Coopérative Aboisso Cacao", produit: "Cacao Premium Grade A", montant: 850000, date: "2024-01-18" },
-  { id: "CMD-2024-042", vendeur: "Femmes de Dabou SARL", produit: "Attiéké séché - 25kg", montant: 75000, date: "2024-01-15" },
-  { id: "CMD-2024-038", vendeur: "TransFroid CI", produit: "Service transport frigorifique", montant: 75000, date: "2024-01-10" },
-  { id: "CMD-2024-035", vendeur: "Palmeraie du Sud", produit: "Huile de palme raffinée - 20L", montant: 125000, date: "2024-01-08" },
-];
+interface CommandeAcheteur {
+  id: string;
+  apiId: string;
+  productId: string;
+  vendeur: string;
+  produit: string;
+  montant: number;
+  date: string;
+}
+
+function mapCommandeAcheteur(o: BuyerOrder): CommandeAcheteur {
+  return {
+    id: o.orderNumber || o.id,
+    apiId: o.id,
+    productId: o.product?.id || o.productVariant?.product?.id || o.productVariantId,
+    vendeur: o.boutique?.name || o.boutique?.nom || (o.boutiqueId ? `Boutique ${o.boutiqueId.slice(0, 8)}` : "—"),
+    produit: o.productVariant?.product?.name || o.product?.name || o.productVariant?.name || (o.productVariantId ? `Article ${o.productVariantId.slice(0, 8)}` : "—"),
+    montant: o.totalPrice || 0,
+    date: o.created_at ? o.created_at.split("T")[0] : "",
+  };
+}
 
 const mockReclamations: Reclamation[] = [
   {
@@ -151,7 +164,7 @@ const mockReclamations: Reclamation[] = [
     produit: "Cacao Premium Grade A",
     vendeur: "Coopérative Aboisso Cacao",
     type: "retour",
-    motif: "non_conforme",
+    motif: "Non conforme",
     statut: "en_examen",
     dateCreation: "2024-01-20",
     dateMaj: "2024-01-22",
@@ -179,7 +192,7 @@ const mockReclamations: Reclamation[] = [
     produit: "Attiéké séché - 25kg",
     vendeur: "Femmes de Dabou SARL",
     type: "retour",
-    motif: "quantite_incorrecte",
+    motif: "Quantité incorrecte",
     statut: "approuvee",
     dateCreation: "2024-01-17",
     dateMaj: "2024-01-19",
@@ -205,7 +218,7 @@ const mockReclamations: Reclamation[] = [
     produit: "Service transport frigorifique",
     vendeur: "TransFroid CI",
     type: "litige",
-    motif: "retard_livraison",
+    motif: "Autre",
     statut: "escalade",
     dateCreation: "2024-01-12",
     dateMaj: "2024-01-20",
@@ -229,7 +242,7 @@ const mockReclamations: Reclamation[] = [
     produit: "Huile de palme raffinée - 20L",
     vendeur: "Palmeraie du Sud",
     type: "retour",
-    motif: "produit_endommage",
+    motif: "Produit endommagé",
     statut: "remboursee",
     dateCreation: "2024-01-09",
     dateMaj: "2024-01-15",
@@ -259,14 +272,42 @@ export function ReclamationsAcheteur() {
   const [showPropositionDialog, setShowPropositionDialog] = useState(false);
   const { toast } = useToast();
 
+  // Commandes de l'acheteur (pour le formulaire de création)
+  const [commandesAcheteur, setCommandesAcheteur] = useState<CommandeAcheteur[]>([]);
+  const [isLoadingCommandes, setIsLoadingCommandes] = useState(false);
+
+  const loadCommandesAcheteur = useCallback(() => {
+    setIsLoadingCommandes(true);
+    ordersApi.getBuyerList({ limit: 50 })
+      .then((res) => setCommandesAcheteur((res.data ?? []).map(mapCommandeAcheteur)))
+      .catch(() => setCommandesAcheteur([]))
+      .finally(() => setIsLoadingCommandes(false));
+  }, []);
+
+  useEffect(() => {
+    if (showCreateDialog) loadCommandesAcheteur();
+  }, [showCreateDialog, loadCommandesAcheteur]);
+
   // Formulaire nouvelle réclamation
   const [newRecl, setNewRecl] = useState({
     commande: "",
     type: "retour" as ReclamationType,
     motif: "" as ReclamationMotif | "",
     description: "",
-    montantDemande: 0,
+    quantity: 1,
   });
+  const [isSubmittingReclamation, setIsSubmittingReclamation] = useState(false);
+  const [preuves, setPreuves] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setPreuves((prev) => [...prev, ...Array.from(files)]);
+  };
+
+  const handleRemovePreuve = (index: number) => {
+    setPreuves((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const kpis = {
     enCours: mockReclamations.filter(r => ["soumise", "en_examen", "retour_en_cours"].includes(r.statut)).length,
@@ -285,13 +326,40 @@ export function ReclamationsAcheteur() {
     return matchSearch && matchStatut && matchType;
   });
 
-  const handleCreateReclamation = () => {
-    toast({
-      title: "Réclamation créée",
-      description: "Votre réclamation a été soumise et transmise au vendeur.",
-    });
-    setShowCreateDialog(false);
-    setNewRecl({ commande: "", type: "retour", motif: "", description: "", montantDemande: 0 });
+  const resetNewRecl = () => {
+    setNewRecl({ commande: "", type: "retour", motif: "", description: "", quantity: 1 });
+    setPreuves([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCreateReclamation = async () => {
+    const cmd = commandesAcheteur.find((c) => c.id === newRecl.commande);
+    if (!cmd || !newRecl.motif || !newRecl.description.trim()) return;
+    setIsSubmittingReclamation(true);
+    try {
+      await returnsApi.create({
+        orderId: cmd.apiId,
+        productId: cmd.productId || undefined,
+        quantity: newRecl.quantity || 1,
+        reason: newRecl.motif,
+        description: newRecl.description.trim(),
+        media: preuves,
+      });
+      toast({
+        title: "Réclamation créée",
+        description: "Votre réclamation a été soumise et transmise au vendeur.",
+      });
+      setShowCreateDialog(false);
+      resetNewRecl();
+    } catch (e) {
+      toast({
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "La soumission de la réclamation a échoué.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingReclamation(false);
+    }
   };
 
   const handleAcceptProposition = () => {
@@ -629,15 +697,16 @@ export function ReclamationsAcheteur() {
             {/* Commande */}
             <div className="space-y-2">
               <Label>Commande concernée *</Label>
-              <Select value={newRecl.commande} onValueChange={(v) => {
-                const cmd = mockCommandesAcheteur.find(c => c.id === v);
-                setNewRecl({ ...newRecl, commande: v, montantDemande: cmd?.montant || 0 });
-              }}>
+              <Select
+                value={newRecl.commande}
+                onValueChange={(v) => setNewRecl({ ...newRecl, commande: v })}
+                disabled={isLoadingCommandes}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez une commande" />
+                  <SelectValue placeholder={isLoadingCommandes ? "Chargement..." : "Sélectionnez une commande"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockCommandesAcheteur.map((cmd) => (
+                  {commandesAcheteur.map((cmd) => (
                     <SelectItem key={cmd.id} value={cmd.id}>
                       <div className="flex items-center gap-2">
                         <span className="font-mono">{cmd.id}</span>
@@ -651,7 +720,7 @@ export function ReclamationsAcheteur() {
               {newRecl.commande && (
                 <div className="p-3 rounded-lg bg-muted/50 text-sm">
                   {(() => {
-                    const cmd = mockCommandesAcheteur.find(c => c.id === newRecl.commande);
+                    const cmd = commandesAcheteur.find(c => c.id === newRecl.commande);
                     return cmd ? (
                       <div className="flex justify-between">
                         <div>
@@ -713,31 +782,73 @@ export function ReclamationsAcheteur() {
               />
             </div>
 
-            {/* Montant demandé */}
+            {/* Quantité concernée */}
             <div className="space-y-2">
-              <Label>Montant demandé (FCFA)</Label>
+              <Label>Quantité concernée</Label>
               <Input
                 type="number"
-                value={newRecl.montantDemande}
-                onChange={(e) => setNewRecl({ ...newRecl, montantDemande: parseInt(e.target.value) || 0 })}
+                min={1}
+                value={newRecl.quantity}
+                onChange={(e) => setNewRecl({ ...newRecl, quantity: parseInt(e.target.value) || 1 })}
               />
-              <p className="text-xs text-muted-foreground">Montant du remboursement ou de la compensation souhaité</p>
+              <p className="text-xs text-muted-foreground">Nombre d'unités concernées par ce retour</p>
             </div>
 
             {/* Preuves */}
             <div className="space-y-2">
               <Label>Preuves (photos, vidéos, documents)</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-muted/50 cursor-pointer transition-colors">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,.pdf"
+                className="hidden"
+                onChange={(e) => handleFilesSelected(e.target.files)}
+              />
+              <div
+                className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-muted/50 cursor-pointer transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleFilesSelected(e.dataTransfer.files);
+                }}
+              >
                 <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="text-sm font-medium">Glissez vos fichiers ici</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Photos du produit, vidéo de déballage, bon de livraison, rapport d'analyse...
                 </p>
-                <Button variant="outline" size="sm" className="mt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                >
                   <Camera className="w-4 h-4 mr-1" />
                   Parcourir
                 </Button>
               </div>
+              {preuves.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {preuves.map((file, idx) => (
+                    <div key={`${file.name}-${idx}`} className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-muted text-sm">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      <span className="max-w-[160px] truncate">{file.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="w-5 h-5"
+                        onClick={() => handleRemovePreuve(idx)}
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 💡 Conseil : Les réclamations avec preuves sont traitées 3x plus vite
               </p>
@@ -745,13 +856,15 @@ export function ReclamationsAcheteur() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Annuler</Button>
-            <Button 
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={isSubmittingReclamation}>
+              Annuler
+            </Button>
+            <Button
               onClick={handleCreateReclamation}
-              disabled={!newRecl.commande || !newRecl.motif || !newRecl.description}
+              disabled={!newRecl.commande || !newRecl.motif || !newRecl.description.trim() || isSubmittingReclamation}
             >
               <Send className="w-4 h-4 mr-1" />
-              Soumettre la réclamation
+              {isSubmittingReclamation ? "Envoi..." : "Soumettre la réclamation"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -172,7 +172,7 @@ export default function MonEntreprise() {
   const logoUrl = profile?.logo
     ? String(profile.logo).startsWith("http")
       ? String(profile.logo)
-      : `${import.meta.env.VITE_API_URL || ""}${profile.logo}`
+      : `${import.meta.env.VITE_API_URL_DEV || ""}${profile.logo}`
     : null;
 
   const updateProfileMutation = useMutation({

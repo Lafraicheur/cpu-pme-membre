@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,10 +31,12 @@ import {
   Star,
   MessageSquare,
   AlertTriangle,
-  ThumbsUp,
-  ThumbsDown,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ordersApi, type OrderReportType, type BuyerOrder } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 type OrderStatus = 
   | "Placed" 
@@ -47,6 +49,7 @@ type OrderStatus =
 
 interface Order {
   id: string;
+  apiId: string;
   vendeur: string;
   produit: string;
   quantite: number;
@@ -54,49 +57,33 @@ interface Order {
   status: OrderStatus;
   date: string;
   tracking?: string;
-  preuveLivraison?: boolean;
 }
 
-const mockOrders: Order[] = [
-  {
-    id: "CMD-2024-001",
-    vendeur: "Coopérative Aboisso Cacao",
-    produit: "Cacao Premium Grade A",
-    quantite: 2,
-    total: 1700000,
-    status: "Delivered",
-    date: "2024-01-15",
-    preuveLivraison: true,
-  },
-  {
-    id: "CMD-2024-002",
-    vendeur: "Femmes de Dabou SARL",
-    produit: "Attiéké séché - 25kg",
-    quantite: 10,
-    total: 150000,
-    status: "Shipped",
-    date: "2024-01-18",
-    tracking: "TRK-12345",
-  },
-  {
-    id: "CMD-2024-003",
-    vendeur: "TransFroid CI",
-    produit: "Service de transport frigorifique",
-    quantite: 1,
-    total: 75000,
-    status: "Confirmed",
-    date: "2024-01-20",
-  },
-  {
-    id: "CMD-2024-004",
-    vendeur: "Palmeraie du Sud",
-    produit: "Huile de palme raffinée - 20L",
-    quantite: 5,
-    total: 125000,
-    status: "Placed",
-    date: "2024-01-21",
-  },
-];
+/** Statut API (lowercase) → statut d'affichage. */
+function mapOrderStatus(s: string): OrderStatus {
+  const v = (s || "").toLowerCase();
+  if (v.includes("confirm")) return "Confirmed";
+  if (v.includes("prepar")) return "Preparing";
+  if (v.includes("ship") || v.includes("expédi") || v.includes("expedi")) return "Shipped";
+  if (v.includes("deliver") || v.includes("livr")) return "Delivered";
+  if (v.includes("clos") || v.includes("clôtur") || v.includes("clotur")) return "Closed";
+  if (v.includes("cancel") || v.includes("annul") || v.includes("reject") || v.includes("refus")) return "Cancelled";
+  return "Placed";
+}
+
+function mapOrder(o: BuyerOrder): Order {
+  return {
+    id: o.orderNumber || o.id,
+    apiId: o.id,
+    vendeur: o.boutique?.name || o.boutique?.nom || (o.boutiqueId ? `Boutique ${o.boutiqueId.slice(0, 8)}` : "—"),
+    produit: o.productVariant?.product?.name || o.product?.name || o.productVariant?.name || (o.productVariantId ? `Article ${o.productVariantId.slice(0, 8)}` : "—"),
+    quantite: o.quantity || 0,
+    total: o.totalPrice || 0,
+    status: mapOrderStatus(o.status),
+    date: o.created_at ? o.created_at.split("T")[0] : "",
+    tracking: o.trackingNumber || undefined,
+  };
+}
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; icon: typeof Clock; step: number }> = {
   Placed: { label: "En attente", color: "text-blue-500", icon: Clock, step: 1 },
@@ -117,15 +104,158 @@ export function AcheteurCommandes() {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showEvaluationDialog, setShowEvaluationDialog] = useState(false);
   const [showLitigeDialog, setShowLitigeDialog] = useState(false);
+  const [isSubmittingEvaluation, setIsSubmittingEvaluation] = useState(false);
   const [evaluation, setEvaluation] = useState({
-    note: 0,
-    conformite: true,
-    delai: true,
-    qualite: true,
-    commentaire: "",
+    rating: 0,
+    productQualityRating: 0,
+    deliveryRating: 0,
+    customerServiceRating: 0,
+    comment: "",
+  });
+  const { toast } = useToast();
+
+  const resetEvaluation = () => {
+    setEvaluation({
+      rating: 0,
+      productQualityRating: 0,
+      deliveryRating: 0,
+      customerServiceRating: 0,
+      comment: "",
+    });
+  };
+
+  const handleSubmitEvaluation = async () => {
+    if (!selectedOrder || evaluation.rating < 1) return;
+    setIsSubmittingEvaluation(true);
+    try {
+      await ordersApi.evaluate(selectedOrder.apiId, {
+        rating: evaluation.rating,
+        productQualityRating: evaluation.productQualityRating || undefined,
+        deliveryRating: evaluation.deliveryRating || undefined,
+        customerServiceRating: evaluation.customerServiceRating || undefined,
+        comment: evaluation.comment || undefined,
+      });
+      toast({ title: "Évaluation envoyée", description: "Merci pour votre retour." });
+      setShowEvaluationDialog(false);
+      setSelectedOrder(null);
+      resetEvaluation();
+    } catch (e) {
+      toast({
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "L'envoi de l'évaluation a échoué.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingEvaluation(false);
+    }
+  };
+
+  const [isSubmittingLitige, setIsSubmittingLitige] = useState(false);
+  const [litige, setLitige] = useState<{ reportType: OrderReportType | ""; title: string; description: string }>({
+    reportType: "",
+    title: "",
+    description: "",
   });
 
-  const filteredOrders = mockOrders.filter(order => {
+  const resetLitige = () => {
+    setLitige({ reportType: "", title: "", description: "" });
+  };
+
+  const handleSubmitLitige = async () => {
+    if (!selectedOrder || !litige.reportType || !litige.title.trim() || !litige.description.trim()) return;
+    setIsSubmittingLitige(true);
+    try {
+      await ordersApi.report(selectedOrder.apiId, {
+        reportType: litige.reportType,
+        title: litige.title.trim(),
+        description: litige.description.trim(),
+      });
+      toast({ title: "Signalement envoyé", description: "Votre signalement a bien été transmis." });
+      setShowLitigeDialog(false);
+      setSelectedOrder(null);
+      resetLitige();
+    } catch (e) {
+      toast({
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "L'envoi du signalement a échoué.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingLitige(false);
+    }
+  };
+
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingReceptionId, setConfirmingReceptionId] = useState<string | null>(null);
+
+  const loadOrders = useCallback(() => {
+    setIsLoading(true);
+    setError(null);
+    ordersApi.getBuyerList({ limit: 50 })
+      .then((res) => setOrders((res.data ?? []).map(mapOrder)))
+      .catch(() => setError("Impossible de charger les commandes."))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  const handleConfirmReception = async (order: Order) => {
+    setConfirmingReceptionId(order.apiId);
+    try {
+      await ordersApi.confirmReception(order.apiId);
+      toast({ title: "Réception confirmée", description: "Merci d'avoir confirmé la réception de votre commande." });
+      loadOrders();
+    } catch (e) {
+      toast({
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "La confirmation de réception a échoué.",
+        variant: "destructive",
+      });
+    } finally {
+      setConfirmingReceptionId(null);
+    }
+  };
+
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const handleCancelOrder = async () => {
+    if (!selectedOrder) return;
+    setIsCancelling(true);
+    try {
+      await ordersApi.cancel(selectedOrder.apiId);
+      toast({ title: "Commande annulée", description: `La commande ${selectedOrder.id} a été annulée.` });
+      setShowCancelDialog(false);
+      setSelectedOrder(null);
+      loadOrders();
+    } catch (e) {
+      toast({
+        title: "Erreur",
+        description: e instanceof Error ? e.message : "L'annulation de la commande a échoué.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const [orderDetail, setOrderDetail] = useState<BuyerOrder | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
+  const handleOpenDetail = (order: Order) => {
+    setSelectedOrder(order);
+    setShowDetailDialog(true);
+    setOrderDetail(null);
+    setIsLoadingDetail(true);
+    ordersApi.getBuyerById(order.apiId)
+      .then(setOrderDetail)
+      .catch(() => setOrderDetail(null))
+      .finally(() => setIsLoadingDetail(false));
+  };
+
+  const filteredOrders = orders.filter(order => {
     const matchesSearch = order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.vendeur.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.produit.toLowerCase().includes(searchQuery.toLowerCase());
@@ -170,11 +300,29 @@ export function AcheteurCommandes() {
           <CardDescription>{filteredOrders.length} commande(s)</CardDescription>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="py-12 flex items-center justify-center text-muted-foreground">
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement des commandes...
+            </div>
+          ) : error ? (
+            <div className="py-12 text-center">
+              <AlertCircle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+              <p className="text-sm text-muted-foreground mb-4">{error}</p>
+              <Button variant="outline" onClick={loadOrders}><RefreshCw className="w-4 h-4 mr-2" />Réessayer</Button>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="py-12 text-center">
+              <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                {orders.length === 0 ? "Aucune commande pour le moment." : "Aucune commande ne correspond à vos filtres."}
+              </p>
+            </div>
+          ) : (
           <div className="space-y-4">
             {filteredOrders.map((order) => {
               const status = statusConfig[order.status];
               const StatusIcon = status.icon;
-              
+
               return (
                 <Card key={order.id} className="border">
                   <CardContent className="p-4">
@@ -257,18 +405,34 @@ export function AcheteurCommandes() {
                         </>
                       )}
                       {order.status === "Shipped" && (
-                        <Button size="sm" variant="default">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => handleConfirmReception(order)}
+                          disabled={confirmingReceptionId === order.apiId}
+                        >
                           <CheckCircle2 className="w-4 h-4 mr-1" />
-                          Confirmer réception
+                          {confirmingReceptionId === order.apiId ? "Confirmation..." : "Confirmer réception"}
+                        </Button>
+                      )}
+                      {(order.status === "Placed" || order.status === "Confirmed" || order.status === "Preparing") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowCancelDialog(true);
+                          }}
+                        >
+                          <XCircle className="w-4 h-4 mr-1" />
+                          Annuler
                         </Button>
                       )}
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setShowDetailDialog(true);
-                        }}
+                        onClick={() => handleOpenDetail(order)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
                         Détails
@@ -282,13 +446,14 @@ export function AcheteurCommandes() {
               );
             })}
           </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Dialog Évaluation */}
       <Dialog open={showEvaluationDialog} onOpenChange={(open) => {
         setShowEvaluationDialog(open);
-        if (!open) setSelectedOrder(null);
+        if (!open) { setSelectedOrder(null); resetEvaluation(); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -299,19 +464,19 @@ export function AcheteurCommandes() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Note globale</label>
+              <label className="text-sm font-medium">Note globale *</label>
               <div className="flex gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <Button
                     key={star}
-                    variant={evaluation.note >= star ? "default" : "outline"}
+                    variant={evaluation.rating >= star ? "default" : "outline"}
                     size="icon"
                     className="w-10 h-10"
-                    onClick={() => setEvaluation({ ...evaluation, note: star })}
+                    onClick={() => setEvaluation({ ...evaluation, rating: star })}
                   >
                     <Star className={cn(
                       "w-5 h-5",
-                      evaluation.note >= star && "fill-current"
+                      evaluation.rating >= star && "fill-current"
                     )} />
                   </Button>
                 ))}
@@ -319,63 +484,31 @@ export function AcheteurCommandes() {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <span className="text-sm">Produit conforme à la description</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant={evaluation.conformite ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, conformite: true })}
-                  >
-                    <ThumbsUp className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant={!evaluation.conformite ? "destructive" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, conformite: false })}
-                  >
-                    <ThumbsDown className="w-4 h-4" />
-                  </Button>
+              {([
+                { key: "productQualityRating", label: "Qualité du produit" },
+                { key: "deliveryRating", label: "Livraison" },
+                { key: "customerServiceRating", label: "Service client" },
+              ] as const).map(({ key, label }) => (
+                <div key={key} className="flex items-center justify-between p-3 rounded-lg border">
+                  <span className="text-sm">{label}</span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Button
+                        key={star}
+                        variant="ghost"
+                        size="icon"
+                        className="w-8 h-8"
+                        onClick={() => setEvaluation({ ...evaluation, [key]: star })}
+                      >
+                        <Star className={cn(
+                          "w-4 h-4",
+                          evaluation[key] >= star ? "fill-current text-primary" : "text-muted-foreground"
+                        )} />
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <span className="text-sm">Respect des délais</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant={evaluation.delai ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, delai: true })}
-                  >
-                    <ThumbsUp className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant={!evaluation.delai ? "destructive" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, delai: false })}
-                  >
-                    <ThumbsDown className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <span className="text-sm">Qualité générale</span>
-                <div className="flex gap-2">
-                  <Button
-                    variant={evaluation.qualite ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, qualite: true })}
-                  >
-                    <ThumbsUp className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant={!evaluation.qualite ? "destructive" : "outline"}
-                    size="sm"
-                    onClick={() => setEvaluation({ ...evaluation, qualite: false })}
-                  >
-                    <ThumbsDown className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
+              ))}
             </div>
 
             <div className="space-y-2">
@@ -383,18 +516,25 @@ export function AcheteurCommandes() {
               <Textarea
                 placeholder="Partagez votre expérience..."
                 rows={3}
-                value={evaluation.commentaire}
-                onChange={(e) => setEvaluation({ ...evaluation, commentaire: e.target.value })}
+                value={evaluation.comment}
+                onChange={(e) => setEvaluation({ ...evaluation, comment: e.target.value })}
               />
             </div>
 
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => { setShowEvaluationDialog(false); setSelectedOrder(null); }}>
+              <Button
+                variant="outline"
+                onClick={() => { setShowEvaluationDialog(false); setSelectedOrder(null); resetEvaluation(); }}
+                disabled={isSubmittingEvaluation}
+              >
                 Annuler
               </Button>
-              <Button onClick={() => { setShowEvaluationDialog(false); setSelectedOrder(null); }}>
+              <Button
+                onClick={handleSubmitEvaluation}
+                disabled={evaluation.rating < 1 || isSubmittingEvaluation}
+              >
                 <Star className="w-4 h-4 mr-1" />
-                Envoyer l'évaluation
+                {isSubmittingEvaluation ? "Envoi..." : "Envoyer l'évaluation"}
               </Button>
             </div>
           </div>
@@ -404,7 +544,7 @@ export function AcheteurCommandes() {
       {/* Dialog Litige */}
       <Dialog open={showLitigeDialog} onOpenChange={(open) => {
         setShowLitigeDialog(open);
-        if (!open) setSelectedOrder(null);
+        if (!open) { setSelectedOrder(null); resetLitige(); }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -416,18 +556,30 @@ export function AcheteurCommandes() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Type de problème *</label>
-              <Select>
+              <Select
+                value={litige.reportType}
+                onValueChange={(value) => setLitige({ ...litige, reportType: value as OrderReportType })}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="non-conforme">Produit non conforme</SelectItem>
-                  <SelectItem value="endommage">Produit endommagé</SelectItem>
-                  <SelectItem value="quantite">Quantité incorrecte</SelectItem>
-                  <SelectItem value="retard">Retard excessif</SelectItem>
-                  <SelectItem value="autre">Autre</SelectItem>
+                  <SelectItem value="product_issue">Problème avec le produit</SelectItem>
+                  <SelectItem value="delivery_issue">Problème de livraison</SelectItem>
+                  <SelectItem value="service_issue">Problème de service client</SelectItem>
+                  <SelectItem value="other">Autre</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Titre *</label>
+              <Input
+                placeholder="Ex : Produit endommagé à la réception"
+                maxLength={255}
+                value={litige.title}
+                onChange={(e) => setLitige({ ...litige, title: e.target.value })}
+              />
             </div>
 
             <div className="space-y-2">
@@ -435,6 +587,8 @@ export function AcheteurCommandes() {
               <Textarea
                 placeholder="Décrivez précisément le problème rencontré..."
                 rows={4}
+                value={litige.description}
+                onChange={(e) => setLitige({ ...litige, description: e.target.value })}
               />
             </div>
 
@@ -447,14 +601,55 @@ export function AcheteurCommandes() {
             </div>
 
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => { setShowLitigeDialog(false); setSelectedOrder(null); }}>
+              <Button
+                variant="outline"
+                onClick={() => { setShowLitigeDialog(false); setSelectedOrder(null); resetLitige(); }}
+                disabled={isSubmittingLitige}
+              >
                 Annuler
               </Button>
-              <Button variant="destructive" onClick={() => { setShowLitigeDialog(false); setSelectedOrder(null); }}>
+              <Button
+                variant="destructive"
+                onClick={handleSubmitLitige}
+                disabled={!litige.reportType || !litige.title.trim() || !litige.description.trim() || isSubmittingLitige}
+              >
                 <AlertTriangle className="w-4 h-4 mr-1" />
-                Ouvrir un litige
+                {isSubmittingLitige ? "Envoi..." : "Ouvrir un litige"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Annulation */}
+      <Dialog open={showCancelDialog} onOpenChange={(open) => {
+        setShowCancelDialog(open);
+        if (!open) setSelectedOrder(null);
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Annuler la commande</DialogTitle>
+            <DialogDescription>
+              Commande {selectedOrder?.id} — {selectedOrder?.vendeur}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => { setShowCancelDialog(false); setSelectedOrder(null); }}
+              disabled={isCancelling}
+            >
+              Retour
+            </Button>
+            <Button variant="destructive" onClick={handleCancelOrder} disabled={isCancelling}>
+              <XCircle className="w-4 h-4 mr-1" />
+              {isCancelling ? "Annulation..." : "Confirmer l'annulation"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -463,7 +658,7 @@ export function AcheteurCommandes() {
       {selectedOrder && showDetailDialog && (
         <Dialog open={showDetailDialog} onOpenChange={(open) => {
           setShowDetailDialog(open);
-          if (!open) setSelectedOrder(null);
+          if (!open) { setSelectedOrder(null); setOrderDetail(null); }
         }}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
@@ -500,15 +695,46 @@ export function AcheteurCommandes() {
                     <span className="font-mono">{selectedOrder.tracking}</span>
                   </div>
                 )}
-                {selectedOrder.preuveLivraison && (
-                  <div className="border-t pt-3">
-                    <Button variant="outline" size="sm" className="w-full">
-                      <Eye className="w-4 h-4 mr-1" />
-                      Voir preuve de livraison
-                    </Button>
-                  </div>
-                )}
               </div>
+
+              {isLoadingDetail ? (
+                <div className="py-6 flex items-center justify-center text-muted-foreground text-sm">
+                  <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Chargement des détails...
+                </div>
+              ) : orderDetail ? (
+                <div className="border rounded-lg p-4 space-y-3">
+                  {orderDetail.deliveryMode && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Mode de livraison</span>
+                      <span className="font-medium capitalize">{orderDetail.deliveryMode}</span>
+                    </div>
+                  )}
+                  {orderDetail.deliveryAddress && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Adresse de livraison</span>
+                      <span className="font-medium text-right">{orderDetail.deliveryAddress}</span>
+                    </div>
+                  )}
+                  {!!orderDetail.shippingCost && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Frais de livraison</span>
+                      <span className="font-medium">{orderDetail.shippingCost.toLocaleString()} FCFA</span>
+                    </div>
+                  )}
+                  {orderDetail.rejectionReason && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Motif de rejet</span>
+                      <span className="font-medium text-right">{orderDetail.rejectionReason}</span>
+                    </div>
+                  )}
+                  {orderDetail.cancelledReason && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Motif d'annulation</span>
+                      <span className="font-medium text-right">{orderDetail.cancelledReason}</span>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           </DialogContent>
         </Dialog>

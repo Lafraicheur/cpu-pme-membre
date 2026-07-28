@@ -60,10 +60,13 @@ import {
   Link,
   FileText,
   X,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { boutiquesApi, productsApi, madeInCIBadgeLevelsApi, madeInCIRequestsApi, type Product as ApiProduct, type MadeInCIBadgeLevel } from "@/lib/api";
+import { boutiquesApi, productsApi, productUnitsApi, madeInCIBadgeLevelsApi, madeInCIRequestsApi, type Product as ApiProduct, type MadeInCIBadgeLevel, type CreateProductListingPayload } from "@/lib/api";
+import { toast } from "sonner";
 import { ProductWizard } from "./ProductWizard";
+import { ServiceWizard } from "./ServiceWizard";
 import { RestrictedButton } from "@/components/shared/RestrictedButton";
 import { useKycGate } from "@/hooks/useKycStatus";
 
@@ -79,7 +82,7 @@ interface Product {
   unite: string;
   stock: number | null;
   status: ProductStatus;
-  madeInCI: "or" | "argent" | "bronze" | "innovation" | null;
+  madeInCI: boolean;
   produitReglemente: boolean;
   statutReglementaire: "pending" | "approved" | "rejected" | null;
   image: string;
@@ -102,28 +105,19 @@ const statusConfig: Record<ProductStatus, { label: string; color: string; icon: 
   Archived: { label: "Archivé", color: "text-muted-foreground", icon: Archive, bgColor: "bg-muted" },
 };
 
-const madeInCIBadges = {
-  or: { color: "bg-primary text-primary-foreground", label: "Made in CI - Or" },
-  argent: { color: "bg-secondary text-secondary-foreground", label: "Made in CI - Argent" },
-  bronze: { color: "bg-amber-600 text-white", label: "Made in CI - Bronze" },
-  innovation: { color: "bg-cyan-500 text-white", label: "Innovation Ivoire" },
-};
-
-function mapApiProduct(p: ApiProduct): Product {
+function mapApiProduct(p: ApiProduct, unitsById: Record<string, string> = {}): Product {
   return {
     id: p.id,
     type: p.type === "Service" ? "service" : "product",
     nom: p.name,
-    categorie: p.category,
-    sousCategorie: p.subCategory || "",
+    categorie: p.categorie || p.category || "",
+    sousCategorie: p.sousCategorie || p.subCategory || "",
     prix: parseFloat(String(p.price)) || 0,
-    unite: p.unit || "unité",
+    unite: (p.salesUnitId && unitsById[p.salesUnitId]) || p.unit || "unité",
     stock: p.type === "Service" ? null : (p.stock ?? null),
     status: (p.status as ProductStatus) || "Draft",
-    madeInCI: (p.madeInCiRequested && p.madeInCiBadgeType)
-      ? (p.madeInCiBadgeType as "or" | "argent" | "bronze" | "innovation")
-      : null,
-    produitReglemente: p.isRegulated || false,
+    madeInCI: !!p.madeInCiRequested,
+    produitReglemente: !!p.isRegulated,
     statutReglementaire: null,
     image: (p.productMedia?.find((m) => m.isMain && m.isActive)
       ?? p.productMedia?.find((m) => m.isActive)
@@ -276,6 +270,8 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
   const [error, setError] = useState<string | null>(null);
   const [boutiqueId, setBoutiqueId] = useState<string>("");
   const [showWizard, setShowWizard] = useState(false);
+  const [showServiceWizard, setShowServiceWizard] = useState(false);
+  const [showCreateChoice, setShowCreateChoice] = useState(false);
   const [editProductId, setEditProductId] = useState<string | undefined>(undefined);
   const [editApiProduct, setEditApiProduct] = useState<ApiProduct | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
@@ -287,6 +283,13 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [salesUnitsById, setSalesUnitsById] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    productUnitsApi.getSalesPicker()
+      .then((units) => setSalesUnitsById(Object.fromEntries(units.map((u) => [u.id, u.symbol]))))
+      .catch(() => {});
+  }, []);
 
   const fetchProducts = useCallback(async (bid: string) => {
     if (!bid) return;
@@ -294,13 +297,13 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     setError(null);
     try {
       const page = await productsApi.getAll({ boutiqueId: bid, limit: 50 });
-      setProducts((page.data ?? []).map(mapApiProduct));
+      setProducts((page.data ?? []).map((p) => mapApiProduct(p, salesUnitsById)));
     } catch {
       setError("Impossible de charger les produits.");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [salesUnitsById]);
 
   useEffect(() => {
     madeInCIBadgeLevelsApi.getAll().then(setBadgeLevels).catch(() => {});
@@ -354,6 +357,18 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     if (onOpenWizard) { onOpenWizard(); } else { setShowWizard(true); }
   };
 
+  const openCreateChoice = () => setShowCreateChoice(true);
+
+  const chooseCreateProduct = () => {
+    setShowCreateChoice(false);
+    openWizard();
+  };
+
+  const chooseCreateService = () => {
+    setShowCreateChoice(false);
+    setShowServiceWizard(true);
+  };
+
   const openEditWizard = (product: Product) => {
     setEditProductId(product.id);
     setEditApiProduct(undefined);
@@ -394,10 +409,21 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  const handleStatusChange = (productId: string, newStatus: ProductStatus) => {
-    setProducts(products.map(p => 
-      p.id === productId ? { ...p, status: newStatus, updatedAt: new Date().toISOString().split('T')[0] } : p
-    ));
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  const handleStatusChange = async (productId: string, newStatus: ProductStatus) => {
+    setUpdatingStatusId(productId);
+    try {
+      await productsApi.update(productId, { status: newStatus });
+      setProducts(products.map(p =>
+        p.id === productId ? { ...p, status: newStatus, updatedAt: new Date().toISOString().split('T')[0] } : p
+      ));
+      toast.success("Statut mis à jour.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Impossible de mettre à jour le statut.");
+    } finally {
+      setUpdatingStatusId(null);
+    }
   };
 
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
@@ -406,45 +432,76 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     setDuplicatingId(product.id);
     try {
       const full = await productsApi.getById(product.id);
-      const payload: Record<string, unknown> = {
+      const dims = (full.dimensions || "").split(/x/i).map((p) => p.trim());
+
+      const payload: CreateProductListingPayload = {
         boutiqueId: full.boutiqueId,
-        name: full.name,
-        type: full.type,
-        description: full.description || "",
-        category: full.category,
-        subCategory: full.subCategory || "",
-        characteristics: full.characteristics || "",
-        isRegulated: full.isRegulated,
-        madeInCiRequested: full.madeInCiRequested,
-        ...(full.madeInCiRequested ? {
-          madeInCiBadgeType: full.madeInCiBadgeType,
-          madeInCiTransformationProcess: (full as unknown as Record<string, unknown>).madeInCiTransformationProcess || "Non renseigné",
-        } : {}),
-        unit: full.unit || "kg",
+        name: `${full.name} (copie)`,
+        type: full.type || "Produit",
         status: "Draft",
+        description: full.description || "",
+        shortDescription: full.shortDescription || "",
+        sousCategorieId: full.sousCategorieId || "",
+        designation: full.designation || full.name,
+        brand: full.brand || undefined,
+        model: full.model || undefined,
+        origin: full.origin || "",
+        manufacturingCountry: full.manufacturingCountry || undefined,
+        condition: full.condition || "Non applicable",
+        attributes: full.attributes || [],
+        sellerReference: full.sellerReference || undefined,
+        characteristics: full.characteristics || undefined,
+        salesUnitId: full.salesUnitId || "",
         price: parseFloat(String(full.price)) || 0,
+        currency: full.currency || "XOF",
+        vatRate: full.vatRate != null ? parseFloat(String(full.vatRate)) : 18,
+        retailEnabled: full.retailEnabled ?? true,
+        wholesaleEnabled: full.wholesaleEnabled ?? false,
+        quoteRequestEnabled: full.quoteRequestEnabled ?? false,
         stock: full.stock ?? 0,
-        moq: full.moq || 1,
-        weight: parseFloat(String(full.weight)) || 0,
-        availabilityDelay: full.availabilityDelay || "",
+        stockAlertThreshold: full.stockAlertThreshold ?? undefined,
+        availabilityStatus: full.availabilityStatus || "En stock",
+        madeToOrder: full.madeToOrder ?? false,
+        onDemandManufacturing: full.onDemandManufacturing ?? false,
+        availabilityDelay: full.availabilityDelay || undefined,
+        moq: full.moq ?? 1,
+        maxOrderQuantity: full.maxOrderQuantity ?? undefined,
+        netWeight: full.netWeight != null ? parseFloat(String(full.netWeight)) : undefined,
+        netWeightUnitId: full.netWeightUnitId || undefined,
+        grossWeight: full.grossWeight != null ? parseFloat(String(full.grossWeight)) : undefined,
+        grossWeightUnitId: full.grossWeightUnitId || undefined,
+        dimensionLength: dims[0] ? parseFloat(dims[0]) : undefined,
+        dimensionWidth: dims[1] ? parseFloat(dims[1]) : undefined,
+        dimensionHeight: dims[2] ? parseFloat(dims[2]) : undefined,
+        dimensionUnitId: full.dimensionUnitId || undefined,
+        volume: full.volume != null ? parseFloat(String(full.volume)) : undefined,
+        volumeUnitId: full.volumeUnitId || undefined,
+        packageCount: full.packageCount ?? undefined,
+        quantityPerCarton: full.quantityPerCarton ?? undefined,
+        quantityPerPallet: full.quantityPerPallet ?? undefined,
         deliveryZones: full.deliveryZones ?? [],
-        shippingCost: parseFloat(String(full.shippingCost)) || 0,
-        pickupAvailable: full.pickupAvailable || false,
-        technicalSpecifications: full.technicalSpecifications ?? [],
-        certifications: full.certifications ?? [],
-        technicalDocuments: [],
-        variantsEnabled: full.variantsEnabled || false,
-        quantityPricingEnabled: full.quantityPricingEnabled || false,
-        quantityPricingTiers: full.quantityPricingTiers ?? [],
-        ...(full.premiumOption ? {
-          premiumOption: full.premiumOption,
-          premiumDurationWeeks: full.premiumDurationWeeks || 1,
-        } : {}),
+        deliveryMode: full.deliveryMode || "Retrait par le client",
+        deliveryEstimatedDelay: full.deliveryEstimatedDelay || undefined,
+        quantityPricingEnabled: !!full.quantityPricingEnabled,
+        quantityPricingTiers: full.quantityPricingTiers ?? undefined,
+        variantsEnabled: !!full.variantsEnabled,
+        certificationEntries: full.certificationEntries ?? undefined,
+        isRegulated: !!full.isRegulated,
+        madeInCiRequested: !!full.madeInCiRequested,
+        escrowEnabled: full.escrowEnabled ?? true,
+        warrantyLabel: full.warrantyLabel || undefined,
+        warrantyDuration: full.warrantyDuration || undefined,
+        savAvailable: !!full.savAvailable,
+        returnAccepted: !!full.returnAccepted,
+        returnDelayDays: full.returnDelayDays ?? undefined,
+        specialConditions: full.specialConditions || undefined,
       };
-      await productsApi.create(payload);
+
+      await productsApi.createListing(payload);
       await fetchProducts(boutiqueId);
-    } catch {
-      // silencieux
+      toast.success("Produit dupliqué", { description: "La copie a été créée en brouillon." });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "La duplication a échoué.");
     } finally {
       setDuplicatingId(null);
     }
@@ -637,10 +694,14 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
               <Button variant="outline" size="icon">
                 <Download className="w-4 h-4" />
               </Button>
-              <RestrictedButton onClick={openWizard} allowed={canPublish} reason={publishReason}>
+              {/* <RestrictedButton onClick={openWizard} allowed={canPublish} reason={publishReason}>
                 <Plus className="w-4 h-4 mr-1" />
                 Nouveau
-              </RestrictedButton>
+              </RestrictedButton> */}
+              <Button onClick={openCreateChoice}>
+                <Plus className="w-4 h-4 mr-1" />
+                Nouveau
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -657,9 +718,9 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                 ? "Modifiez vos filtres pour voir plus de résultats"
                 : "Publiez votre premier produit ou service"}
             </p>
-            <RestrictedButton onClick={openWizard} allowed={canPublish} reason={publishReason}>
+            <RestrictedButton onClick={openCreateChoice} allowed={canPublish} reason={publishReason}>
               <Plus className="w-4 h-4 mr-1" />
-              Ajouter un produit
+              Ajouter un produit ou service
             </RestrictedButton>
           </CardContent>
         </Card>
@@ -692,9 +753,9 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                         {status.label}
                       </Badge>
                       {product.madeInCI && (
-                        <Badge className={madeInCIBadges[product.madeInCI].color}>
+                        <Badge className="bg-orange-500 text-white">
                           <Award className="w-3 h-3 mr-1" />
-                          {madeInCIBadges[product.madeInCI].label}
+                          Made in Côte d'Ivoire
                         </Badge>
                       )}
                     </div>
@@ -804,19 +865,37 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                           </DropdownMenuItem>
                           
                           {product.status === "Published" && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(product.id, "Paused")}>
+                            <DropdownMenuItem
+                              disabled={updatingStatusId === product.id}
+                              onClick={() => handleStatusChange(product.id, "Paused")}
+                            >
                               <Ban className="w-4 h-4 mr-2" />
                               Mettre en pause
                             </DropdownMenuItem>
                           )}
-                          
+
                           {product.status === "Paused" && (
-                            <DropdownMenuItem onClick={() => handleStatusChange(product.id, "Published")}>
+                            <DropdownMenuItem
+                              disabled={updatingStatusId === product.id}
+                              onClick={() => handleStatusChange(product.id, "Published")}
+                            >
                               <CheckCircle2 className="w-4 h-4 mr-2" />
                               Réactiver
                             </DropdownMenuItem>
                           )}
                           
+                          {product.status === "Draft" && (
+                            <DropdownMenuItem
+                              disabled={updatingStatusId === product.id}
+                              onClick={() => handleStatusChange(product.id, "InModeration")}
+                            >
+                              {updatingStatusId === product.id
+                                ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                : <Send className="w-4 h-4 mr-2" />}
+                              Soumettre
+                            </DropdownMenuItem>
+                          )}
+
                           {product.status === "Draft" && (
                             <DropdownMenuItem onClick={() => openMadeInCIDialog(product)}>
                               <Upload className="w-4 h-4 mr-2" />
@@ -825,14 +904,24 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                           )}
 
                           {["Rejected", "NeedsChanges"].includes(product.status) && (
-                            <DropdownMenuItem onClick={() => openMadeInCIDialog(product)}>
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              Resoumettre badge Made in CI
+                            <DropdownMenuItem
+                              disabled={updatingStatusId === product.id}
+                              onClick={() => handleStatusChange(product.id, "InModeration")}
+                            >
+                              {updatingStatusId === product.id
+                                ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                : <Send className="w-4 h-4 mr-2" />}
+                              Resoumettre
                             </DropdownMenuItem>
                           )}
                           
-                          <DropdownMenuItem onClick={() => handleStatusChange(product.id, "Archived")}>
-                            <Archive className="w-4 h-4 mr-2" />
+                          <DropdownMenuItem
+                            disabled={updatingStatusId === product.id}
+                            onClick={() => handleStatusChange(product.id, "Archived")}
+                          >
+                            {updatingStatusId === product.id
+                              ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              : <Archive className="w-4 h-4 mr-2" />}
                             Archiver
                           </DropdownMenuItem>
                           
@@ -890,9 +979,9 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                       {statusConfig[selectedProduct.status].label}
                     </Badge>
                     {selectedProduct.madeInCI && (
-                      <Badge className={madeInCIBadges[selectedProduct.madeInCI].color}>
+                      <Badge className="bg-orange-500 text-white">
                         <Award className="w-3 h-3 mr-1" />
-                        {madeInCIBadges[selectedProduct.madeInCI].label}
+                        Made in Côte d'Ivoire
                       </Badge>
                     )}
                     {selectedProduct.produitReglemente && (
@@ -909,8 +998,16 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                       <p className="text-xs text-muted-foreground mb-1">Prix</p>
                       <p className="text-2xl font-bold text-primary">
                         {selectedProduct.prix.toLocaleString()}
-                        <span className="text-sm font-normal text-muted-foreground ml-1">FCFA/{selectedProduct.unite}</span>
+                        <span className="text-sm font-normal text-muted-foreground ml-1">
+                          {selectedApiProduct?.currency ?? "FCFA"}/{selectedApiProduct?.salesUnit?.symbol ?? selectedProduct.unite}
+                        </span>
                       </p>
+                      {selectedApiProduct?.priceHt && (
+                        <p className="text-xs text-muted-foreground">
+                          HT : {parseFloat(String(selectedApiProduct.priceHt)).toLocaleString()} {selectedApiProduct.currency ?? "FCFA"}
+                          {selectedApiProduct.vatRate ? ` (TVA ${parseFloat(String(selectedApiProduct.vatRate))}%)` : ""}
+                        </p>
+                      )}
                     </div>
                     <div className="p-4 rounded-lg bg-muted">
                       <p className="text-xs text-muted-foreground mb-1">Stock</p>
@@ -918,8 +1015,49 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                       {selectedApiProduct?.moq && (
                         <p className="text-xs text-muted-foreground">MOQ : {selectedApiProduct.moq}</p>
                       )}
+                      {selectedApiProduct?.maxOrderQuantity && (
+                        <p className="text-xs text-muted-foreground">Max : {selectedApiProduct.maxOrderQuantity}</p>
+                      )}
                     </div>
                   </div>
+
+                  {/* Poids, dimensions, colisage */}
+                  {selectedApiProduct && (
+                    selectedApiProduct.netWeight || selectedApiProduct.grossWeight ||
+                    selectedApiProduct.dimensions || selectedApiProduct.volume ||
+                    selectedApiProduct.packageCount || selectedApiProduct.quantityPerCarton || selectedApiProduct.quantityPerPallet
+                  ) && (
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Poids & dimensions</p>
+                      <div className="grid grid-cols-2 gap-2 text-sm rounded-lg border p-3">
+                        {selectedApiProduct.netWeight && (
+                          <div><span className="text-muted-foreground">Poids net : </span>
+                            {selectedApiProduct.netWeight} {selectedApiProduct.netWeightUnit?.symbol}</div>
+                        )}
+                        {selectedApiProduct.grossWeight && (
+                          <div><span className="text-muted-foreground">Poids brut : </span>
+                            {selectedApiProduct.grossWeight} {selectedApiProduct.grossWeightUnit?.symbol}</div>
+                        )}
+                        {selectedApiProduct.dimensions && (
+                          <div><span className="text-muted-foreground">Dimensions : </span>
+                            {selectedApiProduct.dimensions} {selectedApiProduct.dimensionUnit?.symbol}</div>
+                        )}
+                        {selectedApiProduct.volume && (
+                          <div><span className="text-muted-foreground">Volume : </span>
+                            {selectedApiProduct.volume} {selectedApiProduct.volumeUnit?.symbol}</div>
+                        )}
+                        {selectedApiProduct.packageCount && (
+                          <div><span className="text-muted-foreground">Colis : </span>{selectedApiProduct.packageCount}</div>
+                        )}
+                        {selectedApiProduct.quantityPerCarton && (
+                          <div><span className="text-muted-foreground">Qté/carton : </span>{selectedApiProduct.quantityPerCarton}</div>
+                        )}
+                        {selectedApiProduct.quantityPerPallet && (
+                          <div><span className="text-muted-foreground">Qté/palette : </span>{selectedApiProduct.quantityPerPallet}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Description */}
                   {selectedApiProduct?.description && (
@@ -959,7 +1097,7 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                         <div>
                           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Zones de livraison</p>
                           <div className="flex flex-wrap gap-1">
-                            {(selectedApiProduct.deliveryZones as { name: string }[]).map((z, i) => (
+                            {selectedApiProduct.deliveryZones.map((z, i) => (
                               <Badge key={i} variant="outline" className="text-xs">{z.name}</Badge>
                             ))}
                           </div>
@@ -967,7 +1105,10 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                       )}
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Livraison</p>
-                        <p>Frais : {parseFloat(String(selectedApiProduct.shippingCost)).toLocaleString()} FCFA</p>
+                        {selectedApiProduct.deliveryMode && <p>{selectedApiProduct.deliveryMode}</p>}
+                        {selectedApiProduct.shippingCost != null && (
+                          <p>Frais : {parseFloat(String(selectedApiProduct.shippingCost)).toLocaleString()} FCFA</p>
+                        )}
                         {selectedApiProduct.pickupAvailable && <p className="text-green-600">Retrait possible</p>}
                         {selectedApiProduct.availabilityDelay && <p className="text-muted-foreground">{selectedApiProduct.availabilityDelay}</p>}
                       </div>
@@ -975,17 +1116,17 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                   )}
 
                   {/* Certifications */}
-                  {selectedApiProduct?.certifications && selectedApiProduct.certifications.length > 0 && (
+                  {selectedApiProduct?.certificationEntries && selectedApiProduct.certificationEntries.length > 0 && (
                     <div>
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Certifications</p>
                       <div className="flex flex-wrap gap-1">
-                        {selectedApiProduct.certifications.map((c, i) =>
-                          c.url ? (
-                            <a key={i} href={c.url} target="_blank" rel="noopener noreferrer">
-                              <Badge variant="secondary" className="cursor-pointer hover:underline">{c.name}</Badge>
+                        {selectedApiProduct.certificationEntries.map((c, i) =>
+                          c.documentUrl ? (
+                            <a key={i} href={c.documentUrl} target="_blank" rel="noopener noreferrer">
+                              <Badge variant="secondary" className="cursor-pointer hover:underline">{c.type}</Badge>
                             </a>
                           ) : (
-                            <Badge key={i} variant="secondary">{c.name}</Badge>
+                            <Badge key={i} variant="secondary">{c.type}</Badge>
                           )
                         )}
                       </div>
@@ -1155,6 +1296,38 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Choix du type de fiche à créer */}
+      <Dialog open={showCreateChoice} onOpenChange={setShowCreateChoice}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Que souhaitez-vous créer ?</DialogTitle>
+            <DialogDescription>
+              Choisissez le type de fiche à publier sur la marketplace.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <button
+              type="button"
+              onClick={chooseCreateProduct}
+              className="flex flex-col items-center gap-2 p-6 rounded-lg border-2 hover:border-primary hover:bg-primary/5 transition-all"
+            >
+              <Package className="w-8 h-8 text-primary" />
+              <span className="font-medium">Produit</span>
+              <span className="text-xs text-muted-foreground text-center">Article physique en stock</span>
+            </button>
+            <button
+              type="button"
+              onClick={chooseCreateService}
+              className="flex flex-col items-center gap-2 p-6 rounded-lg border-2 hover:border-primary hover:bg-primary/5 transition-all"
+            >
+              <Briefcase className="w-8 h-8 text-primary" />
+              <span className="font-medium">Service</span>
+              <span className="text-xs text-muted-foreground text-center">Prestation ou intervention</span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Wizard intégré — création ET édition */}
       <ProductWizard
         open={showWizard}
@@ -1162,6 +1335,12 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
         onProductCreated={() => fetchProducts(boutiqueId)}
         editProductId={editProductId}
         editInitialData={editApiProduct}
+      />
+
+      {/* Wizard création de service */}
+      <ServiceWizard
+        open={showServiceWizard}
+        onOpenChange={setShowServiceWizard}
       />
     </div>
   );

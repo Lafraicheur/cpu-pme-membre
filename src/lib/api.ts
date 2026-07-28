@@ -1,6 +1,6 @@
 import { getCookie } from "@/lib/cookies";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://back.cpupme.ci";
+const API_BASE = import.meta.env.VITE_API_URL_DEV || "https://back.cpupme.ci";
 
 function getToken(): string | null {
   return localStorage.getItem("cpu-access-token") ?? getCookie("cpu-access-token");
@@ -657,7 +657,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -675,7 +675,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -693,7 +693,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -945,6 +945,492 @@ export const filieresApi = {
   },
 };
 
+// ── Familles marketplace ──────────────────────────────────────────────────────
+
+export interface MarketplaceFamille {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  filiereIds: string[];
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  filieres: { id: string; name: string }[];
+}
+
+export const marketplaceFamillesApi = {
+  getAll: async (params?: { activeOnly?: boolean }): Promise<MarketplaceFamille[]> => {
+    const qs = new URLSearchParams();
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: MarketplaceFamille[] } | MarketplaceFamille[]>(
+      `/api/marketplace/familles${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceFamille[] }).data ?? []);
+  },
+};
+
+// ── Catégories marketplace ────────────────────────────────────────────────────
+
+export interface MarketplaceCategory {
+  id: string;
+  familleId: string;
+  code: string;
+  name: string;
+  sousFiliereIds: string[];
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  sousFilieres: { id: string; name: string }[];
+}
+
+export interface MarketplaceSousFiliere {
+  id: string;
+  name: string;
+  filiereId: string;
+}
+
+export interface MarketplaceSousCategorie {
+  id: string;
+  categorieId: string;
+  activiteId: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export const marketplaceCategoriesApi = {
+  getAll: async (params?: { familleId?: string; activeOnly?: boolean }): Promise<MarketplaceCategory[]> => {
+    const qs = new URLSearchParams();
+    if (params?.familleId) qs.set("familleId", params.familleId);
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: MarketplaceCategory[] } | MarketplaceCategory[]>(
+      `/api/marketplace/categories${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceCategory[] }).data ?? []);
+  },
+
+  getSousFilieresByFamille: async (familleId: string, activeOnly?: boolean): Promise<MarketplaceSousFiliere[]> => {
+    const qs = new URLSearchParams();
+    if (activeOnly !== undefined) qs.set("activeOnly", String(activeOnly));
+    const res = await request<{ success: boolean; data: MarketplaceSousFiliere[] } | MarketplaceSousFiliere[]>(
+      `/api/marketplace/categories/familles/${encodeURIComponent(familleId)}/sous-filieres${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceSousFiliere[] }).data ?? []);
+  },
+
+  getSousCategories: async (params?: { categorieId?: string; activeOnly?: boolean }): Promise<MarketplaceSousCategorie[]> => {
+    const qs = new URLSearchParams();
+    if (params?.categorieId) qs.set("categorieId", params.categorieId);
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: MarketplaceSousCategorie[] } | MarketplaceSousCategorie[]>(
+      `/api/marketplace/sous-categories${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceSousCategorie[] }).data ?? []);
+  },
+};
+
+// ── Familles / catégories / sous-catégories de services ──────────────────────
+
+export interface ServiceFamille {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  filiereIds: string[];
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  filieres: { id: string; name: string }[];
+}
+
+export interface ServiceCategory {
+  id: string;
+  familleId: string;
+  code: string;
+  name: string;
+  sousFiliereIds: string[];
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  sousFilieres: { id: string; name: string }[];
+}
+
+export interface ServiceSousCategorie {
+  id: string;
+  categorieId: string;
+  activiteId: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export const serviceFamillesApi = {
+  getAll: async (params?: { activeOnly?: boolean }): Promise<ServiceFamille[]> => {
+    const qs = new URLSearchParams();
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: ServiceFamille[] } | ServiceFamille[]>(
+      `/api/marketplace/service-familles${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceFamille[] }).data ?? []);
+  },
+};
+
+export const serviceCategoriesApi = {
+  getAll: async (params?: { familleId?: string; activeOnly?: boolean }): Promise<ServiceCategory[]> => {
+    const qs = new URLSearchParams();
+    if (params?.familleId) qs.set("familleId", params.familleId);
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: ServiceCategory[] } | ServiceCategory[]>(
+      `/api/marketplace/service-categories${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceCategory[] }).data ?? []);
+  },
+};
+
+export const serviceSousCategoriesApi = {
+  getAll: async (params?: { categorieId?: string; activeOnly?: boolean }): Promise<ServiceSousCategorie[]> => {
+    const qs = new URLSearchParams();
+    if (params?.categorieId) qs.set("categorieId", params.categorieId);
+    if (params?.activeOnly !== undefined) qs.set("activeOnly", String(params.activeOnly));
+    const res = await request<{ success: boolean; data: ServiceSousCategorie[] } | ServiceSousCategorie[]>(
+      `/api/marketplace/service-sous-categories${qs.toString() ? `?${qs.toString()}` : ""}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceSousCategorie[] }).data ?? []);
+  },
+};
+
+// ── Référentiels services (prestation-types, ...) ─────────────────────────────
+
+export interface ServiceReferentialOption {
+  value: string;
+  label: string;
+}
+
+export interface ServiceVatRateOption {
+  value: number | string;
+  label: string;
+}
+
+export const servicesReferentialsApi = {
+  getPrestationTypes: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/prestation-types"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getSpokenLanguages: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/spoken-languages"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getPricingModels: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/pricing-models"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getCurrencies: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/currencies"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getVatRates: async (): Promise<ServiceVatRateOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceVatRateOption[] } | ServiceVatRateOption[]>(
+      "/api/marketplace/services/referentials/vat-rates"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceVatRateOption[] }).data ?? []);
+  },
+
+  getComplementaryOptionTypes: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/complementary-option-types"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getWeekDays: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/week-days"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getInterventionDelays: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/intervention-delays"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getOrderModes: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/order-modes"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+
+  getDocumentKinds: async (): Promise<ServiceReferentialOption[]> => {
+    const res = await request<{ success: boolean; data: ServiceReferentialOption[] } | ServiceReferentialOption[]>(
+      "/api/marketplace/services/referentials/document-kinds"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceReferentialOption[] }).data ?? []);
+  },
+};
+
+// ── Zones d'intervention services (régions / villes) ─────────────────────────
+
+export interface ServiceInterventionRegion {
+  id: string;
+  name: string;
+  zone: string;
+}
+
+export interface ServiceInterventionVille {
+  id: string;
+  name: string;
+  regionId: string;
+  regionName: string;
+}
+
+export const serviceInterventionZonesApi = {
+  getRegions: async (): Promise<ServiceInterventionRegion[]> => {
+    const res = await request<{ success: boolean; data: ServiceInterventionRegion[] } | ServiceInterventionRegion[]>(
+      "/api/marketplace/services/intervention-zones/regions"
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceInterventionRegion[] }).data ?? []);
+  },
+
+  getVilles: async (regionIds: string[]): Promise<ServiceInterventionVille[]> => {
+    if (!regionIds.length) return [];
+    const qs = new URLSearchParams();
+    regionIds.forEach((id) => qs.append("regionIds", id));
+    const res = await request<{ success: boolean; data: ServiceInterventionVille[] } | ServiceInterventionVille[]>(
+      `/api/marketplace/services/intervention-zones/villes?${qs.toString()}`
+    );
+    return Array.isArray(res) ? res : ((res as { data: ServiceInterventionVille[] }).data ?? []);
+  },
+};
+
+// ── Création de service (marketplace) ─────────────────────────────────────────
+
+export interface ServiceCreatePayload {
+  boutiqueId: string;
+  name: string;
+  shortDescription: string;
+  description: string;
+  serviceSousCategorieId: string;
+  prestationType?: string;
+  interventionCountry?: string;
+  interventionRadiusKm?: number;
+  coveredRegionIds?: string[];
+  coveredVilleIds?: string[];
+  providerPresentation?: string;
+  yearsOfExperience?: number;
+  collaboratorsCount?: number;
+  certifications?: string;
+  agreements?: string;
+  spokenLanguages?: string[];
+  spokenLanguageOther?: string;
+  portfolioUrl?: string;
+  clientReferences?: string;
+  pricingModel?: string;
+  price?: number;
+  currency?: string;
+  vatRate?: number;
+  promoPrice?: number;
+  strikethroughPrice?: number;
+  complementaryOptions?: string; // JSON [{type, additionalPrice}]
+  availableDays?: string[];
+  timeSlots?: string; // JSON [{day, from, to}]
+  emergency24h?: boolean;
+  weekendAvailable?: boolean;
+  holidaysAvailable?: boolean;
+  interventionDelay?: string;
+  orderModes?: string[];
+  completionDelay?: string;
+  generalConditions?: string;
+  cancellationPolicy?: string;
+  refundPolicy?: string;
+  warranty?: string;
+  paymentTerms?: string;
+  invoicingTerms?: string;
+  specialConditions?: string;
+  selectedOptionTypes?: string[];
+}
+
+export interface ServiceDocumentFiles {
+  documentsImages?: File[];
+  documentsVideos?: File[];
+  documentsPdf?: File[];
+  documentsBrochure?: File[];
+  documentsCatalogue?: File[];
+  documentsGrilleTarifaire?: File[];
+  documentsCertificats?: File[];
+  documentsAssuranceRc?: File[];
+}
+
+export interface MarketplaceService {
+  id: string;
+  name: string;
+  status: string;
+  pricingSimulation?: unknown;
+  selectedOptionTypes?: string[];
+  [key: string]: unknown;
+}
+
+export interface ServiceUpdatePayload {
+  boutiqueId?: string;
+  name?: string;
+  shortDescription?: string;
+  description?: string;
+  serviceSousCategorieId?: string;
+  status?: string;
+  prestationType?: string;
+  interventionCountry?: string;
+  interventionRadiusKm?: number;
+  coveredRegionIds?: string[];
+  coveredVilleIds?: string[];
+  photoUrl?: string;
+  logoUrl?: string;
+  providerPresentation?: string;
+  yearsOfExperience?: number;
+  collaboratorsCount?: number;
+  certifications?: string;
+  agreements?: string;
+  spokenLanguages?: string[];
+  spokenLanguageOther?: string;
+  portfolioUrl?: string;
+  clientReferences?: string;
+  pricingModel?: string;
+  price?: number;
+  currency?: string;
+  vatRate?: number;
+  promoPrice?: number;
+  strikethroughPrice?: number;
+  complementaryOptions?: { type: string; additionalPrice: number }[];
+  availableDays?: string[];
+  timeSlots?: { day: string; from: string; to: string }[];
+  emergency24h?: boolean;
+  weekendAvailable?: boolean;
+  holidaysAvailable?: boolean;
+  interventionDelay?: string;
+  orderModes?: string[];
+  completionDelay?: string;
+  generalConditions?: string;
+  cancellationPolicy?: string;
+  refundPolicy?: string;
+  warranty?: string;
+  paymentTerms?: string;
+  invoicingTerms?: string;
+  specialConditions?: string;
+}
+
+export const servicesApi = {
+  create: async (payload: ServiceCreatePayload, documents?: ServiceDocumentFiles): Promise<MarketplaceService> => {
+    const fd = new FormData();
+    const appendScalar = (key: string, value: unknown) => {
+      if (value === undefined || value === null || value === "") return;
+      fd.append(key, String(value));
+    };
+    const appendArray = (key: string, values?: string[]) => {
+      (values ?? []).forEach((v) => { if (v) fd.append(key, v); });
+    };
+
+    appendScalar("boutiqueId", payload.boutiqueId);
+    appendScalar("name", payload.name);
+    appendScalar("shortDescription", payload.shortDescription);
+    appendScalar("description", payload.description);
+    appendScalar("serviceSousCategorieId", payload.serviceSousCategorieId);
+    appendScalar("prestationType", payload.prestationType);
+    appendScalar("interventionCountry", payload.interventionCountry);
+    appendScalar("interventionRadiusKm", payload.interventionRadiusKm);
+    appendArray("coveredRegionIds", payload.coveredRegionIds);
+    appendArray("coveredVilleIds", payload.coveredVilleIds);
+    appendScalar("providerPresentation", payload.providerPresentation);
+    appendScalar("yearsOfExperience", payload.yearsOfExperience);
+    appendScalar("collaboratorsCount", payload.collaboratorsCount);
+    appendScalar("certifications", payload.certifications);
+    appendScalar("agreements", payload.agreements);
+    appendArray("spokenLanguages", payload.spokenLanguages);
+    appendScalar("spokenLanguageOther", payload.spokenLanguageOther);
+    appendScalar("portfolioUrl", payload.portfolioUrl);
+    appendScalar("clientReferences", payload.clientReferences);
+    appendScalar("pricingModel", payload.pricingModel);
+    appendScalar("price", payload.price);
+    appendScalar("currency", payload.currency);
+    appendScalar("vatRate", payload.vatRate);
+    appendScalar("promoPrice", payload.promoPrice);
+    appendScalar("strikethroughPrice", payload.strikethroughPrice);
+    appendScalar("complementaryOptions", payload.complementaryOptions);
+    appendArray("availableDays", payload.availableDays);
+    appendScalar("timeSlots", payload.timeSlots);
+    if (payload.emergency24h !== undefined) fd.append("emergency24h", String(payload.emergency24h));
+    if (payload.weekendAvailable !== undefined) fd.append("weekendAvailable", String(payload.weekendAvailable));
+    if (payload.holidaysAvailable !== undefined) fd.append("holidaysAvailable", String(payload.holidaysAvailable));
+    appendScalar("interventionDelay", payload.interventionDelay);
+    appendArray("orderModes", payload.orderModes);
+    appendScalar("completionDelay", payload.completionDelay);
+    appendScalar("generalConditions", payload.generalConditions);
+    appendScalar("cancellationPolicy", payload.cancellationPolicy);
+    appendScalar("refundPolicy", payload.refundPolicy);
+    appendScalar("warranty", payload.warranty);
+    appendScalar("paymentTerms", payload.paymentTerms);
+    appendScalar("invoicingTerms", payload.invoicingTerms);
+    appendScalar("specialConditions", payload.specialConditions);
+    appendArray("selectedOptionTypes", payload.selectedOptionTypes);
+
+    const docEntries: [string, File[] | undefined][] = [
+      ["documentsImages", documents?.documentsImages],
+      ["documentsVideos", documents?.documentsVideos],
+      ["documentsPdf", documents?.documentsPdf],
+      ["documentsBrochure", documents?.documentsBrochure],
+      ["documentsCatalogue", documents?.documentsCatalogue],
+      ["documentsGrilleTarifaire", documents?.documentsGrilleTarifaire],
+      ["documentsCertificats", documents?.documentsCertificats],
+      ["documentsAssuranceRc", documents?.documentsAssuranceRc],
+    ];
+    docEntries.forEach(([key, files]) => (files ?? []).forEach((f) => fd.append(key, f)));
+
+    const res = await requestMultipart<{ success: boolean; data: MarketplaceService } | MarketplaceService>(
+      "/api/marketplace/services", fd
+    );
+    return (res as { data: MarketplaceService }).data ?? (res as MarketplaceService);
+  },
+
+  saveDraft: async (id: string, payload?: ServiceUpdatePayload): Promise<MarketplaceService> => {
+    const res = await request<{ success: boolean; data: MarketplaceService } | MarketplaceService>(
+      `/api/marketplace/services/${id}/save-draft`,
+      { method: "POST", body: payload ? JSON.stringify(payload) : undefined }
+    );
+    return (res as { data: MarketplaceService }).data ?? (res as MarketplaceService);
+  },
+
+  submit: async (id: string, payload?: ServiceUpdatePayload): Promise<MarketplaceService> => {
+    const res = await request<{ success: boolean; data: MarketplaceService } | MarketplaceService>(
+      `/api/marketplace/services/${id}/submit`,
+      { method: "POST", body: payload ? JSON.stringify(payload) : undefined }
+    );
+    return (res as { data: MarketplaceService }).data ?? (res as MarketplaceService);
+  },
+};
+
 export const ticketTypesApi = {
   getAll: async (params?: { event_id?: string; creatorUserId?: string }): Promise<TicketType[]> => {
     const qs = new URLSearchParams();
@@ -975,7 +1461,7 @@ export const createEvenementApi = async (formData: FormData): Promise<Evenement>
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const API_BASE = import.meta.env.VITE_API_URL || "";
+  const API_BASE = import.meta.env.VITE_API_URL_DEV || "";
   const res = await fetch(`${API_BASE}/api/evenements`, {
     method: "POST",
     headers,
@@ -1263,6 +1749,144 @@ export const boutiqueCertificationApi = {
   },
 };
 
+export interface MarketplaceProductUnit {
+  id: string;
+  name: string;
+  symbol: string;
+  isActive: boolean;
+  sortOrder: number;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export const productUnitsApi = {
+  getSalesPicker: async (): Promise<MarketplaceProductUnit[]> => {
+    const res = await request<{ success: boolean; data: MarketplaceProductUnit[] } | MarketplaceProductUnit[]>(
+      "/api/marketplace/product-units/picker/sales"
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceProductUnit[] }).data ?? []);
+  },
+
+  getWeightPicker: async (): Promise<MarketplaceProductUnit[]> => {
+    const res = await request<{ success: boolean; data: MarketplaceProductUnit[] } | MarketplaceProductUnit[]>(
+      "/api/marketplace/product-units/picker/weight"
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceProductUnit[] }).data ?? []);
+  },
+
+  getDimensionsPicker: async (): Promise<MarketplaceProductUnit[]> => {
+    const res = await request<{ success: boolean; data: MarketplaceProductUnit[] } | MarketplaceProductUnit[]>(
+      "/api/marketplace/product-units/picker/dimensions"
+    );
+    return Array.isArray(res) ? res : ((res as { data: MarketplaceProductUnit[] }).data ?? []);
+  },
+};
+
+export interface RegulatedProductsStats {
+  total: number;
+  conforme: number;
+  enAttente: number;
+  nonConforme: number;
+  expirentBientot: number;
+}
+
+export interface RegulatedProductApi {
+  id: string;
+  productId: string;
+  productName: string;
+  productCategory?: string;
+  productSubCategory?: string;
+  regulatedCategoryType: string;
+  regulatedCategoryLabel?: string;
+  complianceStatus: string;
+  documentsValidated: number;
+  documentsRequired: number;
+  nearestExpiry?: string | null;
+  alertMessage?: string | null;
+  [key: string]: unknown;
+}
+
+export interface RegulatedProductDocumentApi {
+  id: string;
+  templateKey?: string;
+  name?: string;
+  fileName?: string | null;
+  fileUrl?: string | null;
+  status?: string;
+  hasExpiry?: boolean;
+  expiresAt?: string | null;
+  rejectionReason?: string | null;
+  [key: string]: unknown;
+}
+
+export interface RegulatedProductDocumentsResponse {
+  regulatedProductId: string;
+  productName: string;
+  categoryLabel: string;
+  requiredCount: number;
+  documents: RegulatedProductDocumentApi[];
+}
+
+export interface RegulatedProductsPage {
+  data: RegulatedProductApi[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  stats: RegulatedProductsStats;
+}
+
+export const regulatedProductsApi = {
+  getStats: async (): Promise<RegulatedProductsStats> => {
+    const res = await request<{ success: boolean; data: RegulatedProductsStats }>(
+      "/api/regulated-products/stats"
+    );
+    return res.data ?? { total: 0, conforme: 0, enAttente: 0, nonConforme: 0, expirentBientot: 0 };
+  },
+
+  getAll: async (params?: {
+    status?: string;
+    categoryType?: string;
+    q?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<RegulatedProductsPage> => {
+    const qs = new URLSearchParams();
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.categoryType) qs.set("categoryType", params.categoryType);
+    if (params?.q) qs.set("q", params.q);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: RegulatedProductsPage }>(
+      `/api/regulated-products?${qs.toString()}`
+    );
+    return res.data ?? { data: [], total: 0, page: 1, limit: 20, totalPages: 0, stats: { total: 0, conforme: 0, enAttente: 0, nonConforme: 0, expirentBientot: 0 } };
+  },
+
+  create: async (payload: { productId: string; categoryType?: string; regulatedCategoryId?: string }): Promise<RegulatedProductApi> => {
+    const res = await request<{ success: boolean; data: RegulatedProductApi } | RegulatedProductApi>(
+      "/api/regulated-products",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: RegulatedProductApi }).data ?? (res as RegulatedProductApi);
+  },
+
+  uploadDocument: async (docId: string, file: File, expiresAt?: string): Promise<unknown> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (expiresAt) fd.append("expiresAt", expiresAt);
+    return requestMultipart<unknown>(`/api/regulated-products/documents/${docId}/upload`, fd);
+  },
+
+  getDocuments: async (id: string): Promise<RegulatedProductDocumentApi[]> => {
+    const res = await request<{ success: boolean; data: RegulatedProductDocumentsResponse }>(
+      `/api/regulated-products/${id}/documents`
+    );
+    return res.data?.documents ?? [];
+  },
+};
+
 export const boutiquesApi = {
   getMyShop: async (): Promise<Boutique | null> => {
     const res = await request<{ success: boolean; data: { boutique: Boutique } }>(
@@ -1298,34 +1922,120 @@ export const boutiquesApi = {
 export interface Product {
   id: string;
   boutiqueId: string;
+  createdByAdminId?: string | null;
+  regulateId?: string | null;
+  mediaId?: string | null;
+  productVariantId?: string | null;
   name: string;
   type: string;
   description: string;
+  shortDescription?: string;
+  brand?: string | null;
+  model?: string | null;
+  origin?: string;
+  manufacturingCountry?: string | null;
+  condition?: string;
+  attributes?: string[];
+  // Taxonomie : `category`/`subCategory` (noms hérités des filières) coexistent
+  // avec la nouvelle classification à 3 niveaux `famille`/`categorie`/`sousCategorie`.
   category: string;
   subCategory: string;
+  articleType?: string | null;
+  secteurId?: string | null;
+  filiereId?: string | null;
+  subCategoryId?: string | null;
+  articleTypeId?: string | null;
+  familleId?: string | null;
+  categorieId?: string | null;
+  sousCategorieId?: string | null;
+  famille?: string | null;
+  categorie?: string | null;
+  sousCategorie?: string | null;
+  designationId?: string | null;
+  designation?: string | null;
   characteristics: string;
-  isRegulated: boolean;
+  sellerReference?: string | null;
+  productCode?: string | null;
+  articleNumber?: number | null;
+  isRegulated: boolean | null;
   madeInCiRequested: boolean;
   madeInCiBadgeType?: string;
-  unit: string;
+  salesUnitId?: string | null;
+  /** @deprecated conservé pour compatibilité avec l'ancien flux de création. */
+  unit?: string;
   status: string;
-  price: number;
+  price: number | string;
+  currency?: string;
+  vatRate?: number | string;
+  priceHt?: number | string;
   stock: number;
+  stockAlertThreshold?: number | null;
+  availabilityStatus?: string;
+  madeToOrder?: boolean | null;
+  onDemandManufacturing?: boolean | null;
   moq: number;
+  maxOrderQuantity?: number | null;
+  retailEnabled?: boolean | null;
+  wholesaleEnabled?: boolean | null;
+  quoteRequestEnabled?: boolean | null;
+  netWeight?: number | string | null;
+  netWeightUnitId?: string | null;
+  grossWeight?: number | string | null;
+  grossWeightUnitId?: string | null;
+  /** @deprecated conservé pour compatibilité avec l'ancien flux de création. */
   weight?: number;
   dimensions?: string;
+  dimensionUnitId?: string | null;
+  volume?: number | string | null;
+  volumeUnitId?: string | null;
+  packageCount?: number | null;
+  quantityPerCarton?: number | null;
+  quantityPerPallet?: number | null;
+  capacity?: number | null;
   availabilityDelay?: string;
-  deliveryZones?: unknown[];
-  shippingCost?: number;
+  deliveryZones?: { id: string; name: string; description?: string }[];
+  deliveryMode?: string;
+  deliveryEstimatedDelay?: string;
+  shippingCost?: number | string | null;
   pickupAvailable?: boolean;
-  technicalSpecifications?: { name: string; value: string; unit?: string; url?: string }[];
-  certifications?: { name: string; url?: string }[];
-  technicalDocuments?: { name: string; url: string }[];
-  variantsEnabled?: boolean;
-  quantityPricingEnabled?: boolean;
-  quantityPricingTiers?: { minQuantity: number; unitPrice: number }[];
-  premiumOption?: string;
-  premiumDurationWeeks?: number;
+  technicalSpecifications?: { name: string; value: string; unit?: string; url?: string }[] | null;
+  /** @deprecated remplacé par `certificationEntries`. */
+  certifications?: { name: string; url?: string }[] | null;
+  certificationEntries?: { type: string; reference?: string; documentUrl?: string }[] | null;
+  technicalDocuments?: { name: string; url: string }[] | null;
+  variantsEnabled?: boolean | null;
+  quantityPricingEnabled?: boolean | null;
+  quantityPricingTiers?: { minQuantity: number; maxQuantity?: number; unitPrice: number }[] | null;
+  premiumOption?: string | null;
+  premiumDurationWeeks?: number | null;
+  promoPrice?: number | string | null;
+  promoStartsAt?: string | null;
+  promoEndsAt?: string | null;
+  promoLabel?: string | null;
+  promoIsActive?: boolean;
+  isNouveaute?: boolean;
+  nouveauteUntil?: string | null;
+  escrowEnabled?: boolean;
+  warrantyLabel?: string | null;
+  warrantyDuration?: string | null;
+  savAvailable?: boolean | null;
+  returnAccepted?: boolean | null;
+  returnDelayDays?: number | null;
+  specialConditions?: string | null;
+  boutique?: {
+    id: string;
+    name: string;
+    logo?: string | null;
+    [key: string]: unknown;
+  } | null;
+  // Relations enrichies renvoyées uniquement par GET /api/marketplace/products/{id}
+  regulate?: unknown | null;
+  salesUnit?: MarketplaceProductUnit | null;
+  netWeightUnit?: MarketplaceProductUnit | null;
+  grossWeightUnit?: MarketplaceProductUnit | null;
+  dimensionUnit?: MarketplaceProductUnit | null;
+  volumeUnit?: MarketplaceProductUnit | null;
+  productVariant?: unknown | null;
   productMedia?: {
     id: string;
     url: string;
@@ -1334,6 +2044,7 @@ export interface Product {
   }[];
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
 }
 
 export interface ProductsPage {
@@ -1434,7 +2145,280 @@ export const productsApi = {
   delete: async (id: string): Promise<void> => {
     await request<void>(`/api/marketplace/products/${id}`, { method: "DELETE" });
   },
+
+  createListing: async (payload: CreateProductListingPayload, medias?: File[]): Promise<Product> => {
+    const fd = new FormData();
+    // En multipart, les champs arrivent en string côté backend : les booléens
+    // ("true"/"false") échouent la validation @IsBoolean(). On les omet donc
+    // ici et on les envoie ensuite via un PATCH JSON (types natifs préservés) —
+    // même limitation et même contournement que buildProductFormData ci-dessus.
+    const append = (key: string, value: unknown) => {
+      if (value === undefined || value === null || value === "" || typeof value === "boolean") return;
+      fd.append(key, String(value));
+    };
+
+    append("boutiqueId", payload.boutiqueId);
+    append("name", payload.name);
+    append("type", payload.type);
+    append("description", payload.description);
+    append("shortDescription", payload.shortDescription);
+    append("sousCategorieId", payload.sousCategorieId);
+    append("designation", payload.designation);
+    append("designationCode", payload.designationCode);
+    append("brand", payload.brand);
+    append("model", payload.model);
+    append("origin", payload.origin);
+    append("manufacturingCountry", payload.manufacturingCountry);
+    append("condition", payload.condition);
+    (payload.attributes ?? []).forEach((a) => fd.append("attributes", a));
+    append("sellerReference", payload.sellerReference);
+    append("characteristics", payload.characteristics);
+    append("salesUnitId", payload.salesUnitId);
+    append("status", payload.status);
+    append("price", payload.price);
+    append("currency", payload.currency);
+    append("vatRate", payload.vatRate);
+    append("promoPrice", payload.promoPrice);
+    append("promoStartsAt", payload.promoStartsAt);
+    append("promoEndsAt", payload.promoEndsAt);
+    append("promoLabel", payload.promoLabel);
+    append("stock", payload.stock);
+    append("stockAlertThreshold", payload.stockAlertThreshold);
+    append("availabilityStatus", payload.availabilityStatus);
+    append("availabilityDelay", payload.availabilityDelay);
+    append("moq", payload.moq);
+    append("maxOrderQuantity", payload.maxOrderQuantity);
+    append("netWeight", payload.netWeight);
+    append("netWeightUnitId", payload.netWeightUnitId);
+    append("grossWeight", payload.grossWeight);
+    append("grossWeightUnitId", payload.grossWeightUnitId);
+    append("dimensionLength", payload.dimensionLength);
+    append("dimensionWidth", payload.dimensionWidth);
+    append("dimensionHeight", payload.dimensionHeight);
+    append("dimensionUnitId", payload.dimensionUnitId);
+    append("volume", payload.volume);
+    append("volumeUnitId", payload.volumeUnitId);
+    append("packageCount", payload.packageCount);
+    append("quantityPerCarton", payload.quantityPerCarton);
+    append("quantityPerPallet", payload.quantityPerPallet);
+    append("deliveryZones", JSON.stringify(payload.deliveryZones ?? []));
+    append("deliveryMode", payload.deliveryMode);
+    append("deliveryEstimatedDelay", payload.deliveryEstimatedDelay);
+    (payload.quantityPricingTiers ?? []).slice(0, 5).forEach((tier, i) => {
+      append(`quantityPricingTierMinQuantity_${i}`, tier.minQuantity);
+      append(`quantityPricingTierMaxQuantity_${i}`, tier.maxQuantity);
+      append(`quantityPricingTierUnitPrice_${i}`, tier.unitPrice);
+    });
+    if (payload.variantsEnabled && payload.variants?.length) {
+      append("variants", JSON.stringify(payload.variants));
+    }
+    if (payload.certificationEntries?.length) {
+      append("certificationEntries", JSON.stringify(payload.certificationEntries));
+    }
+    append("madeInCiLabelCode", payload.madeInCiLabelCode);
+    append("madeInCiLocalPercentage", payload.madeInCiLocalPercentage);
+    append("madeInCiManufacturingPlace", payload.madeInCiManufacturingPlace);
+    append("madeInCiRegionId", payload.madeInCiRegionId);
+    append("madeInCiVilleId", payload.madeInCiVilleId);
+    append("madeInCiOriginCertificateUrl", payload.madeInCiOriginCertificateUrl);
+    append("warrantyLabel", payload.warrantyLabel);
+    append("warrantyDuration", payload.warrantyDuration);
+    append("returnDelayDays", payload.returnDelayDays);
+    append("specialConditions", payload.specialConditions);
+    (medias ?? []).forEach((f) => fd.append("medias", f));
+
+    const res = await requestMultipart<{ success: boolean; data: Product } | Product>(
+      "/api/marketplace/products", fd
+    );
+    const created = (res as { data: Product }).data ?? (res as Product);
+
+    // Champs booléens : PATCH JSON séparé pour préserver le type natif.
+    const booleans: Record<string, boolean> = {
+      retailEnabled: !!payload.retailEnabled,
+      wholesaleEnabled: !!payload.wholesaleEnabled,
+      quoteRequestEnabled: !!payload.quoteRequestEnabled,
+      madeToOrder: !!payload.madeToOrder,
+      onDemandManufacturing: !!payload.onDemandManufacturing,
+      quantityPricingEnabled: !!payload.quantityPricingEnabled,
+      variantsEnabled: !!payload.variantsEnabled,
+      isRegulated: !!payload.isRegulated,
+      madeInCiRequested: !!payload.madeInCiRequested,
+      madeInCiSubmitForValidation: !!payload.madeInCiSubmitForValidation,
+      escrowEnabled: !!payload.escrowEnabled,
+      savAvailable: !!payload.savAvailable,
+      returnAccepted: !!payload.returnAccepted,
+    };
+    try {
+      const patched = await request<{ success: boolean; data: Product } | Product>(
+        `/api/marketplace/products/${created.id}`,
+        { method: "PATCH", body: JSON.stringify(booleans) }
+      );
+      return (patched as { data: Product }).data ?? (patched as Product);
+    } catch {
+      return created; // le produit est au moins créé, booléens laissés par défaut
+    }
+  },
+
+  updateListing: async (id: string, payload: UpdateProductPayload, medias?: File[]): Promise<Product> => {
+    const fd = new FormData();
+    const append = (key: string, value: unknown) => {
+      if (value === undefined || value === null || value === "" || typeof value === "boolean") return;
+      fd.append(key, String(value));
+    };
+
+    append("name", payload.name);
+    append("type", payload.type);
+    append("description", payload.description);
+    append("sousCategorieId", payload.sousCategorieId);
+    append("characteristics", payload.characteristics);
+    append("salesUnitId", payload.salesUnitId);
+    append("status", payload.status);
+    append("price", payload.price);
+    append("stock", payload.stock);
+    append("moq", payload.moq);
+    append("maxOrderQuantity", payload.maxOrderQuantity);
+    append("netWeight", payload.netWeight);
+    append("netWeightUnitId", payload.netWeightUnitId);
+    append("grossWeight", payload.grossWeight);
+    append("grossWeightUnitId", payload.grossWeightUnitId);
+    append("dimensionLength", payload.dimensionLength);
+    append("dimensionWidth", payload.dimensionWidth);
+    append("dimensionHeight", payload.dimensionHeight);
+    append("dimensionUnitId", payload.dimensionUnitId);
+    append("volume", payload.volume);
+    append("volumeUnitId", payload.volumeUnitId);
+    append("packageCount", payload.packageCount);
+    append("quantityPerCarton", payload.quantityPerCarton);
+    append("quantityPerPallet", payload.quantityPerPallet);
+    (payload.quantityPricingTiers ?? []).slice(0, 5).forEach((tier, i) => {
+      append(`quantityPricingTierMinQuantity_${i}`, tier.minQuantity);
+      append(`quantityPricingTierMaxQuantity_${i}`, tier.maxQuantity);
+      append(`quantityPricingTierUnitPrice_${i}`, tier.unitPrice);
+    });
+    (medias ?? []).forEach((f) => fd.append("medias", f));
+
+    const res = await requestMultipart<{ success: boolean; data: Product } | Product>(
+      `/api/marketplace/products/${encodeURIComponent(id)}`, fd, "PATCH"
+    );
+    const updated = (res as { data: Product }).data ?? (res as Product);
+
+    if (payload.quantityPricingEnabled === undefined) return updated;
+    try {
+      const patched = await request<{ success: boolean; data: Product } | Product>(
+        `/api/marketplace/products/${id}`,
+        { method: "PATCH", body: JSON.stringify({ quantityPricingEnabled: !!payload.quantityPricingEnabled }) }
+      );
+      return (patched as { data: Product }).data ?? (patched as Product);
+    } catch {
+      return updated;
+    }
+  },
 };
+
+export interface UpdateProductPayload {
+  name?: string;
+  type?: string;
+  description?: string;
+  sousCategorieId?: string;
+  characteristics?: string;
+  salesUnitId?: string;
+  status?: string;
+  price?: number;
+  stock?: number;
+  moq?: number;
+  maxOrderQuantity?: number;
+  netWeight?: number;
+  netWeightUnitId?: string;
+  grossWeight?: number;
+  grossWeightUnitId?: string;
+  dimensionLength?: number;
+  dimensionWidth?: number;
+  dimensionHeight?: number;
+  dimensionUnitId?: string;
+  volume?: number;
+  volumeUnitId?: string;
+  packageCount?: number;
+  quantityPerCarton?: number;
+  quantityPerPallet?: number;
+  quantityPricingEnabled?: boolean;
+  quantityPricingTiers?: { minQuantity: number; maxQuantity?: number; unitPrice: number }[];
+}
+
+export interface CreateProductListingPayload {
+  boutiqueId: string;
+  name: string;
+  type: string;
+  description: string;
+  shortDescription: string;
+  sousCategorieId: string;
+  designation: string;
+  designationCode?: string;
+  brand?: string;
+  model?: string;
+  origin: string;
+  manufacturingCountry?: string;
+  condition: string;
+  attributes: string[];
+  sellerReference?: string;
+  characteristics?: string;
+  salesUnitId: string;
+  status?: string;
+  price: number;
+  currency?: string;
+  vatRate: number;
+  retailEnabled?: boolean;
+  wholesaleEnabled?: boolean;
+  quoteRequestEnabled?: boolean;
+  promoPrice?: number;
+  promoStartsAt?: string;
+  promoEndsAt?: string;
+  promoLabel?: string;
+  stock?: number;
+  stockAlertThreshold?: number;
+  availabilityStatus?: string;
+  madeToOrder?: boolean;
+  onDemandManufacturing?: boolean;
+  availabilityDelay?: string;
+  moq?: number;
+  maxOrderQuantity?: number;
+  netWeight?: number;
+  netWeightUnitId?: string;
+  grossWeight?: number;
+  grossWeightUnitId?: string;
+  dimensionLength?: number;
+  dimensionWidth?: number;
+  dimensionHeight?: number;
+  dimensionUnitId?: string;
+  volume?: number;
+  volumeUnitId?: string;
+  packageCount?: number;
+  quantityPerCarton?: number;
+  quantityPerPallet?: number;
+  deliveryZones: { id: string | number; name: string; description?: string }[];
+  deliveryMode: string;
+  deliveryEstimatedDelay?: string;
+  quantityPricingEnabled?: boolean;
+  quantityPricingTiers?: { minQuantity: number; maxQuantity?: number; unitPrice: number }[];
+  variantsEnabled?: boolean;
+  variants?: { name: string; price: number; stock: number; sku?: string; description?: string }[];
+  certificationEntries?: { type: string; reference?: string; documentUrl?: string }[];
+  isRegulated?: boolean;
+  madeInCiRequested?: boolean;
+  madeInCiLabelCode?: string;
+  madeInCiLocalPercentage?: number;
+  madeInCiManufacturingPlace?: string;
+  madeInCiRegionId?: string;
+  madeInCiVilleId?: string;
+  madeInCiOriginCertificateUrl?: string;
+  madeInCiSubmitForValidation?: boolean;
+  escrowEnabled?: boolean;
+  warrantyLabel?: string;
+  warrantyDuration?: string;
+  savAvailable?: boolean;
+  returnAccepted?: boolean;
+  returnDelayDays?: number;
+  specialConditions?: string;
+}
 
 export interface FormationLecon {
   id: string;
@@ -3595,7 +4579,32 @@ export interface ReturnVendorStats {
   refundExposure: number;
 }
 
+export type ReturnReason = "Produit endommagé" | "Non conforme" | "Quantité incorrecte" | "Mauvais produit" | "Produit défectueux" | "Autre";
+
+export interface CreateReturnPayload {
+  orderId: string;
+  productId?: string;
+  quantity?: number;
+  reason?: ReturnReason;
+  description?: string;
+  media?: File[];
+}
+
 export const returnsApi = {
+  create: async (payload: CreateReturnPayload): Promise<ReturnVendor> => {
+    const fd = new FormData();
+    fd.append("orderId", payload.orderId);
+    if (payload.productId) fd.append("productId", payload.productId);
+    if (payload.quantity !== undefined) fd.append("quantity", String(payload.quantity));
+    if (payload.reason) fd.append("reason", payload.reason);
+    if (payload.description) fd.append("description", payload.description);
+    (payload.media ?? []).forEach((file) => fd.append("media", file));
+    const res = await requestMultipart<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      "/api/marketplace/returns", fd
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
   getVendorList: async (): Promise<ReturnVendor[]> => {
     const res = await request<{ success: boolean; data: ReturnVendor[] } | ReturnVendor[]>(
       "/api/marketplace/returns/vendor/list"
@@ -3769,7 +4778,62 @@ export interface VendorOrdersPage {
   data: VendorOrder[];
 }
 
+export interface BuyerOrder {
+  id: string;
+  orderNumber: string;
+  userId: string;
+  adhesionId?: string | null;
+  boutiqueId: string;
+  productVariantId: string;
+  quantity: number;
+  totalPrice: number;
+  status: string;
+  trackingNumber: string | null;
+  rejectionReason: string | null;
+  cancelledReason: string | null;
+  confirmedAt: string | null;
+  preparedAt: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  shippingCost: number;
+  deliveryMode: string;
+  deliveryAddress: string | null;
+  created_at: string;
+  updated_at: string;
+  product?: { id: string; name: string } | null;
+  productVariant?: { id: string; name?: string; product?: { id: string; name: string } } | null;
+  boutique?: { id: string; name?: string; nom?: string } | null;
+}
+
+export interface BuyerOrdersPage {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: BuyerOrder[];
+}
+
 export const ordersApi = {
+  getBuyerList: async (params?: { status?: string; q?: string; page?: number; limit?: number }): Promise<BuyerOrdersPage> => {
+    const qs = new URLSearchParams();
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.q) qs.set("q", params.q);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: BuyerOrdersPage }>(
+      `/api/marketplace/orders?${qs.toString()}`
+    );
+    return res.data ?? { page: 1, limit: 20, total: 0, totalPages: 1, data: [] };
+  },
+
+  getBuyerById: async (id: string): Promise<BuyerOrder> => {
+    const res = await request<{ success: boolean; data: BuyerOrder } | BuyerOrder>(
+      `/api/marketplace/orders/${encodeURIComponent(id)}`
+    );
+    return (res as { data: BuyerOrder }).data ?? (res as BuyerOrder);
+  },
+
   getVendorList: async (params?: { status?: string; q?: string; page?: number; limit?: number }): Promise<VendorOrdersPage> => {
     const qs = new URLSearchParams();
     if (params?.status && params.status !== "all") qs.set("status", params.status);
@@ -3812,4 +4876,64 @@ export const ordersApi = {
     );
     return (res as { data: VendorOrder }).data ?? (res as VendorOrder);
   },
+
+  evaluate: async (id: string, body: CreateOrderEvaluationDto): Promise<OrderEvaluation> => {
+    const res = await request<{ success: boolean; data: OrderEvaluation } | OrderEvaluation>(
+      `/api/marketplace/orders/${encodeURIComponent(id)}/evaluation`,
+      { method: "POST", body: JSON.stringify(body) }
+    );
+    return (res as { data: OrderEvaluation }).data ?? (res as OrderEvaluation);
+  },
+
+  report: async (id: string, body: Omit<CreateOrderReportDto, "orderId">): Promise<OrderReport> => {
+    const res = await request<{ success: boolean; data: OrderReport } | OrderReport>(
+      `/api/marketplace/orders/${encodeURIComponent(id)}/report`,
+      { method: "POST", body: JSON.stringify({ orderId: id, ...body }) }
+    );
+    return (res as { data: OrderReport }).data ?? (res as OrderReport);
+  },
+
+  confirmReception: async (id: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/orders/buyer-orders/${encodeURIComponent(id)}/confirm-reception`,
+      { method: "POST" }
+    );
+  },
+
+  cancel: async (id: string): Promise<void> => {
+    await request<unknown>(
+      `/api/marketplace/orders/buyer-orders/${encodeURIComponent(id)}/cancel`,
+      { method: "POST" }
+    );
+  },
 };
+
+export interface CreateOrderEvaluationDto {
+  rating: number;
+  productQualityRating?: number;
+  deliveryRating?: number;
+  customerServiceRating?: number;
+  comment?: string;
+}
+
+export interface OrderEvaluation extends CreateOrderEvaluationDto {
+  id: string;
+  orderId: string;
+  created_at: string;
+}
+
+export type OrderReportType = "product_issue" | "delivery_issue" | "service_issue" | "other";
+
+export interface CreateOrderReportDto {
+  orderId: string;
+  reportType: OrderReportType;
+  title: string;
+  description: string;
+}
+
+export interface OrderReport extends CreateOrderReportDto {
+  id: string;
+  status: string;
+  response?: string | null;
+  created_at: string;
+}

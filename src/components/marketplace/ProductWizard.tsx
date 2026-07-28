@@ -1,19 +1,13 @@
 import { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -21,117 +15,455 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Package,
-  Briefcase,
-  ChevronRight,
-  ChevronLeft,
-  Upload,
-  AlertTriangle,
-  Award,
-  MapPin,
-  Truck,
-  X,
-  Plus,
   Image as ImageIcon,
-  CheckCircle2,
-  FileText,
-  Layers,
+  MapPin,
   DollarSign,
-  Star,
-  Crown,
-  Sparkles,
-  Percent,
+  CheckCircle2,
+  ArrowLeft,
+  ArrowRight,
+  Save,
+  Plus,
+  Trash2,
+  Upload,
+  ShieldCheck,
+  Layers,
+  Award,
+  Warehouse,
+  AlertTriangle,
+  ChevronsUpDown,
+  Check,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { filieresApi, boutiquesApi, productsApi, madeInCIBadgeLevelsApi, type Filiere, type Product as ApiProduct, type MadeInCIBadgeLevel } from "@/lib/api";
-import { regions } from "@/data/regions";
+import { toast } from "sonner";
+import {
+  marketplaceFamillesApi,
+  marketplaceCategoriesApi,
+  productUnitsApi,
+  boutiquesApi,
+  productsApi,
+  regionsApi,
+  villesApi,
+  type MarketplaceFamille,
+  type MarketplaceCategory,
+  type MarketplaceSousCategorie,
+  type MarketplaceProductUnit,
+  type Region as ApiRegion,
+  type Ville as ApiVille,
+  type CreateProductListingPayload,
+  type UpdateProductPayload,
+  type Product as ApiProduct,
+} from "@/lib/api";
 
-type ProductStatus = "Draft" | "InModeration" | "Published" | "Rejected" | "NeedsChanges";
-
-/**
- * Redimensionne et compresse une image côté client pour éviter les erreurs 413 (File too large).
- * Réduit la plus grande dimension à `maxSize` px et exporte en JPEG.
- */
-async function compressImage(file: File, maxSize = 1600, quality = 0.8): Promise<File> {
-  if (!file.type.startsWith("image/")) return file;
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = dataUrl;
-  });
-
-  let { width, height } = img;
-  if (width > maxSize || height > maxSize) {
-    const ratio = Math.min(maxSize / width, maxSize / height);
-    width = Math.round(width * ratio);
-    height = Math.round(height * ratio);
-  }
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(img, 0, 0, width, height);
-
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/jpeg", quality)
-  );
-  if (!blob) return file;
-
-  const newName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-  return new File([blob], newName, { type: "image/jpeg" });
+interface ProductVariant {
+  sku: string;
+  name: string;
+  price: string;
+  stock: string;
+  images: string[];
 }
 
-/** Zone d'upload de documents fonctionnelle (sélection multiple, liste, suppression). */
-function FileUploadZone({
-  hint,
-  accept,
-  files,
-  onChange,
-}: {
-  hint: string;
-  accept: string;
-  files: File[];
-  onChange: (files: File[]) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
+interface CertificationEntry {
+  type: string;
+  reference?: string;
+  fileName?: string;
+}
 
-  const handleAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files ?? []);
-    e.target.value = "";
-    if (selected.length) onChange([...files, ...selected]);
+interface PricingTier {
+  qtyMin: string;
+  qtyMax: string;
+  price: string;
+}
+
+interface ListingFormData {
+  listingType: "product" | "service";
+
+  // Étape 1 — Identification
+  title: string;
+  shortDescription: string;
+  description: string;
+  designation: string;
+  designationCode: string;
+  characteristics: string;
+  familyId: string;
+  categoryId: string;
+  subCategoryId: string;
+  brand: string;
+  model: string;
+  skuMerchant: string;
+  origin: string;
+  countryOfManufacture: string;
+  condition: "new" | "used" | "refurbished" | "not_applicable" | "";
+  attributes: string[];
+
+  // Étape 2 — Prix
+  priceTTC: string;
+  currency: string;
+  vatRate: string;
+  vatCustom: string;
+  priceHT: string;
+  promoPrice: string;
+  promoStart: string;
+  promoEnd: string;
+  promoLabel: string;
+  minOrder: string;
+  maxOrderQuantity: string;
+  sellPerUnit: boolean;
+  sellWholesale: boolean;
+  acceptsQuoteRequest: boolean;
+  hasTieredPricing: boolean;
+  pricingTiers: PricingTier[];
+  isNegotiable: boolean;
+  unit: string;
+
+  // Étape 3 — Stock
+  stock: string;
+  stockAlertThreshold: string;
+  availability: "in_stock" | "out_of_stock" | "preorder" | "";
+  isOnDemand: boolean;
+  isMadeToOrder: boolean;
+  preparationDelay: string;
+
+  // Étape 4 — Livraison
+  deliveryZones: string[];
+  deliveryTime: string;
+  deliveryMode: "pickup" | "merchant" | "marketplace_api";
+  pickupAddress: string;
+  netWeight: string;
+  netWeightUnitId: string;
+  grossWeight: string;
+  grossWeightUnitId: string;
+  dimensionLength: string;
+  dimensionWidth: string;
+  dimensionHeight: string;
+  dimensionUnitId: string;
+  volume: string;
+  volumeUnitId: string;
+  packageCount: string;
+  quantityPerCarton: string;
+  quantityPerPallet: string;
+
+  // Étape 5 — Variantes
+  hasVariants: boolean;
+  variants: ProductVariant[];
+
+  // Étape 6 — Médias
+  medias: File[];
+
+  // Étape 7 — Certifications
+  certifications: CertificationEntry[];
+  // Réglementation
+  isRegulated: boolean;
+  regFamilyCode: string;
+  regType: string;
+  regAuthority: string;
+  regAuthorizationNumber: string;
+  regIssueDate: string;
+  regExpiryDate: string;
+  regDocumentFileName: string;
+  // Made in Côte d'Ivoire
+  requestMadeInCI: boolean;
+  miciLabelCode: string;
+  miciLocalPercentage: string;
+  miciManufacturingPlace: string;
+  miciRegionId: string;
+  miciCityId: string;
+  miciOriginCertificateFileName: string;
+  miciRequestCpuValidation: boolean;
+
+  // Étape 8 — Garantie & SAV
+  acceptsEscrow: boolean;
+  warranty: string;
+  warrantyDuration: string;
+  hasAfterSalesService: boolean;
+  acceptsReturn: boolean;
+  returnDelay: string;
+  specialConditions: string;
+}
+
+const currencies = [
+  { value: "XOF", label: "FCFA (XOF)" },
+  { value: "EUR", label: "Euro (EUR)" },
+  { value: "USD", label: "Dollar (USD)" },
+];
+
+const vatRates = [
+  { value: "0", label: "0%" },
+  { value: "5", label: "5%" },
+  { value: "18", label: "18%" },
+  { value: "custom", label: "Autre (référentiel CPU-PME)" },
+];
+
+// Libellés attendus par l'API (valeurs enum en français, distinctes des codes internes du formulaire).
+const CONDITION_LABELS: Record<ListingFormData["condition"], string> = {
+  new: "Neuf",
+  used: "Occasion",
+  refurbished: "Reconditionné",
+  not_applicable: "Non applicable",
+  "": "",
+};
+
+const AVAILABILITY_LABELS: Record<ListingFormData["availability"], string> = {
+  in_stock: "En stock",
+  out_of_stock: "Rupture",
+  preorder: "Précommande",
+  "": "",
+};
+
+const DELIVERY_MODE_LABELS: Record<ListingFormData["deliveryMode"], string> = {
+  pickup: "Retrait par le client",
+  merchant: "Livraison par le Marchand",
+  marketplace_api: "Livraison Marketplace API",
+};
+
+function reverseLookup<T extends string>(map: Record<T, string>, value: string | undefined | null, fallback: T): T {
+  if (!value) return fallback;
+  const entry = (Object.entries(map) as [T, string][]).find(([, v]) => v === value);
+  return entry ? entry[0] : fallback;
+}
+
+function parseDimensions(dimensions?: string | null): { length: string; width: string; height: string } {
+  if (!dimensions) return { length: "", width: "", height: "" };
+  const parts = dimensions.split(/x/i).map((p) => p.trim());
+  return { length: parts[0] || "", width: parts[1] || "", height: parts[2] || "" };
+}
+
+const productAttributes = [
+  "Fragile",
+  "Périssable",
+  "Dangereux",
+  "Non applicable",
+  "Réfrigéré",
+];
+
+// Nomenclature Made in Côte d'Ivoire (référentiel CPU-PME)
+const madeInCILabels = [
+  { code: "MICI-001", label: "Produit fabriqué en Côte d'Ivoire", conditions: "100 % fabrication locale", percentages: ["80", "85", "90", "95", "100"], minPct: 80 },
+  { code: "MICI-002", label: "Assemblé en Côte d'Ivoire", conditions: "Assemblage local", percentages: ["49", "55", "60", "65", "70", "75"], minPct: 49 },
+  { code: "MICI-003", label: "Transformé en Côte d'Ivoire", conditions: "Matière première importée", percentages: ["79", "80", "85", "90", "95"], minPct: 79 },
+  { code: "MICI-004", label: "Produit agricole ivoirien", conditions: "Origine locale certifiée", percentages: ["90", "95", "100"], minPct: 90 },
+  { code: "MICI-005", label: "Artisanat ivoirien", conditions: "Production artisanale", percentages: ["100"], minPct: 100 },
+  { code: "MICI-006", label: "Innovation Ivoire", conditions: "Innovation technologie Locale", percentages: ["100"], minPct: 100 },
+];
+
+// Nomenclature des produits réglementés (référentiel CPU-PME)
+const regulatedFamilies = [
+  { code: "REG-001", family: "Produits alimentaires", document: "Certificat sanitaire" },
+  { code: "REG-002", family: "Compléments alimentaires", document: "Autorisation Ministère Santé" },
+  { code: "REG-003", family: "Médicaments", document: "Autorisation de mise sur le marché" },
+  { code: "REG-004", family: "Cosmétiques", document: "Déclaration sanitaire" },
+  { code: "REG-005", family: "Produits chimiques", document: "Autorisation environnement" },
+  { code: "REG-006", family: "Produits phytosanitaires", document: "Homologation" },
+  { code: "REG-007", family: "Engrais", document: "Homologation" },
+  { code: "REG-008", family: "Semences", document: "Certification semencière" },
+  { code: "REG-009", family: "Équipements médicaux", document: "Homologation" },
+  { code: "REG-010", family: "Gaz et carburants", document: "Autorisation" },
+  { code: "REG-011", family: "Explosifs", document: "Licence spéciale" },
+  { code: "REG-012", family: "Matériel électrique", document: "Certificat de conformité" },
+  { code: "REG-013", family: "Télécommunications", document: "Homologation" },
+  { code: "REG-014", family: "Produits vétérinaires", document: "Agrément" },
+  { code: "REG-015", family: "Alcool", document: "Licence de commercialisation" },
+  { code: "REG-016", family: "Tabac", document: "Licence" },
+  { code: "REG-017", family: "Déchets dangereux", document: "Autorisation environnement" },
+  { code: "REG-018", family: "Bijoux précieux", document: "Certificat d'origine" },
+  { code: "REG-019", family: "Armes et sécurité", document: "Licence selon réglementation" },
+  { code: "REG-020", family: "Import/Export spécifique", document: "Autorisation douanière" },
+];
+
+const certificationTypes = [
+  "Produit certifié",
+  "Certificat d'origine",
+  "Certificat phytosanitaire",
+  "Certificat sanitaire",
+  "ISO 9001",
+  "ISO 14001",
+  "ISO 22000",
+  "HACCP",
+  "CE",
+  "FDA",
+  "BIO",
+  "Halal",
+  "Agrément ministériel",
+  "Autre certificat",
+];
+
+const steps = [
+  { id: 1, title: "Identification", icon: Package },
+  { id: 2, title: "Prix", icon: DollarSign },
+  { id: 3, title: "Stock", icon: Warehouse },
+  { id: 4, title: "Livraison", icon: MapPin },
+  { id: 5, title: "Variantes", icon: Layers },
+  { id: 6, title: "Médias", icon: ImageIcon },
+  { id: 7, title: "Certifications", icon: Award },
+  { id: 8, title: "Garantie & SAV", icon: ShieldCheck },
+];
+
+function initialFormData(): ListingFormData {
+  return {
+    listingType: "product",
+    title: "",
+    shortDescription: "",
+    description: "",
+    designation: "",
+    designationCode: "",
+    characteristics: "",
+    familyId: "",
+    categoryId: "",
+    subCategoryId: "",
+    brand: "",
+    model: "",
+    skuMerchant: "",
+    origin: "",
+    countryOfManufacture: "",
+    condition: "new",
+    attributes: [],
+    priceTTC: "",
+    currency: "XOF",
+    vatRate: "18",
+    vatCustom: "",
+    priceHT: "",
+    promoPrice: "",
+    promoStart: "",
+    promoEnd: "",
+    promoLabel: "",
+    minOrder: "1",
+    maxOrderQuantity: "",
+    sellPerUnit: true,
+    sellWholesale: false,
+    acceptsQuoteRequest: false,
+    hasTieredPricing: false,
+    pricingTiers: [{ qtyMin: "0", qtyMax: "10", price: "" }],
+    isNegotiable: false,
+    unit: "",
+    stock: "",
+    stockAlertThreshold: "",
+    availability: "in_stock",
+    isOnDemand: false,
+    isMadeToOrder: false,
+    preparationDelay: "",
+    deliveryZones: [],
+    deliveryTime: "",
+    deliveryMode: "pickup",
+    pickupAddress: "",
+    netWeight: "",
+    netWeightUnitId: "",
+    grossWeight: "",
+    grossWeightUnitId: "",
+    dimensionLength: "",
+    dimensionWidth: "",
+    dimensionHeight: "",
+    dimensionUnitId: "",
+    volume: "",
+    volumeUnitId: "",
+    packageCount: "",
+    quantityPerCarton: "",
+    quantityPerPallet: "",
+    hasVariants: false,
+    variants: [{ sku: "", name: "", price: "", stock: "", images: [] }],
+    medias: [],
+    certifications: [],
+    isRegulated: false,
+    regFamilyCode: "",
+    regType: "",
+    regAuthority: "",
+    regAuthorizationNumber: "",
+    regIssueDate: "",
+    regExpiryDate: "",
+    regDocumentFileName: "",
+    requestMadeInCI: false,
+    miciLabelCode: "",
+    miciLocalPercentage: "",
+    miciManufacturingPlace: "",
+    miciRegionId: "",
+    miciCityId: "",
+    miciOriginCertificateFileName: "",
+    miciRequestCpuValidation: false,
+
+    acceptsEscrow: true,
+    warranty: "",
+    warrantyDuration: "",
+    hasAfterSalesService: false,
+    acceptsReturn: true,
+    returnDelay: "7",
+    specialConditions: "",
+  };
+}
+
+function RegionsMultiSelect({
+  regions: options,
+  value,
+  onChange,
+  placeholder = "Sélectionner des régions",
+}: {
+  regions: ApiRegion[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const toggle = (id: string) => {
+    onChange(value.includes(id) ? value.filter(v => v !== id) : [...value, id]);
   };
 
   return (
     <div className="space-y-2">
-      <input ref={inputRef} type="file" accept={accept} multiple className="hidden" onChange={handleAdd} />
-      <div
-        onClick={() => inputRef.current?.click()}
-        className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-      >
-        <Upload className="w-6 h-6 mx-auto text-muted-foreground" />
-        <p className="text-sm text-muted-foreground mt-1">{hint}</p>
-      </div>
-      {files.length > 0 && (
-        <div className="space-y-1.5">
-          {files.map((f, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 bg-muted/40">
-              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="truncate flex-1">{f.name}</span>
-              <button type="button" onClick={() => onChange(files.filter((_, idx) => idx !== i))}>
-                <X className="w-4 h-4 text-destructive" />
-              </button>
-            </div>
-          ))}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-full justify-between font-normal"
+          >
+            <span className="truncate text-left">
+              {value.length > 0 ? `${value.length} région(s) sélectionnée(s)` : placeholder}
+            </span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Rechercher une région…" />
+            <CommandList>
+              <CommandEmpty>Aucune région trouvée.</CommandEmpty>
+              <CommandGroup>
+                {options.map(r => (
+                  <CommandItem key={r.id} value={r.name} onSelect={() => toggle(r.id)}>
+                    <Check className={cn("mr-2 h-4 w-4", value.includes(r.id) ? "opacity-100" : "opacity-0")} />
+                    {r.name}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {value.map(id => {
+            const r = options.find(x => x.id === id);
+            return (
+              <Badge key={id} variant="secondary" className="gap-1 pr-1">
+                {r?.name ?? id}
+                <button type="button" onClick={() => toggle(id)} className="hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            );
+          })}
         </div>
       )}
     </div>
@@ -148,595 +480,1020 @@ interface ProductWizardProps {
 
 export function ProductWizard({ open, onOpenChange, onProductCreated, editProductId, editInitialData }: ProductWizardProps) {
   const isEditMode = !!editProductId;
-  const [step, setStep] = useState(1);
-  const [productType, setProductType] = useState<"product" | "service" | null>(null);
-  const [filieres, setFilieres] = useState<Filiere[]>([]);
-  const [badgeLevels, setBadgeLevels] = useState<MadeInCIBadgeLevel[]>([]);
-  const [boutiqueId, setBoutiqueId] = useState<string>("");
+  const [currentStep, setCurrentStep] = useState(1);
+  const [formData, setFormData] = useState<ListingFormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Réinitialise le formulaire à chaque ouverture du wizard.
   useEffect(() => {
-    filieresApi.getAll().then(setFilieres).catch(() => {});
-    madeInCIBadgeLevelsApi.getAll().then(setBadgeLevels).catch(() => {});
-    boutiquesApi.getMyShop().then((b) => { if (b) setBoutiqueId(b.id); }).catch(() => {});
-  }, []);
+    if (open) {
+      setCurrentStep(1);
+      setFormData(initialFormData());
+    }
+  }, [open]);
 
-  // Pré-remplissage en mode édition
+  // Pré-remplissage à partir du produit existant (mode édition).
   useEffect(() => {
     if (!open || !editInitialData) return;
     const p = editInitialData;
-    const type = p.type === "Service" ? "service" : "product";
-    setProductType(type);
-    setStep(2); // Sauter l'étape de choix du type
+    const dims = parseDimensions(p.dimensions);
     setFormData(prev => ({
       ...prev,
-      type,
-      nom: p.name || "",
-      categorie: p.category || "",
-      sousCategorie: p.subCategory || "",
+      listingType: p.type === "Service" ? "service" : "product",
+      title: p.name || "",
+      shortDescription: p.shortDescription || "",
       description: p.description || "",
-      caracteristiques: p.characteristics || "",
-      prix: p.price ? String(parseFloat(String(p.price))) : "",
-      unite: p.unit || "kg",
-      moq: p.moq ? String(p.moq) : "1",
+      designation: p.designation || "",
+      characteristics: p.characteristics || "",
+      familyId: p.familleId || "",
+      categoryId: p.categorieId || "",
+      subCategoryId: p.sousCategorieId || "",
+      brand: p.brand || "",
+      model: p.model || "",
+      skuMerchant: p.sellerReference || "",
+      origin: p.origin || "",
+      countryOfManufacture: p.manufacturingCountry || "",
+      condition: reverseLookup(CONDITION_LABELS, p.condition, "new"),
+      attributes: p.attributes || [],
+      priceTTC: p.price != null ? String(parseFloat(String(p.price))) : "",
+      currency: p.currency || "XOF",
+      vatRate: p.vatRate != null ? String(parseFloat(String(p.vatRate))) : "18",
+      priceHT: p.priceHt != null ? String(parseFloat(String(p.priceHt))) : "",
+      promoPrice: p.promoPrice != null ? String(parseFloat(String(p.promoPrice))) : "",
+      promoStart: p.promoStartsAt ? p.promoStartsAt.split("T")[0] : "",
+      promoEnd: p.promoEndsAt ? p.promoEndsAt.split("T")[0] : "",
+      promoLabel: p.promoLabel || "",
+      minOrder: p.moq != null ? String(p.moq) : "1",
+      maxOrderQuantity: p.maxOrderQuantity != null ? String(p.maxOrderQuantity) : "",
+      sellPerUnit: p.retailEnabled ?? true,
+      sellWholesale: p.wholesaleEnabled ?? false,
+      acceptsQuoteRequest: p.quoteRequestEnabled ?? false,
+      hasTieredPricing: !!p.quantityPricingEnabled,
+      pricingTiers: p.quantityPricingTiers?.length
+        ? p.quantityPricingTiers.map(t => ({
+            qtyMin: String(t.minQuantity),
+            qtyMax: t.maxQuantity != null ? String(t.maxQuantity) : "",
+            price: String(t.unitPrice),
+          }))
+        : prev.pricingTiers,
+      unit: p.salesUnitId || "",
       stock: p.stock != null ? String(p.stock) : "",
-      delaiDisponibilite: p.availabilityDelay || "",
-      zonesLivraison: p.deliveryZones
-        ? (p.deliveryZones as { name: string }[]).map(z => z.name)
+      stockAlertThreshold: p.stockAlertThreshold != null ? String(p.stockAlertThreshold) : "",
+      availability: reverseLookup(AVAILABILITY_LABELS, p.availabilityStatus, "in_stock"),
+      isOnDemand: !!p.madeToOrder,
+      isMadeToOrder: !!p.onDemandManufacturing,
+      preparationDelay: p.availabilityDelay || "",
+      deliveryZones: (p.deliveryZones || []).map(z => z.id),
+      deliveryTime: p.deliveryEstimatedDelay || "",
+      deliveryMode: reverseLookup(DELIVERY_MODE_LABELS, p.deliveryMode, "pickup"),
+      netWeight: p.netWeight != null ? String(parseFloat(String(p.netWeight))) : "",
+      netWeightUnitId: p.netWeightUnitId || "",
+      grossWeight: p.grossWeight != null ? String(parseFloat(String(p.grossWeight))) : "",
+      grossWeightUnitId: p.grossWeightUnitId || "",
+      dimensionLength: dims.length,
+      dimensionWidth: dims.width,
+      dimensionHeight: dims.height,
+      dimensionUnitId: p.dimensionUnitId || "",
+      volume: p.volume != null ? String(parseFloat(String(p.volume))) : "",
+      volumeUnitId: p.volumeUnitId || "",
+      packageCount: p.packageCount != null ? String(p.packageCount) : "",
+      quantityPerCarton: p.quantityPerCarton != null ? String(p.quantityPerCarton) : "",
+      quantityPerPallet: p.quantityPerPallet != null ? String(p.quantityPerPallet) : "",
+      hasVariants: !!p.variantsEnabled,
+      medias: [],
+      certifications: p.certificationEntries?.length
+        ? p.certificationEntries.map(c => ({ type: c.type, reference: c.reference, fileName: c.documentUrl }))
         : [],
-      fraisLivraison: p.shippingCost ? String(parseFloat(String(p.shippingCost))) : "",
-      optionRetrait: p.pickupAvailable || false,
-      produitReglemente: p.isRegulated || false,
-      madeInCI: p.madeInCiRequested || false,
-      badgeMadeInCI: p.madeInCiBadgeType || "",
-      ficheTechnique: {
-        enabled: !!(p.technicalSpecifications?.length || p.certifications?.length || p.technicalDocuments?.length),
-        specifications: p.technicalSpecifications
-          ? p.technicalSpecifications.map(s => ({ label: s.name, value: s.value, unit: s.unit || "", imagePreview: s.url }))
-          : [],
-        certifications: p.certifications
-          ? p.certifications.map(c => ({ name: c.name, url: c.url }))
-          : [],
-        documents: [],
-      },
-      variantsEnabled: p.variantsEnabled || false,
-      variantes: { enabled: p.variantsEnabled || false, attributs: [], options: [] },
-      quantityPricingEnabled: p.quantityPricingEnabled || false,
-      prixQuantite: {
-        enabled: p.quantityPricingEnabled || false,
-        paliers: p.quantityPricingTiers
-          ? p.quantityPricingTiers.map(t => ({
-              quantiteMin: String(t.minQuantity),
-              quantiteMax: "",
-              prix: String(t.unitPrice),
-              reduction: "",
-            }))
-          : [],
-      },
-      miseEnVedette: p.premiumOption
-        ? {
-            enabled: true,
-            type: p.premiumOption as "" | "vedette" | "special" | "premium",
-            duree: p.premiumDurationWeeks ? String(p.premiumDurationWeeks * 7) : "7",
-            acceptCommission: false,
-          }
-        : prev.miseEnVedette,
+      isRegulated: !!p.isRegulated,
+      requestMadeInCI: !!p.madeInCiRequested,
+      acceptsEscrow: p.escrowEnabled ?? true,
+      warranty: p.warrantyLabel || "",
+      warrantyDuration: p.warrantyDuration || "",
+      hasAfterSalesService: !!p.savAvailable,
+      acceptsReturn: !!p.returnAccepted,
+      returnDelay: p.returnDelayDays != null ? String(p.returnDelayDays) : "7",
+      specialConditions: p.specialConditions || "",
     }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editInitialData]);
 
+  // Nomenclature marketplace (Famille → Catégorie → Sous-catégorie)
+  const [familles, setFamilles] = useState<MarketplaceFamille[]>([]);
+  const [categories, setCategories] = useState<MarketplaceCategory[]>([]);
+  const [sousCategories, setSousCategories] = useState<MarketplaceSousCategorie[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+  const [isLoadingSousCategories, setIsLoadingSousCategories] = useState(false);
+
+  // Charge la cascade catégorie / sous-catégorie du produit édité une fois les familles disponibles.
+  useEffect(() => {
+    if (!open || !editInitialData?.familleId || familles.length === 0) return;
+    setIsLoadingCategories(true);
+    marketplaceCategoriesApi.getAll({ familleId: editInitialData.familleId, activeOnly: true })
+      .then((list) => {
+        setCategories(list);
+        if (editInitialData.categorieId) {
+          setIsLoadingSousCategories(true);
+          marketplaceCategoriesApi.getSousCategories({ categorieId: editInitialData.categorieId, activeOnly: true })
+            .then(setSousCategories)
+            .catch(() => setSousCategories([]))
+            .finally(() => setIsLoadingSousCategories(false));
+        }
+      })
+      .catch(() => setCategories([]))
+      .finally(() => setIsLoadingCategories(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editInitialData, familles]);
+
+  useEffect(() => {
+    if (!open) return;
+    marketplaceFamillesApi.getAll({ activeOnly: true }).then(setFamilles).catch(() => setFamilles([]));
+  }, [open]);
+
+  // Unités de vente (référentiel CPU-PME)
+  const [productUnits, setProductUnits] = useState<MarketplaceProductUnit[]>([]);
+  // Unités de poids (référentiel CPU-PME)
+  const [weightUnits, setWeightUnits] = useState<MarketplaceProductUnit[]>([]);
+  // Unités de dimensions / volume (référentiel CPU-PME)
+  const [dimensionUnits, setDimensionUnits] = useState<MarketplaceProductUnit[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    productUnitsApi.getSalesPicker().then(setProductUnits).catch(() => setProductUnits([]));
+    productUnitsApi.getWeightPicker().then(setWeightUnits).catch(() => setWeightUnits([]));
+    productUnitsApi.getDimensionsPicker().then(setDimensionUnits).catch(() => setDimensionUnits([]));
+  }, [open]);
+
+  // Boutique du vendeur connecté (requise pour la création du produit)
+  const [boutiqueId, setBoutiqueId] = useState<string>("");
+
+  useEffect(() => {
+    if (!open) return;
+    boutiquesApi.getMyShop().then((b) => setBoutiqueId(b?.id ?? "")).catch(() => setBoutiqueId(""));
+  }, [open]);
+
+  // Régions / villes (référentiel admin) — zones de livraison + badge Made in Côte d'Ivoire
+  const [allRegions, setAllRegions] = useState<ApiRegion[]>([]);
+  const [miciVilles, setMiciVilles] = useState<ApiVille[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    regionsApi.getAll()
+      .then((list) => setAllRegions([...list].sort((a, b) => a.name.localeCompare(b.name, "fr"))))
+      .catch(() => setAllRegions([]));
+    villesApi.getAll().then(setMiciVilles).catch(() => setMiciVilles([]));
+  }, [open]);
+
+  const handleFamilyChange = (familleId: string) => {
+    setFormData(prev => ({ ...prev, familyId: familleId, categoryId: "", subCategoryId: "" }));
+    setCategories([]);
+    setSousCategories([]);
+    setIsLoadingCategories(true);
+    marketplaceCategoriesApi.getAll({ familleId, activeOnly: true })
+      .then(setCategories)
+      .catch(() => setCategories([]))
+      .finally(() => setIsLoadingCategories(false));
+  };
+
+  const handleCategoryChange = (categorieId: string) => {
+    setFormData(prev => ({ ...prev, categoryId: categorieId, subCategoryId: "" }));
+    setSousCategories([]);
+    setIsLoadingSousCategories(true);
+    marketplaceCategoriesApi.getSousCategories({ categorieId, activeOnly: true })
+      .then(setSousCategories)
+      .catch(() => setSousCategories([]))
+      .finally(() => setIsLoadingSousCategories(false));
+  };
+
+  const updateFormData = <K extends keyof ListingFormData>(field: K, value: ListingFormData[K]) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const toggleAttribute = (attr: string) => {
+    const current = formData.attributes;
+    updateFormData(
+      "attributes",
+      current.includes(attr) ? current.filter(a => a !== attr) : [...current, attr],
+    );
+  };
+
+  const addPricingTier = () =>
+    updateFormData("pricingTiers", [
+      ...formData.pricingTiers,
+      { qtyMin: "", qtyMax: "", price: "" },
+    ]);
+  const updatePricingTier = (index: number, field: keyof PricingTier, value: string) => {
+    const updated = [...formData.pricingTiers];
+    updated[index] = { ...updated[index], [field]: value };
+    updateFormData("pricingTiers", updated);
+  };
+  const removePricingTier = (index: number) =>
+    updateFormData("pricingTiers", formData.pricingTiers.filter((_, i) => i !== index));
+
+  const addVariant = () =>
+    updateFormData("variants", [
+      ...formData.variants,
+      { sku: "", name: "", price: "", stock: "", images: [] },
+    ]);
+  const updateVariant = (index: number, field: keyof ProductVariant, value: string | string[]) => {
+    const updated = [...formData.variants];
+    updated[index] = { ...updated[index], [field]: value } as ProductVariant;
+    updateFormData("variants", updated);
+  };
+  const removeVariant = (index: number) => {
+    if (formData.variants.length > 1) {
+      updateFormData("variants", formData.variants.filter((_, i) => i !== index));
+    }
+  };
+
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const handleMediasSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const remaining = Math.max(0, 10 - formData.medias.length);
+    updateFormData("medias", [...formData.medias, ...Array.from(files).slice(0, remaining)]);
+  };
+  const removeImage = (index: number) =>
+    updateFormData("medias", formData.medias.filter((_, i) => i !== index));
+
+  const addCertification = () =>
+    updateFormData("certifications", [...formData.certifications, { type: "", reference: "" }]);
+  const updateCertification = (index: number, field: keyof CertificationEntry, value: string) => {
+    const updated = [...formData.certifications];
+    updated[index] = { ...updated[index], [field]: value };
+    updateFormData("certifications", updated);
+  };
+  const removeCertification = (index: number) =>
+    updateFormData("certifications", formData.certifications.filter((_, i) => i !== index));
+
+  const validateForm = (): string | null => {
+    if (!formData.title.trim()) return "Le nom du produit est requis.";
+    if (!formData.description.trim()) return "La description détaillée est requise.";
+    if (
+      formData.stock && formData.stockAlertThreshold &&
+      Number(formData.stockAlertThreshold) >= Number(formData.stock)
+    ) {
+      return "Le seuil d'alerte doit être strictement inférieur au stock disponible.";
+    }
+
+    // Le reste des champs (livraison, variantes, Made in CI, garantie...) ne sont pas
+    // pris en compte par l'API de modification — pas besoin de les valider en édition.
+    if (isEditMode) return null;
+
+    if (!formData.shortDescription.trim()) return "La description courte est requise.";
+    if (!formData.designation.trim()) return "La désignation de l'article est requise.";
+    if (!formData.subCategoryId) return "La sous-catégorie est requise.";
+    if (!formData.origin.trim()) return "L'origine est requise.";
+    if (formData.attributes.length === 0) return "Sélectionnez au moins un attribut.";
+    if (!formData.unit) return "L'unité de vente est requise.";
+    if (!formData.priceTTC || Number(formData.priceTTC) <= 0) return "Le prix de vente TTC est requis.";
+    if (formData.vatRate === "custom" && !formData.vatCustom) return "Le taux de TVA personnalisé est requis.";
+    if (formData.designationCode.trim() && !formData.designationCode.trim().toUpperCase().startsWith("D-")) {
+      return "Le code référence désignation doit commencer par D- (ex. D-RIZ-BLC-25).";
+    }
+    if (formData.deliveryZones.length === 0) return "Sélectionnez au moins une zone de livraison.";
+    if (!formData.deliveryMode) return "Le mode de livraison est requis.";
+    if (formData.hasVariants && formData.variants.some(v => !v.name.trim() || !v.price || !v.stock)) {
+      return "Chaque variante doit avoir un nom, un prix et un stock.";
+    }
+    if (formData.requestMadeInCI && (!formData.miciLabelCode || !formData.miciRegionId)) {
+      return "Le badge Made in CI requiert un label et une région.";
+    }
+    if (formData.acceptsReturn && !formData.returnDelay) {
+      return "Le délai de retour est requis si les retours sont acceptés.";
+    }
+    if (!boutiqueId) return "Boutique introuvable. Veuillez créer votre boutique avant de publier un produit.";
+    return null;
+  };
+
   const handleSubmit = async () => {
-    if (!boutiqueId) { setSubmitError("Boutique introuvable. Veuillez créer votre boutique d'abord."); return; }
-    setIsSubmitting(true);
+    const error = validateForm();
+    if (error) {
+      setSubmitError(error);
+      toast.error(error);
+      return;
+    }
     setSubmitError(null);
+    setIsSubmitting(true);
     try {
-      // Métadonnées des champs structurés. Les fichiers eux-mêmes partent dans "files"
-      // (un seul appel à /api/marketplace/products). On conserve les URLs déjà
-      // enregistrées (mode édition) ; les nouveaux fichiers sont dans "files".
-      const technicalSpecifications = formData.ficheTechnique.specifications.map((s) => ({
-        name: s.label,
-        value: s.value,
-        unit: s.unit,
-        ...(!s.image && s.imagePreview ? { url: s.imagePreview } : {}),
-      }));
-
-      const certifications = formData.ficheTechnique.certifications.map((c) => ({
-        name: c.name,
-        ...(!c.file && c.url ? { url: c.url } : {}),
-      }));
-
-      const technicalDocuments = [
-        ...(editInitialData?.technicalDocuments ?? []),
-        ...formData.technicalDocs.map((f) => ({ name: f.name })),
-      ];
-
-      const payload = {
-        boutiqueId,
-        name: formData.nom,
-        type: formData.type === "product" ? "Produit" : "Service",
-        description: formData.description || "",
-        category: formData.categorie,
-        subCategory: formData.sousCategorie || "",
-        characteristics: formData.caracteristiques || "",
-        isRegulated: formData.produitReglemente,
-        madeInCiRequested: formData.madeInCI,
-        ...(formData.madeInCI ? {
-          madeInCiTransformationProcess: formData.madeInCiTransformationProcess || "Non renseigné",
-          ...(formData.badgeMadeInCI ? { madeInCiBadgeType: formData.badgeMadeInCI } : {}),
-        } : {}),
-        unit: formData.unite || "kg",
-        status: "Draft",
-        price: Number(formData.prix) || 0,
-        stock: formData.stock ? Number(formData.stock) : 0,
-        moq: Number(formData.moq) || 1,
-        weight: 0,
-        capacity: 0,
-        availabilityDelay: formData.delaiDisponibilite || "",
-        deliveryZones: formData.zonesLivraison.map((name, i) => ({ id: i + 1, name, description: name })),
-        shippingCost: parseFloat(formData.fraisLivraison) || 0,
-        pickupAvailable: formData.optionRetrait,
-        technicalSpecifications,
-        certifications,
-        technicalDocuments,
-        variantsEnabled: formData.variantes.enabled,
-        quantityPricingEnabled: formData.prixQuantite.enabled,
-        quantityPricingTiers: formData.prixQuantite.paliers.map(p => ({ minQuantity: parseFloat(p.quantiteMin) || 0, unitPrice: parseFloat(p.prix) || 0 })),
-        ...(formData.miseEnVedette.enabled && formData.miseEnVedette.type ? {
-          premiumOption: formData.miseEnVedette.type,
-          premiumDurationWeeks: Math.ceil(parseFloat(formData.miseEnVedette.duree) / 7) || 1,
-        } : {}),
-      };
-      // Tous les fichiers passent par le champ multipart "files" du même endpoint.
-      // (formData.images sont déjà compressées ; on compresse les autres images,
-      //  compressImage laissant les PDF/docs intacts.)
-      const specImages = formData.ficheTechnique.specifications
-        .map((s) => s.image)
-        .filter((f): f is File => !!f);
-      const certFiles = formData.ficheTechnique.certifications
-        .map((c) => c.file)
-        .filter((f): f is File => !!f);
-      const extraFiles = await Promise.all(
-        [
-          ...formData.documentsReglementaires,
-          ...formData.madeInCiPreuves,
-          ...specImages,
-          ...certFiles,
-          ...formData.technicalDocs,
-        ].map((f) => compressImage(f))
-      );
-      const allFiles = [...formData.images, ...extraFiles];
       if (isEditMode && editProductId) {
-        await productsApi.update(editProductId, payload, allFiles);
-      } else {
-        await productsApi.create(payload, allFiles);
+        const updatePayload: UpdateProductPayload = {
+          name: formData.title,
+          description: formData.description,
+          sousCategorieId: formData.subCategoryId || undefined,
+          characteristics: formData.characteristics || undefined,
+          salesUnitId: formData.unit || undefined,
+          price: formData.priceTTC ? Number(formData.priceTTC) : undefined,
+          stock: formData.stock ? Number(formData.stock) : undefined,
+          moq: formData.minOrder ? Number(formData.minOrder) : undefined,
+          maxOrderQuantity: formData.maxOrderQuantity ? Number(formData.maxOrderQuantity) : undefined,
+          netWeight: formData.netWeight ? Number(formData.netWeight) : undefined,
+          netWeightUnitId: formData.netWeightUnitId || undefined,
+          grossWeight: formData.grossWeight ? Number(formData.grossWeight) : undefined,
+          grossWeightUnitId: formData.grossWeightUnitId || undefined,
+          dimensionLength: formData.dimensionLength ? Number(formData.dimensionLength) : undefined,
+          dimensionWidth: formData.dimensionWidth ? Number(formData.dimensionWidth) : undefined,
+          dimensionHeight: formData.dimensionHeight ? Number(formData.dimensionHeight) : undefined,
+          dimensionUnitId: formData.dimensionUnitId || undefined,
+          volume: formData.volume ? Number(formData.volume) : undefined,
+          volumeUnitId: formData.volumeUnitId || undefined,
+          packageCount: formData.packageCount ? Number(formData.packageCount) : undefined,
+          quantityPerCarton: formData.quantityPerCarton ? Number(formData.quantityPerCarton) : undefined,
+          quantityPerPallet: formData.quantityPerPallet ? Number(formData.quantityPerPallet) : undefined,
+          quantityPricingEnabled: formData.hasTieredPricing,
+          quantityPricingTiers: formData.hasTieredPricing
+            ? formData.pricingTiers
+                .filter(t => t.qtyMin !== "" && t.price !== "")
+                .slice(0, 5)
+                .map(t => ({
+                  minQuantity: Number(t.qtyMin),
+                  maxQuantity: t.qtyMax ? Number(t.qtyMax) : undefined,
+                  unitPrice: Number(t.price),
+                }))
+            : undefined,
+        };
+
+        await productsApi.updateListing(editProductId, updatePayload, formData.medias);
+
+        toast.success("Produit mis à jour", {
+          description: "Vos modifications ont été enregistrées.",
+        });
+        onProductCreated?.();
+        onOpenChange(false);
+        return;
       }
+
+      const vatRateNum = Number(formData.vatRate === "custom" ? formData.vatCustom : formData.vatRate);
+      const payload: CreateProductListingPayload = {
+        boutiqueId,
+        name: formData.title,
+        type: formData.listingType === "product" ? "Produit" : "Service",
+        status: "InModeration",
+        description: formData.description,
+        shortDescription: formData.shortDescription,
+        sousCategorieId: formData.subCategoryId,
+        designation: formData.designation,
+        designationCode: formData.designationCode || undefined,
+        brand: formData.brand || undefined,
+        model: formData.model || undefined,
+        origin: formData.origin,
+        manufacturingCountry: formData.countryOfManufacture || undefined,
+        condition: CONDITION_LABELS[formData.condition],
+        attributes: formData.attributes,
+        sellerReference: formData.skuMerchant || undefined,
+        characteristics: formData.characteristics || undefined,
+        salesUnitId: formData.unit,
+        price: Number(formData.priceTTC),
+        currency: formData.currency,
+        vatRate: vatRateNum,
+        retailEnabled: formData.sellPerUnit,
+        wholesaleEnabled: formData.sellWholesale,
+        quoteRequestEnabled: formData.acceptsQuoteRequest,
+        promoPrice: formData.promoPrice ? Number(formData.promoPrice) : undefined,
+        promoStartsAt: formData.promoStart ? new Date(formData.promoStart).toISOString() : undefined,
+        promoEndsAt: formData.promoEnd ? new Date(formData.promoEnd).toISOString() : undefined,
+        promoLabel: formData.promoLabel || undefined,
+        stock: formData.stock ? Number(formData.stock) : undefined,
+        stockAlertThreshold: formData.stockAlertThreshold ? Number(formData.stockAlertThreshold) : undefined,
+        availabilityStatus: AVAILABILITY_LABELS[formData.availability],
+        madeToOrder: formData.isOnDemand,
+        onDemandManufacturing: formData.isMadeToOrder,
+        availabilityDelay: formData.preparationDelay || undefined,
+        moq: formData.minOrder ? Number(formData.minOrder) : undefined,
+        maxOrderQuantity: formData.maxOrderQuantity ? Number(formData.maxOrderQuantity) : undefined,
+        netWeight: formData.netWeight ? Number(formData.netWeight) : undefined,
+        netWeightUnitId: formData.netWeightUnitId || undefined,
+        grossWeight: formData.grossWeight ? Number(formData.grossWeight) : undefined,
+        grossWeightUnitId: formData.grossWeightUnitId || undefined,
+        dimensionLength: formData.dimensionLength ? Number(formData.dimensionLength) : undefined,
+        dimensionWidth: formData.dimensionWidth ? Number(formData.dimensionWidth) : undefined,
+        dimensionHeight: formData.dimensionHeight ? Number(formData.dimensionHeight) : undefined,
+        dimensionUnitId: formData.dimensionUnitId || undefined,
+        volume: formData.volume ? Number(formData.volume) : undefined,
+        volumeUnitId: formData.volumeUnitId || undefined,
+        packageCount: formData.packageCount ? Number(formData.packageCount) : undefined,
+        quantityPerCarton: formData.quantityPerCarton ? Number(formData.quantityPerCarton) : undefined,
+        quantityPerPallet: formData.quantityPerPallet ? Number(formData.quantityPerPallet) : undefined,
+        deliveryZones: formData.deliveryZones.map((id) => {
+          const r = allRegions.find(x => x.id === id);
+          return { id, name: r?.name ?? id, description: r?.zone };
+        }),
+        deliveryMode: DELIVERY_MODE_LABELS[formData.deliveryMode],
+        deliveryEstimatedDelay: formData.deliveryTime || undefined,
+        quantityPricingEnabled: formData.hasTieredPricing,
+        quantityPricingTiers: formData.hasTieredPricing
+          ? formData.pricingTiers
+              .filter(t => t.qtyMin !== "" && t.price !== "")
+              .slice(0, 5)
+              .map(t => ({
+                minQuantity: Number(t.qtyMin),
+                maxQuantity: t.qtyMax ? Number(t.qtyMax) : undefined,
+                unitPrice: Number(t.price),
+              }))
+          : undefined,
+        variantsEnabled: formData.hasVariants,
+        variants: formData.hasVariants
+          ? formData.variants
+              .filter(v => v.name.trim())
+              .map(v => ({ name: v.name, price: Number(v.price) || 0, stock: Number(v.stock) || 0 }))
+          : undefined,
+        certificationEntries: formData.certifications.length
+          ? formData.certifications
+              .filter(c => c.type)
+              .map(c => ({ type: c.type, reference: c.reference || undefined }))
+          : undefined,
+        isRegulated: formData.isRegulated,
+        madeInCiRequested: formData.requestMadeInCI,
+        madeInCiLabelCode: formData.requestMadeInCI ? (formData.miciLabelCode || undefined) : undefined,
+        madeInCiLocalPercentage: formData.requestMadeInCI && formData.miciLocalPercentage
+          ? Number(formData.miciLocalPercentage) : undefined,
+        madeInCiManufacturingPlace: formData.requestMadeInCI ? (formData.miciManufacturingPlace || undefined) : undefined,
+        madeInCiRegionId: formData.requestMadeInCI ? (formData.miciRegionId || undefined) : undefined,
+        madeInCiVilleId: formData.requestMadeInCI ? (formData.miciCityId || undefined) : undefined,
+        madeInCiOriginCertificateUrl: formData.requestMadeInCI ? (formData.miciOriginCertificateFileName || undefined) : undefined,
+        madeInCiSubmitForValidation: formData.requestMadeInCI ? formData.miciRequestCpuValidation : undefined,
+        escrowEnabled: formData.acceptsEscrow,
+        warrantyLabel: formData.warranty || undefined,
+        warrantyDuration: formData.warrantyDuration || undefined,
+        savAvailable: formData.hasAfterSalesService,
+        returnAccepted: formData.acceptsReturn,
+        returnDelayDays: formData.acceptsReturn && formData.returnDelay ? Number(formData.returnDelay) : undefined,
+        specialConditions: formData.specialConditions || undefined,
+      };
+
+      await productsApi.createListing(payload, formData.medias);
+
+      toast.success("Annonce créée avec succès", {
+        description: "Votre annonce est en attente de modération.",
+      });
       onProductCreated?.();
       onOpenChange(false);
-    } catch (e: unknown) {
-      setSubmitError(e instanceof Error ? e.message : `Erreur lors de la ${isEditMode ? "modification" : "création"} du produit.`);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `Erreur lors de la ${isEditMode ? "modification" : "création"} de l'annonce.`;
+      setSubmitError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
   };
-  const [formData, setFormData] = useState({
-    type: "",
-    nom: "",
-    categorie: "",
-    sousCategorie: "",
-    tags: [] as string[],
-    description: "",
-    caracteristiques: "",
-    prix: "",
-    unite: "",
-    moq: "1",
-    stock: "",
-    delaiDisponibilite: "",
-    zonesLivraison: [] as string[],
-    fraisLivraison: "",
-    optionRetrait: false,
-    produitReglemente: false,
-    categorieReglementee: "",
-    documentsReglementaires: [] as File[],
-    madeInCI: false,
-    badgeMadeInCI: "",
-    madeInCiTransformationProcess: "",
-    madeInCiPreuves: [] as File[],
-    images: [] as File[],
-    imagePreviews: [] as string[],
-    technicalDocs: [] as File[],
-    // Fiche technique
-    ficheTechnique: {
-      enabled: false,
-      specifications: [] as { label: string; value: string; unit: string; image?: File; imagePreview?: string }[],
-      certifications: [] as { name: string; file?: File; url?: string }[],
-      documents: [] as { name: string; type: string }[],
-    },
-    // Variantes
-    variantes: {
-      enabled: false,
-      attributs: [] as { nom: string; valeurs: string[] }[],
-      options: [] as { combinaison: string; prix: string; stock: string; sku: string }[],
-    },
-    // Prix par quantité
-    prixQuantite: {
-      enabled: false,
-      paliers: [] as { quantiteMin: string; quantiteMax: string; prix: string; reduction: string }[],
-    },
-    // Mise en vedette
-    miseEnVedette: {
-      enabled: false,
-      type: "" as "" | "vedette" | "special" | "premium",
-      duree: "7" as string,
-      acceptCommission: false,
-    },
-  });
 
-  const totalSteps = 8;
-  const progress = (step / totalSteps) * 100;
+  const renderStepContent = () => {
+    const selectedFamille = familles.find(f => f.id === formData.familyId);
 
-  const updateForm = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAddImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const original = e.target.files?.[0];
-    e.target.value = ""; // permet de re-sélectionner le même fichier
-    if (!original) return;
-    const file = await compressImage(original);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData(prev => ({
-        ...prev,
-        images: [...prev.images, file],
-        imagePreviews: [...prev.imagePreviews, reader.result as string],
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removeImage = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== index),
-      imagePreviews: prev.imagePreviews.filter((_, i) => i !== index),
-    }));
-  };
-
-  // Image associée à une spécification technique
-  const setSpecImage = (index: number, file: File | undefined) => {
-    const apply = (image: File | undefined, imagePreview: string | undefined) => {
-      setFormData(prev => {
-        const specifications = [...prev.ficheTechnique.specifications];
-        specifications[index] = { ...specifications[index], image, imagePreview };
-        return { ...prev, ficheTechnique: { ...prev.ficheTechnique, specifications } };
-      });
-    };
-    if (!file) { apply(undefined, undefined); return; }
-    const reader = new FileReader();
-    reader.onload = () => apply(file, reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  // Fichier (certificat) associé à une certification
-  const setCertFile = (index: number, file: File | undefined) => {
-    setFormData(prev => {
-      const certifications = [...prev.ficheTechnique.certifications];
-      certifications[index] = file
-        ? { ...certifications[index], file }
-        : { name: certifications[index].name }; // retire fichier + url existante
-      return { ...prev, ficheTechnique: { ...prev.ficheTechnique, certifications } };
-    });
-  };
-
-  const categoriesReglementees = [
-    "Alimentation",
-    "Cosmétiques",
-    "Produits chimiques",
-    "Médicaments",
-    "Produits électriques",
-    "Jouets",
-    "Équipements de protection",
-  ];
-
-  const renderStep = () => {
-    switch (step) {
+    switch (currentStep) {
       case 1:
         return (
           <div className="space-y-6">
-            <div className="text-center mb-6">
-              <h3 className="text-lg font-semibold">Type d'offre</h3>
-              <p className="text-sm text-muted-foreground">Que souhaitez-vous publier ?</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Card 
-                className={cn(
-                  "cursor-pointer transition-all hover:shadow-md",
-                  productType === "product" && "ring-2 ring-primary"
-                )}
-                onClick={() => {
-                  setProductType("product");
-                  updateForm("type", "product");
-                }}
-              >
-                <CardContent className="p-6 text-center">
-                  <Package className="w-12 h-12 mx-auto mb-3 text-primary" />
-                  <h4 className="font-semibold">Produit</h4>
-                  <p className="text-sm text-muted-foreground">Bien physique à vendre</p>
-                </CardContent>
-              </Card>
-              <Card 
-                className={cn(
-                  "cursor-pointer transition-all hover:shadow-md",
-                  productType === "service" && "ring-2 ring-secondary"
-                )}
-                onClick={() => {
-                  setProductType("service");
-                  updateForm("type", "service");
-                }}
-              >
-                <CardContent className="p-6 text-center">
-                  <Briefcase className="w-12 h-12 mx-auto mb-3 text-secondary" />
-                  <h4 className="font-semibold">Service</h4>
-                  <p className="text-sm text-muted-foreground">Prestation à proposer</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        );
 
-      case 2:
-        return (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold">Informations générales</h3>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nom">Nom du {productType === "product" ? "produit" : "service"} *</Label>
-                <Input
-                  id="nom"
-                  placeholder="Ex: Cacao Premium Grade A"
-                  value={formData.nom}
-                  onChange={(e) => updateForm("nom", e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+            {/* Nomenclature */}
+            <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+              <p className="font-medium text-sm">Classification (référentiel CPU-PME) *</p>
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Catégorie (filière) *</Label>
-                  <Select 
-                    value={formData.categorie} 
-                    onValueChange={(v) => updateForm("categorie", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choisir" />
-                    </SelectTrigger>
+                  <Label>Famille *</Label>
+                  <Select value={formData.familyId} onValueChange={handleFamilyChange}>
+                    <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
                     <SelectContent>
-                      {filieres.map((f) => (
-                        <SelectItem key={f.id} value={f.name}>{f.name}</SelectItem>
+                      {familles.map(f => (
+                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Sous-catégorie</Label>
+                  <Label>Catégorie *</Label>
+                  <Select
+                    value={formData.categoryId}
+                    onValueChange={handleCategoryChange}
+                    disabled={!formData.familyId || isLoadingCategories}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={
+                        !formData.familyId ? "Choisir une famille d'abord" : isLoadingCategories ? "Chargement..." : "Sélectionner"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Sous-catégorie *</Label>
+                  <Select
+                    value={formData.subCategoryId}
+                    onValueChange={(v) => updateFormData("subCategoryId", v)}
+                    disabled={!formData.categoryId || isLoadingSousCategories}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={
+                        !formData.categoryId ? "Choisir une catégorie d'abord" : isLoadingSousCategories ? "Chargement..." : "Sélectionner"
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sousCategories.map(sc => (
+                        <SelectItem key={sc.id} value={sc.id}>{sc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {/* {selectedFamille && selectedFamille.filieres.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  <span className="text-xs text-muted-foreground mr-1">Filières :</span>
+                  {selectedFamille.filieres.map(fil => (
+                    <Badge key={fil.id} variant="outline" className="text-[10px]">{fil.name}</Badge>
+                  ))}
+                </div>
+              )} */}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Nom du produit *</Label>
+                <Input
+                  id="title"
+                  placeholder="Ex: Sacs de ciment CIM METAL 50kg"
+                  value={formData.title}
+                  onChange={(e) => updateFormData("title", e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="shortDescription">Description courte *</Label>
+                <Input
+                  id="shortDescription"
+                  placeholder="Résumé en une phrase"
+                  value={formData.shortDescription}
+                  onChange={(e) => updateFormData("shortDescription", e.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="designation">Désignation de l'article *</Label>
                   <Input
-                    placeholder="Ex: Cacao transformé"
-                    value={formData.sousCategorie}
-                    onChange={(e) => updateForm("sousCategorie", e.target.value)}
+                    id="designation"
+                    placeholder="Ex: Riz blanc long grain 25kg"
+                    value={formData.designation}
+                    onChange={(e) => updateFormData("designation", e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="designationCode">Code référence désignation</Label>
+                  <Input
+                    id="designationCode"
+                    placeholder="Ex: D-RIZ-BLC-25"
+                    value={formData.designationCode}
+                    onChange={(e) => updateFormData("designationCode", e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">Doit commencer par « D- » si renseigné.</p>
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description *</Label>
+                <Label htmlFor="description">Description détaillée (fiche produit) *</Label>
                 <Textarea
                   id="description"
-                  placeholder="Décrivez votre produit/service en détail..."
-                  rows={4}
+                  placeholder="Décrivez votre produit en détail..."
                   value={formData.description}
-                  onChange={(e) => updateForm("description", e.target.value)}
+                  onChange={(e) => updateFormData("description", e.target.value)}
+                  rows={5}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="caracteristiques">Caractéristiques / Spécifications</Label>
+                <Label htmlFor="characteristics">Caractéristiques</Label>
                 <Textarea
-                  id="caracteristiques"
-                  placeholder="Poids, dimensions, composition, etc."
-                  rows={2}
-                  value={formData.caracteristiques}
-                  onChange={(e) => updateForm("caracteristiques", e.target.value)}
+                  id="characteristics"
+                  placeholder="Composition, spécificités techniques, particularités..."
+                  value={formData.characteristics}
+                  onChange={(e) => updateFormData("characteristics", e.target.value)}
+                  rows={3}
                 />
               </div>
+            </div>
 
+            <Separator />
+
+            {/* Marque / Modèle / SKU */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Médias</Label>
-                <div className="grid grid-cols-4 gap-3">
-                  {/* Images déjà enregistrées (mode édition) */}
-                  {(editInitialData?.productMedia ?? [])
-                    .filter((m) => m.isActive)
-                    .map((m) => (
-                      <div key={m.id} className="relative aspect-square border-2 rounded-lg overflow-hidden">
-                        <img src={m.url} alt="" className="w-full h-full object-cover" />
-                        {m.isMain && (
-                          <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded">
-                            Principal
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                <Label htmlFor="brand">Marque</Label>
+                <Input
+                  id="brand"
+                  value={formData.brand}
+                  onChange={(e) => updateFormData("brand", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="model">Modèle</Label>
+                <Input
+                  id="model"
+                  value={formData.model}
+                  onChange={(e) => updateFormData("model", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="skuMerchant">Référence Marchand (SKU)</Label>
+                <Input
+                  id="skuMerchant"
+                  placeholder="Votre référence interne"
+                  value={formData.skuMerchant}
+                  onChange={(e) => updateFormData("skuMerchant", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="origin">Origine *</Label>
+                <Input
+                  id="origin"
+                  placeholder="Ex: Côte d'Ivoire"
+                  value={formData.origin}
+                  onChange={(e) => updateFormData("origin", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="countryOfManufacture">Pays de fabrication</Label>
+                <Input
+                  id="countryOfManufacture"
+                  value={formData.countryOfManufacture}
+                  onChange={(e) => updateFormData("countryOfManufacture", e.target.value)}
+                />
+              </div>
+            </div>
 
-                  {/* Nouvelles images sélectionnées */}
-                  {formData.imagePreviews.map((preview, i) => (
-                    <div key={i} className="relative aspect-square border-2 rounded-lg overflow-hidden group">
-                      <img src={preview} alt="" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(i)}
-                        className="absolute top-1 right-1 bg-background/80 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>État *</Label>
+                <Select
+                  value={formData.condition}
+                  onValueChange={(v) => updateFormData("condition", v as ListingFormData["condition"])}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">Neuf</SelectItem>
+                    <SelectItem value="used">Occasion</SelectItem>
+                    <SelectItem value="refurbished">Reconditionné</SelectItem>
+                    <SelectItem value="not_applicable">Non applicable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Attributs *</Label>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {productAttributes.map(attr => {
+                    const active = formData.attributes.includes(attr);
+                    return (
+                      <Badge
+                        key={attr}
+                        variant={active ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => toggleAttribute(attr)}
                       >
-                        <X className="w-3 h-3 text-destructive" />
-                      </button>
-                      {i === 0 && (editInitialData?.productMedia ?? []).filter((m) => m.isActive).length === 0 && (
-                        <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded">
-                          Principal
-                        </span>
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Tuile d'ajout */}
-                  {(editInitialData?.productMedia ?? []).filter((m) => m.isActive).length + formData.images.length < 4 && (
-                    <label className="aspect-square border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="hidden"
-                        onChange={handleAddImage}
-                      />
-                      {(editInitialData?.productMedia ?? []).filter((m) => m.isActive).length + formData.images.length === 0 ? (
-                        <>
-                          <Upload className="w-6 h-6 text-muted-foreground" />
-                          <span className="text-xs text-muted-foreground mt-1">Principal</span>
-                        </>
-                      ) : (
-                        <Plus className="w-5 h-5 text-muted-foreground" />
-                      )}
-                    </label>
-                  )}
+                        {attr}
+                      </Badge>
+                    );
+                  })}
                 </div>
-                <p className="text-xs text-muted-foreground">Ajoutez jusqu'à 4 photos. La première sera la photo principale.</p>
               </div>
             </div>
           </div>
         );
+
+      case 2: {
+        const priceTTCNum = Number(formData.priceTTC || 0);
+        const vat = formData.vatRate === "custom" ? Number(formData.vatCustom || 0) : Number(formData.vatRate || 0);
+        const computedHT = priceTTCNum && vat >= 0 ? (priceTTCNum / (1 + vat / 100)).toFixed(0) : "";
+        return (
+          <div className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="priceTTC">Prix de vente TTC affiché *</Label>
+                <Input
+                  id="priceTTC"
+                  type="number"
+                  placeholder="0"
+                  value={formData.priceTTC}
+                  onChange={(e) => updateFormData("priceTTC", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Devise *</Label>
+                <Select value={formData.currency} onValueChange={(v) => updateFormData("currency", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {currencies.map(c => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Unité *</Label>
+                <Select value={formData.unit} onValueChange={(v) => updateFormData("unit", v)}>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                  <SelectContent>
+                    {productUnits.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.name} ({u.symbol})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>TVA applicable * <span className="text-[10px] text-muted-foreground">(référentiel CPU-PME)</span></Label>
+                <Select value={formData.vatRate} onValueChange={(v) => updateFormData("vatRate", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {vatRates.map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {formData.vatRate === "custom" && (
+                <div className="space-y-2">
+                  <Label>Taux personnalisé (%)</Label>
+                  <Input
+                    type="number"
+                    value={formData.vatCustom}
+                    onChange={(e) => updateFormData("vatCustom", e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <Label htmlFor="priceHT">Prix HT *</Label>
+                <Input
+                  id="priceHT"
+                  type="number"
+                  placeholder={computedHT || "Calculé automatiquement"}
+                  value={formData.priceHT || computedHT}
+                  onChange={(e) => updateFormData("priceHT", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4 p-4 border rounded-lg">
+              <p className="font-medium text-sm">Promotion (optionnel)</p>
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="space-y-2">
+                  <Label>Prix promotionnel</Label>
+                  <Input
+                    type="number"
+                    value={formData.promoPrice}
+                    onChange={(e) => updateFormData("promoPrice", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Libellé promotion</Label>
+                  <Input
+                    placeholder="Ex: -20%"
+                    value={formData.promoLabel}
+                    onChange={(e) => updateFormData("promoLabel", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Début promotion</Label>
+                  <Input
+                    type="date"
+                    value={formData.promoStart}
+                    onChange={(e) => updateFormData("promoStart", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fin promotion</Label>
+                  <Input
+                    type="date"
+                    value={formData.promoEnd}
+                    onChange={(e) => updateFormData("promoEnd", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="minOrder">Quantité minimale (MOQ) *</Label>
+                <Input
+                  id="minOrder"
+                  type="number"
+                  value={formData.minOrder}
+                  onChange={(e) => updateFormData("minOrder", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxOrderQuantity">Quantité maximale</Label>
+                <Input
+                  id="maxOrderQuantity"
+                  type="number"
+                  value={formData.maxOrderQuantity}
+                  onChange={(e) => updateFormData("maxOrderQuantity", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Vente à l'unité *</p>
+                  <p className="text-xs text-muted-foreground">Vente au détail</p>
+                </div>
+                <Switch
+                  checked={formData.sellPerUnit}
+                  onCheckedChange={(c) => updateFormData("sellPerUnit", c)}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Vente en gros</p>
+                  <p className="text-xs text-muted-foreground">Vente wholesale / B2B</p>
+                </div>
+                <Switch
+                  checked={formData.sellWholesale}
+                  onCheckedChange={(c) => updateFormData("sellWholesale", c)}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Demande de devis</p>
+                  <p className="text-xs text-muted-foreground">L'acheteur peut demander un devis</p>
+                </div>
+                <Switch
+                  checked={formData.acceptsQuoteRequest}
+                  onCheckedChange={(c) => updateFormData("acceptsQuoteRequest", c)}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Prix négociable</p>
+                  <p className="text-xs text-muted-foreground">Les acheteurs peuvent proposer un prix</p>
+                </div>
+                <Switch
+                  checked={formData.isNegotiable}
+                  onCheckedChange={(c) => updateFormData("isNegotiable", c)}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4 p-4 border rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Tarification dégressive</p>
+                  <p className="text-xs text-muted-foreground">
+                    Prix par tranche de quantité (ex : 0-10 : 1000, 11-50 : 900...)
+                  </p>
+                </div>
+                <Switch
+                  checked={formData.hasTieredPricing}
+                  onCheckedChange={(c) => updateFormData("hasTieredPricing", c)}
+                />
+              </div>
+
+              {formData.hasTieredPricing && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground">
+                    <div className="col-span-4">Quantité min</div>
+                    <div className="col-span-4">Quantité max</div>
+                    <div className="col-span-3">Prix</div>
+                    <div className="col-span-1"></div>
+                  </div>
+                  {formData.pricingTiers.map((tier, i) => (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                      <Input
+                        className="col-span-4"
+                        type="number"
+                        placeholder="0"
+                        value={tier.qtyMin}
+                        onChange={(e) => updatePricingTier(i, "qtyMin", e.target.value)}
+                      />
+                      <Input
+                        className="col-span-4"
+                        type="number"
+                        placeholder="10 (laisser vide = +)"
+                        value={tier.qtyMax}
+                        onChange={(e) => updatePricingTier(i, "qtyMax", e.target.value)}
+                      />
+                      <Input
+                        className="col-span-3"
+                        type="number"
+                        placeholder="Prix"
+                        value={tier.price}
+                        onChange={(e) => updatePricingTier(i, "price", e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="col-span-1"
+                        onClick={() => removePricingTier(i)}
+                        disabled={formData.pricingTiers.length === 1}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addPricingTier}
+                    disabled={formData.pricingTiers.length >= 5}
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Ajouter une tranche
+                  </Button>
+                  {formData.pricingTiers.length >= 5 && (
+                    <p className="text-xs text-muted-foreground">Maximum 5 tranches.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
 
       case 3:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold">Prix et disponibilité</h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="prix">Prix (FCFA) *</Label>
-                  <Input
-                    id="prix"
-                    type="number"
-                    placeholder="850000"
-                    value={formData.prix}
-                    onChange={(e) => updateForm("prix", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="unite">Unité *</Label>
-                  <Select 
-                    value={formData.unite} 
-                    onValueChange={(v) => updateForm("unite", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choisir" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="piece">Pièce</SelectItem>
-                      <SelectItem value="kg">Kilogramme</SelectItem>
-                      <SelectItem value="tonne">Tonne</SelectItem>
-                      <SelectItem value="litre">Litre</SelectItem>
-                      <SelectItem value="sac">Sac</SelectItem>
-                      <SelectItem value="carton">Carton</SelectItem>
-                      <SelectItem value="session">Session</SelectItem>
-                      <SelectItem value="heure">Heure</SelectItem>
-                      <SelectItem value="jour">Jour</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+            <div className="p-3 rounded-md bg-amber-500/10 text-xs text-amber-800 border border-amber-500/20">
+              Les produits dont le stock est à zéro ne seront pas affichés sur la marketplace.
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="moq">Quantité minimum (MOQ)</Label>
-                  <Input
-                    id="moq"
-                    type="number"
-                    placeholder="1"
-                    value={formData.moq}
-                    onChange={(e) => updateForm("moq", e.target.value)}
-                  />
-                </div>
-                {productType === "product" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="stock">Stock disponible</Label>
-                    <Input
-                      id="stock"
-                      type="number"
-                      placeholder="100"
-                      value={formData.stock}
-                      onChange={(e) => updateForm("stock", e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label htmlFor="delai">Délai de disponibilité</Label>
+                <Label htmlFor="stock">Stock disponible *</Label>
                 <Input
-                  id="delai"
-                  placeholder="Ex: Immédiat, 48h, 1 semaine..."
-                  value={formData.delaiDisponibilite}
-                  onChange={(e) => updateForm("delaiDisponibilite", e.target.value)}
+                  id="stock"
+                  type="number"
+                  value={formData.stock}
+                  onChange={(e) => updateFormData("stock", e.target.value)}
                 />
               </div>
-
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-3 flex items-center gap-2">
-                  <Truck className="w-4 h-4" />
-                  Livraison
-                </h4>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Zones de livraison</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {regions.slice(0, 6).map(region => (
-                        <Badge
-                          key={region}
-                          variant={formData.zonesLivraison.includes(region) ? "default" : "outline"}
-                          className="cursor-pointer"
-                          onClick={() => {
-                            if (formData.zonesLivraison.includes(region)) {
-                              updateForm("zonesLivraison", formData.zonesLivraison.filter(z => z !== region));
-                            } else {
-                              updateForm("zonesLivraison", [...formData.zonesLivraison, region]);
-                            }
-                          }}
-                        >
-                          {region}
-                        </Badge>
-                      ))}
-                      <Badge variant="outline" className="cursor-pointer">+ Autres</Badge>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="frais">Frais de livraison (FCFA)</Label>
-                    <Input
-                      id="frais"
-                      placeholder="Ex: 5000 ou 'Gratuit'"
-                      value={formData.fraisLivraison}
-                      onChange={(e) => updateForm("fraisLivraison", e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="retrait"
-                      checked={formData.optionRetrait}
-                      onCheckedChange={(checked) => updateForm("optionRetrait", checked)}
-                    />
-                    <Label htmlFor="retrait" className="text-sm font-normal">
-                      Proposer le retrait sur place / point relais
-                    </Label>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="stockAlertThreshold">Seuil d'alerte *</Label>
+                <Input
+                  id="stockAlertThreshold"
+                  type="number"
+                  placeholder="Ex: 10"
+                  value={formData.stockAlertThreshold}
+                  onChange={(e) => updateFormData("stockAlertThreshold", e.target.value)}
+                />
               </div>
+              <div className="space-y-2">
+                <Label>Disponibilité *</Label>
+                <Select
+                  value={formData.availability}
+                  onValueChange={(v) => updateFormData("availability", v as ListingFormData["availability"])}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in_stock">En stock</SelectItem>
+                    <SelectItem value="out_of_stock">Rupture</SelectItem>
+                    <SelectItem value="preorder">Précommande</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Produit sur commande</p>
+                  <p className="text-xs text-muted-foreground">Livré après réception de la commande</p>
+                </div>
+                <Switch
+                  checked={formData.isOnDemand}
+                  onCheckedChange={(c) => updateFormData("isOnDemand", c)}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Fabrication à la demande</p>
+                  <p className="text-xs text-muted-foreground">Production lancée à la commande</p>
+                </div>
+                <Switch
+                  checked={formData.isMadeToOrder}
+                  onCheckedChange={(c) => updateFormData("isMadeToOrder", c)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="preparationDelay">Délai de préparation *</Label>
+              <Input
+                id="preparationDelay"
+                placeholder="Ex: 2-3 jours"
+                value={formData.preparationDelay}
+                onChange={(e) => updateFormData("preparationDelay", e.target.value)}
+              />
             </div>
           </div>
         );
@@ -744,904 +1501,764 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
       case 4:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold">Conformité</h3>
-
-            {/* Produits réglementés */}
-            <Card className="border-amber-500/30 bg-amber-500/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                  Produits réglementés
-                </CardTitle>
-                <CardDescription>
-                  Certains produits nécessitent des autorisations pour être vendus
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="reglemente"
-                    checked={formData.produitReglemente}
-                    onCheckedChange={(checked) => updateForm("produitReglemente", checked)}
-                  />
-                  <Label htmlFor="reglemente" className="text-sm font-normal">
-                    Ce produit est soumis à réglementation
-                  </Label>
-                </div>
-
-                {formData.produitReglemente && (
-                  <div className="space-y-4 pl-6 border-l-2 border-amber-500/30">
-                    <div className="space-y-2">
-                      <Label>Catégorie réglementée</Label>
-                      <Select
-                        value={formData.categorieReglementee}
-                        onValueChange={(v) => updateForm("categorieReglementee", v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionner" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categoriesReglementees.map(cat => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Documents obligatoires</Label>
-                      <FileUploadZone
-                        hint="Uploader certificats, autorisations..."
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        files={formData.documentsReglementaires}
-                        onChange={(f) => updateForm("documentsReglementaires", f)}
-                      />
-                      <p className="text-xs text-amber-600">
-                        ⚠️ La publication sera bloquée tant que les documents ne sont pas validés
-                      </p>
-                    </div>
-                  </div>
+            <div className="space-y-2">
+              <Label>Zones de livraison / intervention *</Label>
+              <RegionsMultiSelect
+                regions={allRegions}
+                value={formData.deliveryZones}
+                onChange={(ids) => updateFormData("deliveryZones", ids)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => updateFormData(
+                  "deliveryZones",
+                  formData.deliveryZones.length === allRegions.length ? [] : allRegions.map(r => r.id)
                 )}
-              </CardContent>
-            </Card>
+              >
+                {formData.deliveryZones.length === allRegions.length ? "Tout désélectionner" : "Sélectionner toutes les régions"}
+              </Button>
+            </div>
 
-            {/* Made in CI */}
-            <Card className="border-primary/30 bg-primary/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Award className="w-5 h-5 text-primary" />
-                  Label Made in Côte d'Ivoire
-                </CardTitle>
-                <CardDescription>
-                  Valorisez votre production locale avec un badge officiel
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="madeinci"
-                    checked={formData.madeInCI}
-                    onCheckedChange={(checked) => updateForm("madeInCI", checked)}
-                  />
-                  <Label htmlFor="madeinci" className="text-sm font-normal">
-                    Demander le badge Made in CI
-                  </Label>
-                </div>
+            <Separator />
 
-                {formData.madeInCI && (
-                  <div className="space-y-4 pl-6 border-l-2 border-primary/30">
-                    <div className="space-y-2">
-                      <Label>Niveau de badge souhaité</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {badgeLevels.map(badge => {
-                          const colorMap: Record<string, string> = {
-                            or: "bg-primary",
-                            argent: "bg-secondary",
-                            bronze: "bg-amber-600",
-                            innovation_ivoire: "bg-cyan-500",
-                          };
-                          const color = colorMap[badge.id] ?? "bg-muted";
-                          return (
-                          <div
-                            key={badge.id}
-                            className={cn(
-                              "p-3 rounded-lg border cursor-pointer transition-all",
-                              formData.badgeMadeInCI === badge.id && "ring-2 ring-primary"
-                            )}
-                            onClick={() => updateForm("badgeMadeInCI", badge.id)}
-                          >
-                            <Badge className={cn(color, "text-white mb-1")}>
-                              {badge.label}
-                            </Badge>
-                            <p className="text-xs text-muted-foreground">{badge.description}</p>
-                          </div>
-                          );
-                        })}
+            <div className="space-y-2">
+              <Label htmlFor="deliveryTime">Délai de livraison estimé</Label>
+              <Input
+                id="deliveryTime"
+                placeholder="Ex: 2-5 jours ouvrés"
+                value={formData.deliveryTime}
+                onChange={(e) => updateFormData("deliveryTime", e.target.value)}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="font-medium text-sm">Mode de livraison * (une seule option)</p>
+              <p className="text-xs text-muted-foreground">
+                Sélectionnez le mode de livraison applicable à cette annonce.
+              </p>
+
+              {[
+                {
+                  id: "pickup" as const,
+                  title: "Retrait par le client",
+                  desc: "Le client récupère la commande à l'adresse du vendeur.",
+                },
+                {
+                  id: "merchant" as const,
+                  title: "Livraison par le Marchand",
+                  desc: "Le vendeur assure lui-même la livraison auprès du client.",
+                },
+                {
+                  id: "marketplace_api" as const,
+                  title: "Livraison Marketplace API",
+                  desc: "Le prix de livraison est calculé automatiquement par notre prestataire logistique via API selon la zone, le poids et la distance.",
+                },
+              ].map(option => {
+                const active = formData.deliveryMode === option.id;
+                return (
+                  <div
+                    key={option.id}
+                    onClick={() => updateFormData("deliveryMode", option.id)}
+                    className={cn(
+                      "flex items-start justify-between gap-3 p-4 border rounded-lg cursor-pointer transition-colors",
+                      active ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cn("p-2 rounded-md", active ? "bg-primary/15" : "bg-muted")}>
+                        <MapPin className={cn("h-4 w-4", active ? "text-primary" : "text-muted-foreground")} />
+                      </div>
+                      <div>
+                        <p className="font-medium">{option.title}</p>
+                        <p className="text-xs text-muted-foreground">{option.desc}</p>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="transformProcess">Processus de transformation local *</Label>
-                      <Textarea
-                        id="transformProcess"
-                        placeholder="Décrivez comment ce produit est fabriqué ou transformé en Côte d'Ivoire (matières premières locales, étapes de production, valeur ajoutée locale...)"
-                        rows={4}
-                        value={formData.madeInCiTransformationProcess}
-                        onChange={(e) => updateForm("madeInCiTransformationProcess", e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">Requis pour la demande du badge Made in CI</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Preuves (factures intrants, photos, etc.)</Label>
-                      <FileUploadZone
-                        hint="Uploader les justificatifs"
-                        accept=".pdf,.jpg,.jpeg,.png,.webp"
-                        files={formData.madeInCiPreuves}
-                        onChange={(f) => updateForm("madeInCiPreuves", f)}
-                      />
-                    </div>
+                    {active && <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                );
+              })}
+
+              {formData.deliveryMode === "pickup" && (
+                <div className="space-y-2">
+                  <Label htmlFor="pickupAddress">Adresse de retrait</Label>
+                  <Input
+                    id="pickupAddress"
+                    placeholder="Adresse complète du point de retrait"
+                    value={formData.pickupAddress}
+                    onChange={(e) => updateFormData("pickupAddress", e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4 p-4 border rounded-lg">
+              <p className="font-medium text-sm">Logistique & emballage (optionnel)</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div className="space-y-2 col-span-2">
+                    <Label>Poids net</Label>
+                    <Input
+                      type="number"
+                      value={formData.netWeight}
+                      onChange={(e) => updateFormData("netWeight", e.target.value)}
+                    />
+                  </div>
+                  <Select value={formData.netWeightUnitId} onValueChange={(v) => updateFormData("netWeightUnitId", v)}>
+                    <SelectTrigger><SelectValue placeholder="Unité" /></SelectTrigger>
+                    <SelectContent>
+                      {weightUnits.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.name} ({u.symbol})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div className="space-y-2 col-span-2">
+                    <Label>Poids brut</Label>
+                    <Input
+                      type="number"
+                      value={formData.grossWeight}
+                      onChange={(e) => updateFormData("grossWeight", e.target.value)}
+                    />
+                  </div>
+                  <Select value={formData.grossWeightUnitId} onValueChange={(v) => updateFormData("grossWeightUnitId", v)}>
+                    <SelectTrigger><SelectValue placeholder="Unité" /></SelectTrigger>
+                    <SelectContent>
+                      {weightUnits.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.name} ({u.symbol})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="space-y-2">
+                  <Label>Longueur (L)</Label>
+                  <Input
+                    type="number"
+                    value={formData.dimensionLength}
+                    onChange={(e) => updateFormData("dimensionLength", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Largeur (l)</Label>
+                  <Input
+                    type="number"
+                    value={formData.dimensionWidth}
+                    onChange={(e) => updateFormData("dimensionWidth", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Hauteur (h)</Label>
+                  <Input
+                    type="number"
+                    value={formData.dimensionHeight}
+                    onChange={(e) => updateFormData("dimensionHeight", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Unité dimensions</Label>
+                  <Select value={formData.dimensionUnitId} onValueChange={(v) => updateFormData("dimensionUnitId", v)}>
+                    <SelectTrigger><SelectValue placeholder="Unité" /></SelectTrigger>
+                    <SelectContent>
+                      {dimensionUnits.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.name} ({u.symbol})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="grid grid-cols-3 gap-2 items-end col-span-2 sm:col-span-1">
+                  <div className="space-y-2 col-span-2">
+                    <Label>Volume</Label>
+                    <Input
+                      type="number"
+                      value={formData.volume}
+                      onChange={(e) => updateFormData("volume", e.target.value)}
+                    />
+                  </div>
+                  <Select value={formData.volumeUnitId} onValueChange={(v) => updateFormData("volumeUnitId", v)}>
+                    <SelectTrigger><SelectValue placeholder="Unité" /></SelectTrigger>
+                    <SelectContent>
+                      {dimensionUnits.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.name} ({u.symbol})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nombre de colis</Label>
+                  <Input
+                    type="number"
+                    value={formData.packageCount}
+                    onChange={(e) => updateFormData("packageCount", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantité / carton</Label>
+                  <Input
+                    type="number"
+                    value={formData.quantityPerCarton}
+                    onChange={(e) => updateFormData("quantityPerCarton", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantité / palette</Label>
+                  <Input
+                    type="number"
+                    value={formData.quantityPerPallet}
+                    onChange={(e) => updateFormData("quantityPerPallet", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         );
 
       case 5:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold">Fiche technique</h3>
-            <Card>
-              <CardHeader className="pb-3">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Le produit possède plusieurs versions</p>
+                <p className="text-sm text-muted-foreground">
+                  Ex : couleur, taille, volume, puissance, conditionnement, saveur, parfum
+                </p>
+              </div>
+              <Switch
+                checked={formData.hasVariants}
+                onCheckedChange={(c) => updateFormData("hasVariants", c)}
+              />
+            </div>
+
+            {formData.hasVariants && (
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Spécifications techniques</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="enableFiche"
-                      checked={formData.ficheTechnique.enabled}
-                      onCheckedChange={(checked) => 
-                        updateForm("ficheTechnique", { ...formData.ficheTechnique, enabled: !!checked })
-                      }
-                    />
-                    <Label htmlFor="enableFiche" className="text-sm font-normal">
-                      Ajouter une fiche technique
-                    </Label>
-                  </div>
+                  <Label>Variantes ({formData.variants.length})</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+                    <Plus className="h-4 w-4 mr-1" /> Ajouter une variante
+                  </Button>
                 </div>
-                <CardDescription>
-                  Détaillez les caractéristiques de votre {productType === "product" ? "produit" : "service"}
-                </CardDescription>
-              </CardHeader>
-              {formData.ficheTechnique.enabled && (
-                <CardContent className="space-y-4">
-                  {/* Spécifications */}
-                  <div className="space-y-3">
-                    <Label>Caractéristiques</Label>
-                    {formData.ficheTechnique.specifications.map((spec, index) => (
-                      <div key={index} className="p-3 border rounded-lg space-y-2">
-                        <div className="grid grid-cols-12 gap-2 items-center">
-                          <Input
-                            className="col-span-4"
-                            placeholder="Caractéristique"
-                            value={spec.label}
-                            onChange={(e) => {
-                              const specs = [...formData.ficheTechnique.specifications];
-                              specs[index] = { ...specs[index], label: e.target.value };
-                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                            }}
-                          />
-                          <Input
-                            className="col-span-5"
-                            placeholder="Valeur"
-                            value={spec.value}
-                            onChange={(e) => {
-                              const specs = [...formData.ficheTechnique.specifications];
-                              specs[index] = { ...specs[index], value: e.target.value };
-                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                            }}
-                          />
-                          <Input
-                            className="col-span-2"
-                            placeholder="Unité"
-                            value={spec.unit}
-                            onChange={(e) => {
-                              const specs = [...formData.ficheTechnique.specifications];
-                              specs[index] = { ...specs[index], unit: e.target.value };
-                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                            }}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="col-span-1"
-                            onClick={() => {
-                              const specs = formData.ficheTechnique.specifications.filter((_, i) => i !== index);
-                              updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                            }}
-                          >
-                            <X className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                        {/* Image de la spécification */}
-                        {spec.imagePreview ? (
-                          <div className="relative w-16 h-16 rounded border overflow-hidden">
-                            <img src={spec.imagePreview} alt="" className="w-full h-full object-cover" />
-                            <button
-                              type="button"
-                              onClick={() => setSpecImage(index, undefined)}
-                              className="absolute top-0 right-0 bg-background/80 rounded-bl p-0.5"
-                            >
-                              <X className="w-3 h-3 text-destructive" />
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="inline-flex items-center gap-1 text-xs text-muted-foreground border rounded-md px-2 py-1 cursor-pointer hover:bg-muted/50 w-fit">
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp"
-                              className="hidden"
-                              onChange={(e) => setSpecImage(index, e.target.files?.[0])}
-                            />
-                            <ImageIcon className="w-3.5 h-3.5" /> Ajouter une image
-                          </label>
-                        )}
-                      </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const specs = [...formData.ficheTechnique.specifications, { label: "", value: "", unit: "" }];
-                        updateForm("ficheTechnique", { ...formData.ficheTechnique, specifications: specs });
-                      }}
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Ajouter une caractéristique
-                    </Button>
-                  </div>
 
-                  {/* Certifications */}
-                  <div className="space-y-2">
-                    <Label>Certifications & Labels</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {["ISO 9001", "ISO 14001", "HACCP", "CE", "Bio", "Fair Trade", "Made in CI", "Halal"].map((cert) => {
-                        const selected = formData.ficheTechnique.certifications.some(c => c.name === cert);
-                        return (
-                          <Badge
-                            key={cert}
-                            variant={selected ? "default" : "outline"}
-                            className="cursor-pointer"
-                            onClick={() => {
-                              const certs = selected
-                                ? formData.ficheTechnique.certifications.filter(c => c.name !== cert)
-                                : [...formData.ficheTechnique.certifications, { name: cert }];
-                              updateForm("ficheTechnique", { ...formData.ficheTechnique, certifications: certs });
-                            }}
-                          >
-                            {selected && <CheckCircle2 className="w-3 h-3 mr-1" />}
-                            {cert}
-                          </Badge>
-                        );
-                      })}
+                {formData.variants.map((variant, index) => (
+                  <div key={index} className="p-4 border rounded-lg space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="secondary">Variante {index + 1}</Badge>
+                      {formData.variants.length > 1 && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeVariant(index)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
-                    {/* Certificat (fichier) par certification sélectionnée */}
-                    {formData.ficheTechnique.certifications.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        {formData.ficheTechnique.certifications.map((c, index) => (
-                          <div key={index} className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5">
-                            <span className="flex-1 font-medium">{c.name}</span>
-                            {c.file || c.url ? (
-                              <span className="flex items-center gap-1.5 text-xs text-green-600">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                {c.file ? "Fichier ajouté" : "Document existant"}
-                                <button type="button" onClick={() => setCertFile(index, undefined)}>
-                                  <X className="w-3.5 h-3.5 text-destructive" />
-                                </button>
-                              </span>
-                            ) : (
-                              <label className="flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                <input
-                                  type="file"
-                                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                                  className="hidden"
-                                  onChange={(e) => setCertFile(index, e.target.files?.[0])}
-                                />
-                                <Upload className="w-3.5 h-3.5" /> Joindre le certificat
-                              </label>
-                            )}
-                          </div>
-                        ))}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Nom (ex : Rouge / XL / 500ml)</Label>
+                        <Input
+                          value={variant.name}
+                          onChange={(e) => updateVariant(index, "name", e.target.value)}
+                        />
                       </div>
-                    )}
-                  </div>
-
-                  {/* Documents */}
-                  <div className="space-y-2">
-                    <Label>Documents techniques</Label>
-                    {(editInitialData?.technicalDocuments ?? []).length > 0 && (
-                      <div className="space-y-1.5">
-                        {editInitialData!.technicalDocuments!.map((d, i) => (
-                          <a
-                            key={i}
-                            href={d.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 text-sm border rounded-md px-2 py-1.5 bg-muted/40 hover:bg-muted"
-                          >
-                            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                            <span className="truncate flex-1">{d.name}</span>
-                            <span className="text-xs text-green-600">Enregistré</span>
-                          </a>
-                        ))}
+                      <div className="space-y-2">
+                        <Label>SKU variante</Label>
+                        <p className="text-xs text-muted-foreground pt-2">
+                          Généré automatiquement par le système.
+                        </p>
                       </div>
-                    )}
-                    <FileUploadZone
-                      hint="PDF, schémas, plans, notices..."
-                      accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
-                      files={formData.technicalDocs}
-                      onChange={(f) => updateForm("technicalDocs", f)}
-                    />
+                      <div className="space-y-2">
+                        <Label>Prix (FCFA)</Label>
+                        <Input
+                          type="number"
+                          value={variant.price}
+                          onChange={(e) => updateVariant(index, "price", e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Stock</Label>
+                        <Input
+                          type="number"
+                          value={variant.stock}
+                          onChange={(e) => updateVariant(index, "stock", e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Images de la variante</Label>
+                        <Badge variant="outline">{variant.images.length}</Badge>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          updateVariant(index, "images", [
+                            ...variant.images,
+                            `var-${index}-img-${variant.images.length + 1}`,
+                          ])
+                        }
+                      >
+                        <Upload className="h-4 w-4 mr-1" /> Ajouter une image
+                      </Button>
+                    </div>
                   </div>
-                </CardContent>
-              )}
-            </Card>
+                ))}
+              </div>
+            )}
           </div>
         );
 
       case 6:
         return (
-          <div className="space-y-6">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Layers className="w-5 h-5 text-primary" />
-              Variantes & Prix par quantité
-            </h3>
-
-            {/* Variantes de produit */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Variantes du produit</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="enableVariantes"
-                      checked={formData.variantes.enabled}
-                      onCheckedChange={(checked) => 
-                        updateForm("variantes", { ...formData.variantes, enabled: !!checked })
-                      }
-                    />
-                    <Label htmlFor="enableVariantes" className="text-sm font-normal">
-                      Activer les variantes
-                    </Label>
-                  </div>
-                </div>
-                <CardDescription>
-                  Créez des déclinaisons (taille, couleur, format...)
-                </CardDescription>
-              </CardHeader>
-              {formData.variantes.enabled && (
-                <CardContent className="space-y-4">
-                  {/* Attributs */}
-                  <div className="space-y-3">
-                    <Label>Attributs de variation</Label>
-                    {formData.variantes.attributs.map((attr, index) => (
-                      <div key={index} className="p-3 border rounded-lg space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Input
-                            placeholder="Nom (ex: Taille, Couleur)"
-                            value={attr.nom}
-                            onChange={(e) => {
-                              const attrs = [...formData.variantes.attributs];
-                              attrs[index] = { ...attrs[index], nom: e.target.value };
-                              updateForm("variantes", { ...formData.variantes, attributs: attrs });
-                            }}
-                            className="flex-1"
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              const attrs = formData.variantes.attributs.filter((_, i) => i !== index);
-                              updateForm("variantes", { ...formData.variantes, attributs: attrs });
-                            }}
-                          >
-                            <X className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {attr.valeurs.map((val, vIndex) => (
-                            <Badge key={vIndex} variant="secondary" className="gap-1">
-                              {val}
-                              <X 
-                                className="w-3 h-3 cursor-pointer" 
-                                onClick={() => {
-                                  const attrs = [...formData.variantes.attributs];
-                                  attrs[index].valeurs = attrs[index].valeurs.filter((_, vi) => vi !== vIndex);
-                                  updateForm("variantes", { ...formData.variantes, attributs: attrs });
-                                }}
-                              />
-                            </Badge>
-                          ))}
-                          <Input
-                            placeholder="+ Ajouter valeur"
-                            className="w-32 h-6 text-xs"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && e.currentTarget.value) {
-                                const attrs = [...formData.variantes.attributs];
-                                attrs[index].valeurs = [...attrs[index].valeurs, e.currentTarget.value];
-                                updateForm("variantes", { ...formData.variantes, attributs: attrs });
-                                e.currentTarget.value = "";
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const attrs = [...formData.variantes.attributs, { nom: "", valeurs: [] }];
-                        updateForm("variantes", { ...formData.variantes, attributs: attrs });
-                      }}
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Ajouter un attribut
-                    </Button>
-                  </div>
-
-                  {/* Options générées */}
-                  {formData.variantes.attributs.length > 0 && formData.variantes.attributs.some(a => a.valeurs.length > 0) && (
-                    <div className="space-y-3 border-t pt-4">
-                      <Label>Prix et stock par variante</Label>
-                      <div className="max-h-48 overflow-y-auto space-y-2">
-                        {formData.variantes.options.map((opt, index) => (
-                          <div key={index} className="grid grid-cols-12 gap-2 items-center text-sm">
-                            <span className="col-span-4 font-medium">{opt.combinaison}</span>
-                            <Input
-                              className="col-span-3"
-                              placeholder="Prix"
-                              type="number"
-                              value={opt.prix}
-                              onChange={(e) => {
-                                const opts = [...formData.variantes.options];
-                                opts[index] = { ...opts[index], prix: e.target.value };
-                                updateForm("variantes", { ...formData.variantes, options: opts });
-                              }}
-                            />
-                            <Input
-                              className="col-span-2"
-                              placeholder="Stock"
-                              type="number"
-                              value={opt.stock}
-                              onChange={(e) => {
-                                const opts = [...formData.variantes.options];
-                                opts[index] = { ...opts[index], stock: e.target.value };
-                                updateForm("variantes", { ...formData.variantes, options: opts });
-                              }}
-                            />
-                            <Input
-                              className="col-span-3"
-                              placeholder="SKU"
-                              value={opt.sku}
-                              onChange={(e) => {
-                                const opts = [...formData.variantes.options];
-                                opts[index] = { ...opts[index], sku: e.target.value };
-                                updateForm("variantes", { ...formData.variantes, options: opts });
-                              }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          // Générer les combinaisons
-                          const attrs = formData.variantes.attributs.filter(a => a.valeurs.length > 0);
-                          if (attrs.length === 0) return;
-                          
-                          const combinations: string[] = [];
-                          const generateCombos = (current: string, attrIndex: number) => {
-                            if (attrIndex >= attrs.length) {
-                              combinations.push(current);
-                              return;
-                            }
-                            for (const val of attrs[attrIndex].valeurs) {
-                              generateCombos(current ? `${current} / ${val}` : val, attrIndex + 1);
-                            }
-                          };
-                          generateCombos("", 0);
-                          
-                          const options = combinations.map(c => ({
-                            combinaison: c,
-                            prix: formData.prix,
-                            stock: "",
-                            sku: ""
-                          }));
-                          updateForm("variantes", { ...formData.variantes, options });
-                        }}
-                      >
-                        Générer les variantes
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-
-            {/* Prix par quantité */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Percent className="w-4 h-4" />
-                    Prix dégressifs par quantité
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="enablePrixQuantite"
-                      checked={formData.prixQuantite.enabled}
-                      onCheckedChange={(checked) => 
-                        updateForm("prixQuantite", { ...formData.prixQuantite, enabled: !!checked })
-                      }
-                    />
-                    <Label htmlFor="enablePrixQuantite" className="text-sm font-normal">
-                      Activer
-                    </Label>
-                  </div>
-                </div>
-                <CardDescription>
-                  Offrez des réductions pour les achats en volume
-                </CardDescription>
-              </CardHeader>
-              {formData.prixQuantite.enabled && (
-                <CardContent className="space-y-3">
-                  {formData.prixQuantite.paliers.map((palier, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-3">
-                        <Label className="text-xs text-muted-foreground">De</Label>
-                        <Input
-                          type="number"
-                          placeholder="Min"
-                          value={palier.quantiteMin}
-                          onChange={(e) => {
-                            const paliers = [...formData.prixQuantite.paliers];
-                            paliers[index] = { ...paliers[index], quantiteMin: e.target.value };
-                            updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                          }}
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <Label className="text-xs text-muted-foreground">À</Label>
-                        <Input
-                          type="number"
-                          placeholder="Max"
-                          value={palier.quantiteMax}
-                          onChange={(e) => {
-                            const paliers = [...formData.prixQuantite.paliers];
-                            paliers[index] = { ...paliers[index], quantiteMax: e.target.value };
-                            updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                          }}
-                        />
-                      </div>
-                      <div className="col-span-3">
-                        <Label className="text-xs text-muted-foreground">Prix unitaire</Label>
-                        <Input
-                          type="number"
-                          placeholder="FCFA"
-                          value={palier.prix}
-                          onChange={(e) => {
-                            const paliers = [...formData.prixQuantite.paliers];
-                            paliers[index] = { ...paliers[index], prix: e.target.value };
-                            updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                          }}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Label className="text-xs text-muted-foreground">Réduction</Label>
-                        <Input
-                          placeholder="%"
-                          value={palier.reduction}
-                          onChange={(e) => {
-                            const paliers = [...formData.prixQuantite.paliers];
-                            paliers[index] = { ...paliers[index], reduction: e.target.value };
-                            updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                          }}
-                        />
-                      </div>
-                      <div className="col-span-1 pt-5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const paliers = formData.prixQuantite.paliers.filter((_, i) => i !== index);
-                            updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                          }}
-                        >
-                          <X className="w-4 h-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const paliers = [...formData.prixQuantite.paliers, { quantiteMin: "", quantiteMax: "", prix: "", reduction: "" }];
-                      updateForm("prixQuantite", { ...formData.prixQuantite, paliers });
-                    }}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Photos du produit / service</Label>
+              <Badge variant="secondary">{formData.medias.length}/10</Badge>
+            </div>
+            <input
+              ref={mediaInputRef}
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { handleMediasSelected(e.target.files); e.target.value = ""; }}
+            />
+            <div className="grid gap-4 sm:grid-cols-4">
+              {formData.medias.map((file, index) => (
+                <div key={index} className="relative aspect-square bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => removeImage(index)}
+                    className="absolute top-2 right-2 p-1 bg-destructive text-destructive-foreground rounded-full"
                   >
-                    <Plus className="w-4 h-4 mr-1" />
-                    Ajouter un palier
-                  </Button>
-                </CardContent>
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {formData.medias.length < 10 && (
+                <button
+                  onClick={() => mediaInputRef.current?.click()}
+                  className="aspect-square border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center gap-2 hover:border-primary/50 transition-colors"
+                >
+                  <Upload className="h-8 w-8 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Ajouter</span>
+                </button>
               )}
-            </Card>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Ajoutez jusqu'à 10 photos. La première sera la photo principale.
+            </p>
           </div>
         );
 
       case 7:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Crown className="w-5 h-5 text-primary" />
-              Mise en vedette & Commission
-            </h3>
-            
-            <Card className="border-primary/30 bg-primary/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Booster votre produit</CardTitle>
-                <CardDescription>
-                  Augmentez la visibilité de votre produit avec nos options premium
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Option Vedette */}
-                  <Card 
-                    className={cn(
-                      "cursor-pointer transition-all hover:shadow-md",
-                      formData.miseEnVedette.type === "vedette" && "ring-2 ring-primary"
-                    )}
-                    onClick={() => updateForm("miseEnVedette", { ...formData.miseEnVedette, enabled: true, type: "vedette" })}
-                  >
-                    <CardContent className="p-4 text-center">
-                      <Star className="w-10 h-10 mx-auto mb-2 text-amber-500" />
-                      <h4 className="font-semibold">Vedette</h4>
-                      <p className="text-xs text-muted-foreground mb-2">Page d'accueil catégorie</p>
-                      <Badge className="bg-amber-500">5% commission</Badge>
-                      <p className="text-lg font-bold text-primary mt-2">15 000 FCFA/sem</p>
-                    </CardContent>
-                  </Card>
+            <div className="p-3 rounded-md bg-muted/40 text-xs text-muted-foreground border">
+              Les certifications sont optionnelles mais renforcent la confiance des acheteurs. Elles seront visibles sur la fiche produit.
+            </div>
 
-                  {/* Option Spécial */}
-                  <Card 
-                    className={cn(
-                      "cursor-pointer transition-all hover:shadow-md",
-                      formData.miseEnVedette.type === "special" && "ring-2 ring-secondary"
-                    )}
-                    onClick={() => updateForm("miseEnVedette", { ...formData.miseEnVedette, enabled: true, type: "special" })}
-                  >
-                    <CardContent className="p-4 text-center">
-                      <Sparkles className="w-10 h-10 mx-auto mb-2 text-purple-500" />
-                      <h4 className="font-semibold">Offre Spéciale</h4>
-                      <p className="text-xs text-muted-foreground mb-2">Bannière promo + newsletter</p>
-                      <Badge className="bg-purple-500">8% commission</Badge>
-                      <p className="text-lg font-bold text-primary mt-2">35 000 FCFA/sem</p>
-                    </CardContent>
-                  </Card>
+            <div className="flex items-center justify-between">
+              <Label>Certifications & Conformité</Label>
+              <Button type="button" variant="outline" size="sm" onClick={addCertification}>
+                <Plus className="h-4 w-4 mr-1" /> Ajouter une certification
+              </Button>
+            </div>
 
-                  {/* Option Premium */}
-                  <Card 
-                    className={cn(
-                      "cursor-pointer transition-all hover:shadow-md border-2",
-                      formData.miseEnVedette.type === "premium" && "ring-2 ring-primary border-primary"
-                    )}
-                    onClick={() => updateForm("miseEnVedette", { ...formData.miseEnVedette, enabled: true, type: "premium" })}
-                  >
-                    <CardContent className="p-4 text-center relative">
-                      <Badge className="absolute -top-2 -right-2 bg-gradient-to-r from-primary to-secondary">
-                        Populaire
-                      </Badge>
-                      <Crown className="w-10 h-10 mx-auto mb-2 text-primary" />
-                      <h4 className="font-semibold">Premium</h4>
-                      <p className="text-xs text-muted-foreground mb-2">Top résultats + toutes options</p>
-                      <Badge className="bg-primary">12% commission</Badge>
-                      <p className="text-lg font-bold text-primary mt-2">75 000 FCFA/sem</p>
-                    </CardContent>
-                  </Card>
+            {formData.certifications.length === 0 && (
+              <div className="p-6 border-2 border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                Aucune certification renseignée
+              </div>
+            )}
+
+            {formData.certifications.map((cert, index) => (
+              <div key={index} className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary">Certification {index + 1}</Badge>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeCertification(index)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Type (référentiel CPU-PME)</Label>
+                    <Select
+                      value={cert.type}
+                      onValueChange={(v) => updateCertification(index, "type", v)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
+                      <SelectContent>
+                        {certificationTypes.map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Référence / N°</Label>
+                    <Input
+                      value={cert.reference || ""}
+                      onChange={(e) => updateCertification(index, "reference", e.target.value)}
+                      placeholder="Ex: ISO-9001-2024-01234"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Justificatif (PDF)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateCertification(index, "fileName", `justificatif-${index + 1}.pdf`)}
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    {cert.fileName ? cert.fileName : "Téléverser un PDF"}
+                  </Button>
+                </div>
+              </div>
+            ))}
 
-                {formData.miseEnVedette.enabled && formData.miseEnVedette.type && (
-                  <div className="space-y-4 border-t pt-4">
+            {/* Produit réglementé */}
+            <div className="p-4 border rounded-lg space-y-4 bg-amber-50/40 dark:bg-amber-950/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Ce produit est soumis à réglementation</p>
+                  <p className="text-xs text-muted-foreground">Cochez si le produit nécessite une autorisation ou une homologation</p>
+                </div>
+                <Switch
+                  checked={formData.isRegulated}
+                  onCheckedChange={(v) => updateFormData("isRegulated", v)}
+                />
+              </div>
+
+              {formData.isRegulated && (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Durée de mise en vedette</Label>
+                      <Label>Famille réglementaire</Label>
                       <Select
-                        value={formData.miseEnVedette.duree}
-                        onValueChange={(v) => updateForm("miseEnVedette", { ...formData.miseEnVedette, duree: v })}
+                        value={formData.regFamilyCode}
+                        onValueChange={(v) => {
+                          updateFormData("regFamilyCode", v);
+                          const item = regulatedFamilies.find(r => r.code === v);
+                          if (item) updateFormData("regType", item.document);
+                        }}
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="7">1 semaine</SelectItem>
-                          <SelectItem value="14">2 semaines</SelectItem>
-                          <SelectItem value="30">1 mois (-10%)</SelectItem>
-                          <SelectItem value="90">3 mois (-20%)</SelectItem>
+                          {regulatedFamilies.map(r => (
+                            <SelectItem key={r.code} value={r.code}>{r.code} — {r.family}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
-
-                    <div className="p-4 rounded-lg bg-muted">
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Frais de mise en vedette</span>
-                        <span className="font-medium">
-                          {formData.miseEnVedette.type === "vedette" && "15 000"}
-                          {formData.miseEnVedette.type === "special" && "35 000"}
-                          {formData.miseEnVedette.type === "premium" && "75 000"}
-                          {" FCFA/sem"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Commission sur ventes</span>
-                        <span className="font-medium">
-                          {formData.miseEnVedette.type === "vedette" && "5%"}
-                          {formData.miseEnVedette.type === "special" && "8%"}
-                          {formData.miseEnVedette.type === "premium" && "12%"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm font-bold border-t pt-2">
-                        <span>Total estimé ({formData.miseEnVedette.duree} jours)</span>
-                        <span className="text-primary">
-                          {(() => {
-                            const weeks = parseInt(formData.miseEnVedette.duree) / 7;
-                            let base = 0;
-                            if (formData.miseEnVedette.type === "vedette") base = 15000;
-                            if (formData.miseEnVedette.type === "special") base = 35000;
-                            if (formData.miseEnVedette.type === "premium") base = 75000;
-                            let discount = 1;
-                            if (formData.miseEnVedette.duree === "30") discount = 0.9;
-                            if (formData.miseEnVedette.duree === "90") discount = 0.8;
-                            return (base * weeks * discount).toLocaleString();
-                          })()}
-                          {" FCFA"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start space-x-2">
-                      <Checkbox
-                        id="acceptCommission"
-                        checked={formData.miseEnVedette.acceptCommission}
-                        onCheckedChange={(checked) => updateForm("miseEnVedette", { ...formData.miseEnVedette, acceptCommission: !!checked })}
+                    <div className="space-y-2">
+                      <Label>Type de réglementation / document</Label>
+                      <Input
+                        value={formData.regType}
+                        onChange={(e) => updateFormData("regType", e.target.value)}
+                        placeholder="Ex: Autorisation de mise sur le marché"
                       />
-                      <div className="space-y-1">
-                        <Label htmlFor="acceptCommission" className="text-sm font-normal">
-                          J'accepte les conditions de commission
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                          La commission sera prélevée automatiquement sur chaque vente pendant la période de mise en vedette.
-                          <br />
-                          <a href="#" className="text-primary underline">Voir les conditions générales</a>
-                        </p>
-                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Autorité compétente</Label>
+                      <Input
+                        value={formData.regAuthority}
+                        onChange={(e) => updateFormData("regAuthority", e.target.value)}
+                        placeholder="Ex: Ministère de la Santé"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>N° d'autorisation</Label>
+                      <Input
+                        value={formData.regAuthorizationNumber}
+                        onChange={(e) => updateFormData("regAuthorizationNumber", e.target.value)}
+                        placeholder="Ex: AMM-2025-01234"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date de délivrance</Label>
+                      <Input
+                        type="date"
+                        value={formData.regIssueDate}
+                        onChange={(e) => updateFormData("regIssueDate", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Date d'expiration <span className="text-xs text-muted-foreground">(si applicable)</span></Label>
+                      <Input
+                        type="date"
+                        value={formData.regExpiryDate}
+                        onChange={(e) => updateFormData("regExpiryDate", e.target.value)}
+                      />
                     </div>
                   </div>
-                )}
-
-                {!formData.miseEnVedette.enabled && (
-                  <div className="text-center p-4 text-muted-foreground">
-                    <p className="text-sm">Sélectionnez une option pour booster votre produit, ou passez à l'étape suivante pour une publication standard.</p>
+                  <div className="space-y-2">
+                    <Label>Document justificatif (PDF, image)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateFormData("regDocumentFileName", "autorisation-reglementaire.pdf")}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {formData.regDocumentFileName || "Téléverser le justificatif"}
+                    </Button>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+              )}
+            </div>
+
+            {/* Made in Côte d'Ivoire */}
+            <div className="p-4 border rounded-lg space-y-4 bg-orange-50/40 dark:bg-orange-950/10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Demander le badge « Made in Côte d'Ivoire »</p>
+                  <p className="text-xs text-muted-foreground">Valorisez l'origine locale de votre produit</p>
+                </div>
+                <Switch
+                  checked={formData.requestMadeInCI}
+                  onCheckedChange={(v) => updateFormData("requestMadeInCI", v)}
+                />
+              </div>
+
+              {formData.requestMadeInCI && (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Type de label demandé</Label>
+                      <Select
+                        value={formData.miciLabelCode}
+                        onValueChange={(v) => {
+                          const l = madeInCILabels.find(x => x.code === v);
+                          updateFormData("miciLabelCode", v);
+                          // Auto-populate attributes from the selected label
+                          updateFormData("miciLocalPercentage", l ? String(l.minPct) : "");
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Sélectionner un label MICI" /></SelectTrigger>
+                        <SelectContent>
+                          {madeInCILabels.map(l => (
+                            <SelectItem key={l.code} value={l.code}>{l.code} — {l.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Pourcentage de fabrication locale (%)</Label>
+                      <Select
+                        value={formData.miciLocalPercentage}
+                        onValueChange={(v) => updateFormData("miciLocalPercentage", v)}
+                        disabled={!formData.miciLabelCode || (madeInCILabels.find(l => l.code === formData.miciLabelCode)?.percentages.length ?? 0) <= 1}
+                      >
+                        <SelectTrigger><SelectValue placeholder={formData.miciLabelCode ? "Sélectionner un pourcentage" : "Choisir un label d'abord"} /></SelectTrigger>
+                        <SelectContent>
+                          {(madeInCILabels.find(l => l.code === formData.miciLabelCode)?.percentages || []).map(p => (
+                            <SelectItem key={p} value={p}>{p} %</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {formData.miciLabelCode && (
+                        <p className="text-xs text-muted-foreground">
+                          Minimum requis : ≥ {madeInCILabels.find(l => l.code === formData.miciLabelCode)?.minPct}%
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {formData.miciLabelCode && (() => {
+                    const l = madeInCILabels.find(x => x.code === formData.miciLabelCode)!;
+                    return (
+                      <div className="rounded-md border bg-background/60 p-3 grid gap-2 sm:grid-cols-4 text-xs">
+                        <div><span className="text-muted-foreground">Code</span><div className="font-medium">{l.code}</div></div>
+                        <div><span className="text-muted-foreground">Label</span><div className="font-medium">{l.label}</div></div>
+                        <div><span className="text-muted-foreground">Conditions</span><div className="font-medium">{l.conditions}</div></div>
+                        <div><span className="text-muted-foreground">% requis</span><div className="font-medium">≥ {l.minPct}%</div></div>
+                      </div>
+                    );
+                  })()}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="hidden" />
+                    <div className="space-y-2">
+                      <Label>Lieu de fabrication</Label>
+                      <Input
+                        value={formData.miciManufacturingPlace}
+                        onChange={(e) => updateFormData("miciManufacturingPlace", e.target.value)}
+                        placeholder="Ex: Usine Yopougon"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Région *</Label>
+                      <Select
+                        value={formData.miciRegionId}
+                        onValueChange={(v) => {
+                          updateFormData("miciRegionId", v);
+                          updateFormData("miciCityId", "");
+                        }}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Sélectionner une région" /></SelectTrigger>
+                        <SelectContent>
+                          {allRegions.map(r => (
+                            <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Ville</Label>
+                      <Select
+                        value={formData.miciCityId}
+                        onValueChange={(v) => updateFormData("miciCityId", v)}
+                        disabled={!formData.miciRegionId}
+                      >
+                        <SelectTrigger><SelectValue placeholder={formData.miciRegionId ? "Sélectionner une ville" : "Choisir une région d'abord"} /></SelectTrigger>
+                        <SelectContent>
+                          {miciVilles.filter(v => v.region_id === formData.miciRegionId).map(v => (
+                            <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Certificat d'origine <span className="text-xs text-muted-foreground">(optionnel)</span></Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateFormData("miciOriginCertificateFileName", "certificat-origine.pdf")}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {formData.miciOriginCertificateFileName || "Téléverser le certificat"}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="mici-cpu-validation"
+                      checked={formData.miciRequestCpuValidation}
+                      onCheckedChange={(v) => updateFormData("miciRequestCpuValidation", Boolean(v))}
+                    />
+                    <Label htmlFor="mici-cpu-validation" className="text-sm font-normal cursor-pointer">
+                      Soumettre pour validation officielle CPU-PME
+                    </Label>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         );
 
       case 8:
         return (
           <div className="space-y-6">
-            <h3 className="text-lg font-semibold">Récapitulatif</h3>
-            <Card>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-20 rounded-lg bg-muted flex items-center justify-center">
-                    <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-lg">{formData.nom || "Nom du produit"}</h4>
-                    <p className="text-sm text-muted-foreground">{formData.categorie || "Catégorie"}</p>
-                    <p className="text-xl font-bold text-primary mt-1">
-                      {formData.prix ? `${parseInt(formData.prix).toLocaleString()} FCFA` : "Prix non défini"} 
-                      <span className="text-sm font-normal text-muted-foreground">/{formData.unite || "unité"}</span>
-                    </p>
-                  </div>
+            <div className="p-3 rounded-md bg-muted/40 text-xs text-muted-foreground border">
+              Section optionnelle — informations Garantie & Service Après-Vente.
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-success/5">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="h-5 w-5 text-success mt-0.5" />
+                <div>
+                  <p className="font-medium">Paiement sécurisé (Escrow) — obligatoire</p>
+                  <p className="text-sm text-muted-foreground">
+                    Le paiement est retenu par la Marketplace jusqu'à confirmation de livraison. Cette protection est activée par défaut et ne peut pas être désactivée.
+                  </p>
                 </div>
+              </div>
+              <Badge className="bg-success text-success-foreground">Activé</Badge>
+            </div>
 
-                <div className="border-t pt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Type</span>
-                    <span className="font-medium capitalize">{formData.type || "-"}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">MOQ</span>
-                    <span className="font-medium">{formData.moq}</span>
-                  </div>
-                  {formData.stock && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Stock</span>
-                      <span className="font-medium">{formData.stock}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Zones livraison</span>
-                    <span className="font-medium">{formData.zonesLivraison.length || 0} zones</span>
-                  </div>
-                  {formData.variantes.enabled && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Variantes</span>
-                      <span className="font-medium">{formData.variantes.options.length} combinaisons</span>
-                    </div>
-                  )}
-                  {formData.prixQuantite.enabled && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Paliers de prix</span>
-                      <span className="font-medium">{formData.prixQuantite.paliers.length} paliers</span>
-                    </div>
-                  )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="warranty">Garantie</Label>
+                <Input
+                  id="warranty"
+                  placeholder="Ex: Garantie constructeur"
+                  value={formData.warranty}
+                  onChange={(e) => updateFormData("warranty", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="warrantyDuration">Durée</Label>
+                <Input
+                  id="warrantyDuration"
+                  placeholder="Ex: 12 mois"
+                  value={formData.warrantyDuration}
+                  onChange={(e) => updateFormData("warrantyDuration", e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">SAV disponible</p>
+                  <p className="text-xs text-muted-foreground">Service après-vente proposé</p>
                 </div>
-
-                <div className="border-t pt-4 flex flex-wrap gap-2">
-                  {formData.produitReglemente && (
-                    <Badge variant="outline" className="text-amber-600 border-amber-600">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
-                      Produit réglementé
-                    </Badge>
-                  )}
-                  {formData.madeInCI && (
-                    <Badge className="bg-primary text-primary-foreground">
-                      <Award className="w-3 h-3 mr-1" />
-                      Made in CI - {formData.badgeMadeInCI}
-                    </Badge>
-                  )}
-                  {formData.miseEnVedette.enabled && formData.miseEnVedette.type && (
-                    <Badge className="bg-gradient-to-r from-primary to-secondary text-primary-foreground">
-                      {formData.miseEnVedette.type === "vedette" && <Star className="w-3 h-3 mr-1" />}
-                      {formData.miseEnVedette.type === "special" && <Sparkles className="w-3 h-3 mr-1" />}
-                      {formData.miseEnVedette.type === "premium" && <Crown className="w-3 h-3 mr-1" />}
-                      {formData.miseEnVedette.type.charAt(0).toUpperCase() + formData.miseEnVedette.type.slice(1)}
-                    </Badge>
-                  )}
+                <Switch
+                  checked={formData.hasAfterSalesService}
+                  onCheckedChange={(c) => updateFormData("hasAfterSalesService", c)}
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <p className="font-medium">Retour accepté</p>
+                  <p className="text-xs text-muted-foreground">L'acheteur peut retourner l'article</p>
                 </div>
+                <Switch
+                  checked={formData.acceptsReturn}
+                  onCheckedChange={(c) => updateFormData("acceptsReturn", c)}
+                />
+              </div>
+            </div>
 
-                {formData.miseEnVedette.enabled && formData.miseEnVedette.type && (
-                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/30">
-                    <p className="text-sm flex items-center gap-2">
-                      <DollarSign className="w-4 h-4 text-primary" />
-                      <span>
-                        Commission: {formData.miseEnVedette.type === "vedette" && "5%"}
-                        {formData.miseEnVedette.type === "special" && "8%"}
-                        {formData.miseEnVedette.type === "premium" && "12%"} sur chaque vente
-                      </span>
-                    </p>
-                  </div>
-                )}
+            {formData.acceptsReturn && (
+              <div className="space-y-2">
+                <Label htmlFor="returnDelay">Délai de retour (jours)</Label>
+                <Input
+                  id="returnDelay"
+                  type="number"
+                  value={formData.returnDelay}
+                  onChange={(e) => updateFormData("returnDelay", e.target.value)}
+                />
+              </div>
+            )}
 
-                {formData.produitReglemente && (
-                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-                    <p className="text-sm text-amber-700 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
-                      En attente de validation des documents réglementaires
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <div className="space-y-2">
+              <Label htmlFor="specialConditions">Conditions particulières</Label>
+              <Textarea
+                id="specialConditions"
+                rows={3}
+                placeholder="Exclusions, conditions d'application, etc."
+                value={formData.specialConditions}
+                onChange={(e) => updateFormData("specialConditions", e.target.value)}
+              />
+            </div>
 
-            <div className="flex items-center gap-2 p-4 rounded-lg bg-muted">
-              <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                Votre offre sera soumise à modération avant publication
-              </p>
+            <Separator />
+
+            <div className="p-4 bg-success/10 rounded-lg border border-success/20">
+              <h4 className="font-medium text-success mb-3">Récapitulatif</h4>
+              <div className="grid gap-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Type :</span><span className="font-medium">{formData.listingType === "product" ? "Produit" : "Service"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Nom :</span><span className="font-medium truncate max-w-[240px]">{formData.title || "-"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Prix TTC :</span><span className="font-medium">{formData.priceTTC ? `${Number(formData.priceTTC).toLocaleString()} ${formData.currency}/${productUnits.find(u => u.id === formData.unit)?.name ?? ""}` : "-"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">TVA :</span><span>{formData.vatRate === "custom" ? `${formData.vatCustom}%` : `${formData.vatRate}%`}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Stock :</span><span>{formData.stock || "-"}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Livraison :</span><span>{{ pickup: "Retrait client", merchant: "Livraison Marchand", marketplace_api: "Marketplace API" }[formData.deliveryMode]}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Variantes :</span><span>{formData.hasVariants ? formData.variants.length : 0}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Certifications :</span><span>{formData.certifications.length}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Zones :</span><span>{formData.deliveryZones.length} région(s)</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Photos :</span><span>{formData.medias.length}</span></div>
+              </div>
             </div>
           </div>
         );
@@ -1653,59 +2270,86 @@ export function ProductWizard({ open, onOpenChange, onProductCreated, editProduc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-6xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5 text-primary" />
-            {isEditMode ? "Modifier le produit" : "Nouveau produit / service"}
+            <Package className="h-5 w-5 text-primary" />
+            {isEditMode ? "Modifier le produit" : "Créer une annonce"}
           </DialogTitle>
           <DialogDescription>
-            Étape {step} sur {totalSteps}
+            {isEditMode
+              ? "Seuls certains champs sont pris en compte par l'API de modification (prix, stock, logistique, tarification dégressive...). Les autres restent affichés à titre indicatif."
+              : "Fiche produit Marketplace CPU-PME — 8 étapes structurées"}
           </DialogDescription>
         </DialogHeader>
 
-        <Progress value={progress} className="h-2" />
+        {/* Progress */}
+        <div className="flex items-center justify-between overflow-x-auto pb-2 shrink-0">
+          {steps.map((step, index) => {
+            const StepIcon = step.icon;
+            const isActive = step.id === currentStep;
+            const isComplete = step.id < currentStep;
+            return (
+              <div key={step.id} className="flex items-center">
+                <button
+                  onClick={() => setCurrentStep(step.id)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 min-w-[70px]",
+                    isActive ? "text-primary" : isComplete ? "text-green-600" : "text-muted-foreground"
+                  )}
+                >
+                  <div className={cn(
+                    "w-9 h-9 rounded-full flex items-center justify-center border-2",
+                    isActive ? "border-primary bg-primary/10" : isComplete ? "border-green-600 bg-green-600/10" : "border-border"
+                  )}>
+                    {isComplete ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <StepIcon className="h-4 w-4" />}
+                  </div>
+                  <span className="text-[10px] font-medium text-center leading-tight">
+                    {step.id}. {step.title}
+                  </span>
+                </button>
+                {index < steps.length - 1 && (
+                  <div className={cn("w-4 h-0.5 mx-0.5", isComplete ? "bg-green-600" : "bg-border")} />
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {submitError && (
-          <div className="px-1 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-red-600 text-sm flex items-center gap-2">
+          <div className="px-1 py-2 rounded-lg border border-red-500/30 bg-red-500/5 text-red-600 text-sm flex items-center gap-2 shrink-0">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             {submitError}
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto py-4">
-          {renderStep()}
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto py-2">
+          {renderStepContent()}
         </div>
 
-        <div className="flex justify-between pt-4 border-t">
+        {/* Navigation */}
+        <div className="flex items-center justify-between pt-4 border-t shrink-0">
           <Button
             variant="outline"
-            onClick={() => {
-              if (step === 1) {
-                onOpenChange(false);
-              } else {
-                setStep(step - 1);
-              }
-            }}
+            onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}
+            disabled={currentStep === 1 || isSubmitting}
           >
-            <ChevronLeft className="w-4 h-4 mr-1" />
-            {step === 1 ? "Annuler" : "Précédent"}
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Précédent
           </Button>
 
-          {step < totalSteps ? (
-            <Button
-              onClick={() => setStep(step + 1)}
-              disabled={step === 1 && !productType}
-            >
-              Suivant
-              <ChevronRight className="w-4 h-4 ml-1" />
+          {currentStep === steps.length ? (
+            <Button onClick={handleSubmit} disabled={isSubmitting}>
+              <Save className="h-4 w-4 mr-2" />
+              {isSubmitting
+                ? (isEditMode ? "Enregistrement..." : "Publication...")
+                : (isEditMode ? "Enregistrer les modifications" : "Publier l'annonce")}
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
-              <CheckCircle2 className="w-4 h-4 mr-1" />
-              {isSubmitting
-                ? (isEditMode ? "Enregistrement..." : "Soumission...")
-                : (isEditMode ? "Enregistrer les modifications" : "Soumettre pour modération")}
+            <Button onClick={() => setCurrentStep(prev => Math.min(steps.length, prev + 1))} disabled={isSubmitting}>
+              Suivant
+              <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           )}
         </div>

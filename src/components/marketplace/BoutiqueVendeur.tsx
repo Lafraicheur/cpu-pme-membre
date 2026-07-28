@@ -453,7 +453,7 @@ export function BoutiqueVendeur() {
               </div>
 
               {/* ── Statut boutique ── */}
-              <div className={cn(
+              {/* <div className={cn(
                 "flex items-center justify-between p-4 rounded-lg border",
                 boutiqueData.isActive ? "border-green-500/30 bg-green-500/5" : "border-border"
               )}>
@@ -480,7 +480,7 @@ export function BoutiqueVendeur() {
                   onCheckedChange={(checked) => setBoutiqueData({ ...boutiqueData, isActive: checked })}
                   disabled={!isEditing}
                 />
-              </div>
+              </div> */}
 
             </CardContent>
           </Card>

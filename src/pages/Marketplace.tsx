@@ -289,11 +289,11 @@ export default function Marketplace() {
       //   label: "Made in CI (produits)",
       //   icon: Award,
       // },
-      // {
-      //   id: "produits-reglementes" as MenuSection,
-      //   label: "Produits réglementés",
-      //   icon: AlertTriangle,
-      // },
+      {
+        id: "produits-reglementes" as MenuSection,
+        label: "Produits réglementés",
+        icon: AlertTriangle,
+      },
       // {
       //   id: "historique-ventes" as MenuSection,
       //   label: "Historique ventes",
@@ -310,13 +310,13 @@ export default function Marketplace() {
 
   const renderContent = () => {
     switch (activeSection) {
-      case "apercu":
-        return (
-          <MarketplaceOverview
-            isVendeur={canSell}
-            onNavigate={(tab) => setActiveSection(tab as MenuSection)}
-          />
-        );
+      // case "apercu":
+      //   return (
+      //     <MarketplaceOverview
+      //       isVendeur={canSell}
+      //       onNavigate={(tab) => setActiveSection(tab as MenuSection)}
+      //     />
+      //   );
 
       case "mes-commandes":
         return <AcheteurCommandes />;
@@ -410,14 +410,14 @@ export default function Marketplace() {
             <CardContent className="p-2">
               <ScrollArea className="h-[calc(100vh-10rem)]">
                 <div className="space-y-1">
-                  <Button
+                  {/* <Button
                     variant={activeSection === "apercu" ? "secondary" : "ghost"}
                     className="w-full justify-start gap-2"
                     onClick={() => setActiveSection("apercu")}
                   >
                     <LayoutDashboard className="w-4 h-4" />
                     Aperçu
-                  </Button>
+                  </Button> */}
 
                   <div className="pt-4 pb-2">
                     <p className="text-xs font-semibold text-muted-foreground px-3">
