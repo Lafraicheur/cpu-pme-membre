@@ -1,6 +1,6 @@
 import { getCookie } from "@/lib/cookies";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://back.cpupme.ci";
+const API_BASE = import.meta.env.VITE_API_URL_DEV || "https://back.cpupme.ci";
 
 function getToken(): string | null {
   return localStorage.getItem("cpu-access-token") ?? getCookie("cpu-access-token");
@@ -657,7 +657,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -675,7 +675,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -693,7 +693,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -1509,7 +1509,7 @@ export const createEvenementApi = async (formData: FormData): Promise<Evenement>
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const API_BASE = import.meta.env.VITE_API_URL || "";
+  const API_BASE = import.meta.env.VITE_API_URL_DEV || "";
   const res = await fetch(`${API_BASE}/api/evenements`, {
     method: "POST",
     headers,
