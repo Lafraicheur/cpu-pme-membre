@@ -1,9 +1,7 @@
-import { useState, useRef, useCallback } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -35,368 +33,278 @@ import {
   BadgeCheck,
   CircleDot,
   Loader2,
-  Trash2,
-  ExternalLink,
-  PlusCircle,
+  Paperclip,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
-  boutiqueCertificationApi,
   boutiquesApi,
+  boutiqueCertificationApi,
   madeInCIBadgeLevelsApi,
-  madeInCIRequestsApi,
-  type CertificationDocument,
+  type CertificationDashboardData,
+  type CertificationChecklistItem,
+  type MadeInCIBadgeLevel,
 } from "@/lib/api";
-import { toast } from "@/components/ui/use-toast";
 
-// ─── Config statique des niveaux de badge ───────────────────────────────────
+type CertifStatus = "NonCertifie" | "EnCours" | "Audit" | "Certifie" | "Refuse" | "Expire";
 
-const badgeLevelConfig: Record<string, { color: string; minScore: number; desc: string }> = {
-  or:               { color: "bg-primary text-primary-foreground",        minScore: 70, desc: ">70% valeur ajoutée locale" },
-  argent:           { color: "bg-secondary text-secondary-foreground",    minScore: 50, desc: ">50% valeur ajoutée locale" },
-  bronze:           { color: "bg-amber-600 text-white",                   minScore: 30, desc: ">30% valeur ajoutée locale" },
-  innovation_ivoire:{ color: "bg-cyan-500 text-white",                    minScore: 0,  desc: "Innovation locale brevetée" },
-};
-const defaultBadgeConfig = { color: "bg-muted text-muted-foreground", minScore: 0, desc: "" };
-function getBadgeCfg(id: string | null | undefined) {
-  return id ? (badgeLevelConfig[id] ?? defaultBadgeConfig) : defaultBadgeConfig;
-}
-
-// ─── Mapping statut API → affichage ─────────────────────────────────────────
-
-type DisplayStatus = "NonCertifie" | "EnCours" | "Audit" | "Certifie" | "Refuse" | "Expire";
-
-function resolveStatus(cert: { certified: boolean; current: { status?: string } | null; validUntil: string | null }): DisplayStatus {
-  if (cert.certified) {
-    if (cert.validUntil && new Date(cert.validUntil) < new Date()) return "Expire";
-    return "Certifie";
-  }
-  const c = (cert.current?.status ?? "").toLowerCase();
-  if (c === "submitted") return "EnCours";
-  if (c === "in_audit" || c === "inaudit" || c === "in_review") return "Audit";
-  if (c === "rejected" || c === "refused") return "Refuse";
-  if (c === "approved" || c === "certified") return "Certifie";
-  return "NonCertifie";
-}
-
-const statusConfig: Record<DisplayStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
-  NonCertifie: { label: "Non certifié",       color: "text-muted-foreground", icon: CircleDot,    bgColor: "bg-muted"           },
-  EnCours:     { label: "Demande en cours",   color: "text-blue-500",         icon: Clock,        bgColor: "bg-blue-500/10"     },
-  Audit:       { label: "Audit en cours",     color: "text-amber-500",        icon: Eye,          bgColor: "bg-amber-500/10"    },
-  Certifie:    { label: "Certifié",           color: "text-green-500",        icon: CheckCircle2, bgColor: "bg-green-500/10"    },
-  Refuse:      { label: "Refusé",             color: "text-destructive",      icon: XCircle,      bgColor: "bg-destructive/10"  },
-  Expire:      { label: "Expiré",             color: "text-amber-600",        icon: AlertCircle,  bgColor: "bg-amber-500/10"    },
+const BADGE_COLORS: Record<string, string> = {
+  or: "bg-primary text-primary-foreground",
+  argent: "bg-secondary text-secondary-foreground",
+  bronze: "bg-amber-600 text-white",
+  innovation: "bg-cyan-500 text-white",
 };
 
-// ─── Statut des demandes de badge Made in CI (par produit) ──────────────────
-
-type ReqStatusKey = "draft" | "submitted" | "in_audit" | "approved" | "rejected";
-
-const reqStatusConfig: Record<ReqStatusKey, { label: string; color: string; icon: typeof Clock }> = {
-  draft:     { label: "Brouillon", color: "text-muted-foreground", icon: FileText },
-  submitted: { label: "Soumis",    color: "text-blue-500",         icon: Clock },
-  in_audit:  { label: "En audit",  color: "text-amber-500",        icon: Eye },
-  approved:  { label: "Approuvé",  color: "text-green-500",        icon: CheckCircle2 },
-  rejected:  { label: "Refusé",    color: "text-destructive",      icon: XCircle },
-};
-
-function normalizeReqStatus(status: string): ReqStatusKey {
-  const s = (status || "").toLowerCase();
-  if (s === "submitted") return "submitted";
-  if (s === "in_audit" || s === "inaudit") return "in_audit";
-  if (s === "approved") return "approved";
-  if (s === "rejected") return "rejected";
-  return "draft";
+function getBadgeColor(code: string | null | undefined): string {
+  if (!code) return "bg-muted text-muted-foreground";
+  return BADGE_COLORS[code.toLowerCase()] ?? "bg-primary text-primary-foreground";
 }
 
-// ─── Checklist d'icônes pour les types de document ──────────────────────────
-
-const docTypeIcons: Record<string, typeof FileText> = {
-  rccm:                            FileText,
-  attestation_fiscale:             Shield,
-  photos_unite_production:         Image,
-  factures_fournisseurs_locaux:    FileText,
-  description_processus_fabrication: Package,
-  certificat_qualite_optionnel:    Award,
-  preuve_localisation:             MapPin,
+const statusConfig: Record<CertifStatus, { label: string; color: string; icon: typeof Clock; bgColor: string }> = {
+  NonCertifie: { label: "Non certifié", color: "text-muted-foreground", icon: CircleDot, bgColor: "bg-muted" },
+  EnCours: { label: "Demande en cours", color: "text-blue-500", icon: Clock, bgColor: "bg-blue-500/10" },
+  Audit: { label: "Audit en cours", color: "text-amber-500", icon: Eye, bgColor: "bg-amber-500/10" },
+  Certifie: { label: "Certifié", color: "text-green-500", icon: CheckCircle2, bgColor: "bg-green-500/10" },
+  Refuse: { label: "Refusé", color: "text-destructive", icon: XCircle, bgColor: "bg-destructive/10" },
+  Expire: { label: "Expiré", color: "text-amber-600", icon: AlertCircle, bgColor: "bg-amber-500/10" },
 };
-function getDocIcon(type: string) {
-  return docTypeIcons[type] ?? FileText;
+
+function getStatusConfig(status: string) {
+  return statusConfig[status as CertifStatus] ?? statusConfig.NonCertifie;
 }
 
-// ─── Composant principal ─────────────────────────────────────────────────────
+const CHECKLIST_ICONS: Record<string, typeof FileText> = {
+  rccm: FileText,
+  fiscal: Shield,
+  photos: Image,
+  sourcing: FileText,
+  process: Package,
+  qualite: Award,
+  localisation: MapPin,
+};
+
+function getChecklistIcon(id: string) {
+  return CHECKLIST_ICONS[id] ?? FileText;
+}
+
+const DOC_STATUS_STYLES: Record<string, { icon: typeof Clock; rowClass: string; iconClass: string }> = {
+  missing:   { icon: Upload,       rowClass: "bg-muted/50",                              iconClass: "bg-muted text-muted-foreground" },
+  pending:   { icon: Clock,        rowClass: "bg-amber-500/5 border-amber-500/30",        iconClass: "bg-amber-500/10 text-amber-500" },
+  submitted: { icon: Clock,        rowClass: "bg-amber-500/5 border-amber-500/30",        iconClass: "bg-amber-500/10 text-amber-500" },
+  validated: { icon: CheckCircle2, rowClass: "bg-green-500/5 border-green-500/30",        iconClass: "bg-green-500/10 text-green-500" },
+  approved:  { icon: CheckCircle2, rowClass: "bg-green-500/5 border-green-500/30",        iconClass: "bg-green-500/10 text-green-500" },
+  rejected:  { icon: XCircle,      rowClass: "bg-destructive/5 border-destructive/30",    iconClass: "bg-destructive/10 text-destructive" },
+};
+
+function getDocStatusStyle(status: string) {
+  return DOC_STATUS_STYLES[status] ?? DOC_STATUS_STYLES.missing;
+}
 
 export function CertificationBoutique() {
-  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [boutiqueId, setBoutiqueId] = useState<string>("");
+  const [dashboard, setDashboard] = useState<CertificationDashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [showDemandeDialog, setShowDemandeDialog] = useState(false);
   const [showPropagationDialog, setShowPropagationDialog] = useState(false);
-  const [showBadgeRequestDialog, setShowBadgeRequestDialog] = useState(false);
-  const [badgeRequestForm, setBadgeRequestForm] = useState({
-    productId: "",
-    badgeType: "",
-    transformationProcess: "",
-    localValueAdded: "",
-  });
-  const [uploadingDoc, setUploadingDoc] = useState<CertificationDocument | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const [propagateAll, setPropagateAll] = useState(true);
-  const [productOverrides, setProductOverrides] = useState<Record<string, boolean>>({});
-  const [demandeData, setDemandeData] = useState({
-    badgeType: "",
-    processDescription: "",
-    scoreLocal: "",
-  });
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [submittingDemande, setSubmittingDemande] = useState(false);
 
-  // 1. Récupération de la boutique (pour avoir le boutiqueId)
-  const { data: boutique, isLoading: isLoadingBoutique } = useQuery({
-    queryKey: ["boutique", "myShop"],
-    queryFn: boutiquesApi.getMyShop,
-  });
-  const boutiqueId = boutique?.id ?? "";
+  const [demandeNiveau, setDemandeNiveau] = useState("");
+  const [demandeNote, setDemandeNote] = useState("");
+  const [demandeFiles, setDemandeFiles] = useState<File[]>([]);
+  const [madeInCIBadgeLevels, setMadeInCIBadgeLevels] = useState<MadeInCIBadgeLevel[]>([]);
 
-  // 2. Certification de la boutique
-  const { data: certData, isLoading: isLoadingCert } = useQuery({
-    queryKey: ["boutiqueCertification", boutiqueId],
-    queryFn: () => boutiqueCertificationApi.getCertification(boutiqueId),
-    enabled: !!boutiqueId,
-  });
+  const docFileInputRef = useRef<HTMLInputElement>(null);
+  const pendingDocTypeRef = useRef<string | null>(null);
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
 
-  // 3. Documents de certification
-  const { data: docsData, isLoading: isLoadingDocs } = useQuery({
-    queryKey: ["boutiqueCertDocs", boutiqueId],
-    queryFn: () => boutiqueCertificationApi.getDocuments(boutiqueId),
-    enabled: !!boutiqueId,
-  });
-
-  // 4. Produits avec badges
-  const { data: productsBadges = [], isLoading: isLoadingProducts } = useQuery({
-    queryKey: ["boutiqueCertProducts", boutiqueId],
-    queryFn: () => boutiqueCertificationApi.getProductsBadges(boutiqueId),
-    enabled: !!boutiqueId,
-  });
-
-  // 5. Niveaux de badge (pour le formulaire de demande)
-  const { data: badgeLevels = [] } = useQuery({
-    queryKey: ["madeInCI", "badgeLevels"],
-    queryFn: madeInCIBadgeLevelsApi.getAll,
-  });
-
-  // 6. Demandes de badge Made in CI par produit (fusion MadeInCI)
-  const { data: myRequests = [] } = useQuery({
-    queryKey: ["madeInCI", "myRequests"],
-    queryFn: madeInCIRequestsApi.getMyRequests,
-  });
-
-  // Mutations
-  const submitRequestMutation = useMutation({
-    mutationFn: (body: { badgeType: string; processDescription: string; scoreLocal: number }) =>
-      boutiqueCertificationApi.submitRequest(boutiqueId, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["boutiqueCertification", boutiqueId] });
-      setShowDemandeDialog(false);
-      setDemandeData({ badgeType: "", processDescription: "", scoreLocal: "" });
-      toast({ title: "Demande soumise", description: "Votre demande de certification a été envoyée." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const updateDocMutation = useMutation({
-    mutationFn: (body: { type: string; fileUrls: string[] }) =>
-      boutiqueCertificationApi.updateDocument(boutiqueId, { ...body, status: "pending" }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["boutiqueCertDocs", boutiqueId] });
-      setUploadingDoc(null);
-      setPendingFiles([]);
-      toast({ title: "Document envoyé", description: "Votre document a été soumis pour vérification." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const submitBadgeRequestMutation = useMutation({
-    mutationFn: madeInCIRequestsApi.submit,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["madeInCI", "myRequests"] });
-      queryClient.invalidateQueries({ queryKey: ["boutiqueCertProducts", boutiqueId] });
-      setShowBadgeRequestDialog(false);
-      setBadgeRequestForm({ productId: "", badgeType: "", transformationProcess: "", localValueAdded: "" });
-      toast({ title: "Demande soumise", description: "Votre demande de badge Made in CI a été envoyée." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const propagationMutation = useMutation({
-    mutationFn: (body: { applyToAll?: boolean; inheritFromBoutiqueForAll?: boolean; overrides?: { productId: string; inheritFromBoutique: boolean }[] }) =>
-      boutiqueCertificationApi.updateBadgePropagation(boutiqueId, body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["boutiqueCertProducts", boutiqueId] });
-      setShowPropagationDialog(false);
-      toast({ title: "Propagation mise à jour" });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    },
-  });
-
-  // ─── Handlers upload ──────────────────────────────────────────────────────
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    setPendingFiles((prev) => [...prev, ...files]);
-    // reset l'input pour pouvoir resélectionner le même fichier
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  const fetchDashboard = useCallback(async (bid: string) => {
+    try {
+      const data = await boutiqueCertificationApi.getDashboard(bid);
+      setDashboard(data);
+    } catch {
+      setError("Impossible de charger la certification de votre boutique.");
+    }
   }, []);
 
-  const handleRemovePendingFile = (index: number) => {
-    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
-  };
+  useEffect(() => {
+    madeInCIBadgeLevelsApi.getAll().then(setMadeInCIBadgeLevels).catch(() => {});
+    boutiquesApi.getMyShop()
+      .then(async (b) => {
+        if (!b) {
+          setIsLoading(false);
+          return;
+        }
+        setBoutiqueId(b.id);
+        await fetchDashboard(b.id);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        setError("Impossible de charger votre boutique.");
+        setIsLoading(false);
+      });
+  }, [fetchDashboard]);
 
-  const handleSubmitDocument = async () => {
-    if (!uploadingDoc || pendingFiles.length === 0) return;
-    setIsUploading(true);
+  const certification = dashboard?.certification ?? null;
+  const StatusIcon = certification ? getStatusConfig(certification.status).icon : CircleDot;
+  const isCertifie = certification?.status === "Certifie";
+  const produits = dashboard?.produits ?? [];
+  const produitsAvecBadge = dashboard?.produitsAvecBadge ?? 0;
+  const badgeLevelEntries = Object.entries(dashboard?.badgeLevels ?? {});
+
+  const handleSubmitDemande = async () => {
+    if (!boutiqueId || !demandeNiveau) return;
+    setSubmittingDemande(true);
     try {
-      await boutiqueCertificationApi.uploadDocumentFiles(
-        boutiqueId,
-        uploadingDoc.type,
-        pendingFiles
-      );
-      queryClient.invalidateQueries({ queryKey: ["boutiqueCertDocs", boutiqueId] });
-      setUploadingDoc(null);
-      setPendingFiles([]);
-      toast({ title: "Document envoyé", description: "Votre document a été soumis pour vérification." });
+      await boutiqueCertificationApi.submitRequest(boutiqueId, {
+        requestedBadgeType: demandeNiveau,
+        note: demandeNote || undefined,
+        files: demandeFiles,
+      });
+      toast({ title: "Demande envoyée", description: "Votre demande de certification a été soumise." });
+      setShowDemandeDialog(false);
+      setDemandeNiveau("");
+      setDemandeNote("");
+      setDemandeFiles([]);
+      await fetchDashboard(boutiqueId);
     } catch (err) {
       toast({
-        title: "Erreur d'upload",
-        description: err instanceof Error ? err.message : "Impossible d'envoyer le fichier.",
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de soumettre la demande.",
         variant: "destructive",
       });
     } finally {
-      setIsUploading(false);
+      setSubmittingDemande(false);
     }
   };
 
-  const handleRemoveExistingUrl = (doc: CertificationDocument, urlToRemove: string) => {
-    const newUrls = doc.fileUrls.filter((u) => u !== urlToRemove);
-    updateDocMutation.mutate({ type: doc.type, fileUrls: newUrls });
+  const handleUploadClick = (item: CertificationChecklistItem) => {
+    pendingDocTypeRef.current = item.id;
+    docFileInputRef.current?.click();
   };
 
-  // ─── Données dérivées ──────────────────────────────────────────────────────
-
-  const displayStatus: DisplayStatus = certData ? resolveStatus(certData) : "NonCertifie";
-  const isCertifie = displayStatus === "Certifie";
-  const statusCfg = statusConfig[displayStatus];
-  const StatusIcon = statusCfg.icon;
-  const badgeTypeCfg = getBadgeCfg(certData?.badgeType);
-  const produitsAvecBadge = productsBadges.filter((p) => p.effectiveBadge !== null).length;
-
-  // Demande Made in CI la plus récente par produit (fusion MadeInCI)
-  const requestByProduct = new Map<string, (typeof myRequests)[number]>();
-  for (const r of myRequests) {
-    const existing = requestByProduct.get(r.productId);
-    if (!existing || new Date(r.submittedAt) > new Date(existing.submittedAt)) {
-      requestByProduct.set(r.productId, r);
+  const handleDocFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    const type = pendingDocTypeRef.current;
+    if (!files.length || !type || !boutiqueId) return;
+    setUploadingType(type);
+    try {
+      await boutiqueCertificationApi.uploadDocumentFiles(boutiqueId, type, files);
+      toast({ title: "Document envoyé" });
+      await fetchDashboard(boutiqueId);
+    } catch (err) {
+      toast({
+        title: "Erreur lors de l'envoi",
+        description: err instanceof Error ? err.message : "Impossible d'envoyer le document.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingType(null);
+      pendingDocTypeRef.current = null;
     }
-  }
+  };
 
-  function openBadgeRequest(productId: string) {
-    setBadgeRequestForm({ productId, badgeType: "", transformationProcess: "", localValueAdded: "" });
-    setShowBadgeRequestDialog(true);
-  }
-
-  function handleSubmitBadgeRequest() {
-    if (!badgeRequestForm.productId || !badgeRequestForm.badgeType || !badgeRequestForm.transformationProcess || !badgeRequestForm.localValueAdded) {
-      toast({ title: "Champs requis", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
-      return;
+  const handleToggleProduitBadge = async (produitId: string, value: boolean) => {
+    if (!boutiqueId) return;
+    try {
+      await boutiqueCertificationApi.updateBadgePropagation(boutiqueId, {
+        overrides: [{ productId: produitId, inheritFromBoutique: value }],
+      });
+      await fetchDashboard(boutiqueId);
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de mettre à jour le badge.",
+        variant: "destructive",
+      });
     }
-    submitBadgeRequestMutation.mutate({
-      productId: badgeRequestForm.productId,
-      badgeType: badgeRequestForm.badgeType,
-      transformationProcess: badgeRequestForm.transformationProcess,
-      localValueAdded: parseFloat(badgeRequestForm.localValueAdded),
-    });
-  }
+  };
 
-  // ─── Handlers ─────────────────────────────────────────────────────────────
-
-  function handleSubmitDemande() {
-    if (!demandeData.badgeType || !demandeData.processDescription || !demandeData.scoreLocal) {
-      toast({ title: "Champs requis", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
-      return;
+  const handlePropagateAll = async () => {
+    if (!boutiqueId) return;
+    try {
+      await boutiqueCertificationApi.updateBadgePropagation(boutiqueId, {
+        applyToAll: true,
+        inheritFromBoutiqueForAll: propagateAll,
+      });
+      setShowPropagationDialog(false);
+      await fetchDashboard(boutiqueId);
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de mettre à jour les badges.",
+        variant: "destructive",
+      });
     }
-    submitRequestMutation.mutate({
-      badgeType: demandeData.badgeType,
-      processDescription: demandeData.processDescription,
-      scoreLocal: parseFloat(demandeData.scoreLocal),
-    });
-  }
+  };
 
-  function handleApplyPropagation() {
-    const overrides = Object.entries(productOverrides).map(([productId, inherit]) => ({
-      productId,
-      inheritFromBoutique: inherit,
-    }));
-    propagationMutation.mutate({
-      applyToAll: propagateAll,
-      inheritFromBoutiqueForAll: propagateAll,
-      overrides: propagateAll ? [] : overrides,
-    });
-  }
-
-  // ─── Chargement global ────────────────────────────────────────────────────
-
-  if (isLoadingBoutique || isLoadingCert) {
+  if (isLoading) {
     return (
-      <div className="flex justify-center py-24">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="flex justify-center items-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  // ─── Rendu ────────────────────────────────────────────────────────────────
+  if (error || !dashboard || !certification) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center text-muted-foreground">
+          {error || "Aucune boutique associée à votre compte."}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      <input ref={docFileInputRef} type="file" multiple className="hidden" onChange={handleDocFileChange} />
+
       {/* Header Certification */}
-      {/* <Card className={cn(
+      <Card className={cn(
         "border-2",
         isCertifie && "border-green-500/50 bg-gradient-to-r from-green-500/5 to-primary/5",
-        displayStatus === "EnCours" && "border-blue-500/50 bg-blue-500/5",
-        displayStatus === "Audit" && "border-amber-500/50 bg-amber-500/5",
-        displayStatus === "Refuse" && "border-destructive/50 bg-destructive/5",
-        displayStatus === "NonCertifie" && "border-muted",
+        certification.status === "EnCours" && "border-blue-500/50 bg-blue-500/5",
+        certification.status === "Audit" && "border-amber-500/50 bg-amber-500/5",
+        certification.status === "Refuse" && "border-destructive/50 bg-destructive/5",
+        certification.status === "NonCertifie" && "border-muted"
       )}>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className={cn("p-4 rounded-2xl", isCertifie ? "bg-green-500/10" : "bg-muted")}>
-                {isCertifie
-                  ? <BadgeCheck className="w-10 h-10 text-green-500" />
-                  : <Store className="w-10 h-10 text-muted-foreground" />}
+              <div className={cn(
+                "p-4 rounded-2xl",
+                isCertifie ? "bg-green-500/10" : "bg-muted"
+              )}>
+                {isCertifie ? (
+                  <BadgeCheck className="w-10 h-10 text-green-500" />
+                ) : (
+                  <Store className="w-10 h-10 text-muted-foreground" />
+                )}
               </div>
               <div>
                 <h2 className="text-2xl font-bold">Certification Boutique</h2>
                 <div className="flex items-center gap-2 mt-1">
-                  <StatusIcon className={cn("w-5 h-5", statusCfg.color)} />
-                  <span className={cn("font-medium", statusCfg.color)}>{statusCfg.label}</span>
-                  {isCertifie && certData?.badgeType && (
-                    <Badge className={badgeTypeCfg.color}>
+                  <StatusIcon className={cn("w-5 h-5", getStatusConfig(certification.status).color)} />
+                  <span className={cn("font-medium", getStatusConfig(certification.status).color)}>
+                    {getStatusConfig(certification.status).label}
+                  </span>
+                  {isCertifie && certification.niveau && (
+                    <Badge className={getBadgeColor(certification.niveau)}>
                       <Award className="w-3 h-3 mr-1" />
-                      Made in CI - {badgeLevels.find(l => l.id === certData.badgeType)?.label ?? certData.badgeType}
+                      Made in CI - {dashboard.badgeLevels[certification.niveau]?.label ?? certification.niveau}
                     </Badge>
                   )}
                 </div>
-                {isCertifie && certData?.validUntil && (
+                {isCertifie && certification.dateExpiration && (
                   <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
-                    Valide jusqu'au {new Date(certData.validUntil).toLocaleDateString("fr-FR")}
+                    Valide jusqu'au {certification.dateExpiration}
                   </p>
                 )}
               </div>
@@ -407,114 +315,45 @@ export function CertificationBoutique() {
                 <>
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">Score local</p>
-                    <p className="text-2xl font-bold text-primary">{certData?.scoreLocal ?? "—"}%</p>
+                    <p className="text-2xl font-bold text-primary">{certification.scoreLocal}%</p>
                   </div>
                   <Button variant="outline" onClick={() => setShowPropagationDialog(true)}>
                     <Sparkles className="w-4 h-4 mr-1" />
                     Badges produits
                   </Button>
                 </>
-              ) : displayStatus === "NonCertifie" || displayStatus === "Refuse" ? (
+              ) : certification.status === "NonCertifie" || certification.status === "Refuse" || certification.status === "Expire" ? (
                 <Button onClick={() => setShowDemandeDialog(true)}>
                   <Award className="w-4 h-4 mr-1" />
                   Demander la certification
                 </Button>
               ) : (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="w-4 h-4" />
-                  Dossier en cours de traitement
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Progression</p>
+                    <p className="font-semibold">{certification.progression}%</p>
+                  </div>
+                  <Progress value={certification.progression} className="w-24 h-2" />
                 </div>
               )}
             </div>
           </div>
         </CardContent>
-      </Card> */}
+      </Card>
 
       <Tabs defaultValue={isCertifie ? "produits" : "processus"} className="space-y-6">
         <TabsList>
           <TabsTrigger value="processus">Processus de certification</TabsTrigger>
-          <TabsTrigger value="documents">
-            Documents {docsData ? `(${docsData.required.completed}/${docsData.required.total})` : ""}
-          </TabsTrigger>
+          <TabsTrigger value="documents">Documents ({dashboard.checklist.length})</TabsTrigger>
           <TabsTrigger value="produits">
-            Produits badgés ({produitsAvecBadge}/{productsBadges.length})
+            Produits badgés ({produitsAvecBadge}/{produits.length})
           </TabsTrigger>
+          <TabsTrigger value="historique">Historique</TabsTrigger>
         </TabsList>
 
-        {/* ── Onglet : Processus ── */}
+        {/* Processus */}
         <TabsContent value="processus" className="space-y-4">
-          {/* Demande de certification déjà soumise */}
-          {certData?.current && (
-            <Card className={cn(
-              "border-2",
-              displayStatus === "EnCours" && "border-blue-500/40 bg-blue-500/5",
-              displayStatus === "Audit" && "border-amber-500/40 bg-amber-500/5",
-              displayStatus === "Refuse" && "border-destructive/40 bg-destructive/5",
-              displayStatus === "Certifie" && "border-green-500/40 bg-green-500/5",
-            )}>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-primary" />
-                    Demande de certification
-                  </CardTitle>
-                  <Badge className={cn(statusCfg.bgColor, statusCfg.color, "border-0")}>
-                    <StatusIcon className="w-3 h-3 mr-1" />
-                    {statusCfg.label}
-                  </Badge>
-                </div>
-                <CardDescription>
-                  {certData.current.submittedAt
-                    ? `Soumise le ${new Date(certData.current.submittedAt).toLocaleDateString("fr-FR")}`
-                    : "Demande enregistrée"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Niveau demandé</p>
-                    <Badge className={getBadgeCfg(certData.current.badgeType).color}>
-                      <Award className="w-3 h-3 mr-1" />
-                      Made in CI - {badgeLevels.find(l => l.id === certData.current!.badgeType)?.label ?? certData.current.badgeType}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Score local estimé</p>
-                    <p className="text-lg font-bold text-primary">{certData.current.scoreLocal ?? "—"}%</p>
-                  </div>
-                </div>
-
-                {certData.current.processDescription && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Processus de transformation</p>
-                    <p className="text-sm">{certData.current.processDescription}</p>
-                  </div>
-                )}
-
-                {typeof certData.current.progress === "number" && (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs text-muted-foreground">Avancement du traitement</p>
-                      <span className="text-xs font-medium">{certData.current.progress}%</span>
-                    </div>
-                    <Progress value={certData.current.progress} className="h-2" />
-                  </div>
-                )}
-
-                {certData.current.adminComment && (
-                  <div className="p-3 rounded-lg bg-muted/50 border flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-medium">Commentaire de l'équipe CPU-PME</p>
-                      <p className="text-sm text-muted-foreground">{certData.current.adminComment}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* <Card>
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="w-5 h-5 text-primary" />
@@ -526,14 +365,8 @@ export function CertificationBoutique() {
             </CardHeader>
             <CardContent>
               <div className="space-y-1">
-                {[
-                  { step: 1, label: "Demande de certification",          desc: "Soumission du formulaire et documents requis",          done: ["EnCours","Audit","Certifie"].includes(displayStatus) },
-                  { step: 2, label: "Vérification documentaire",         desc: "Examen des preuves et documents fournis",               done: ["Audit","Certifie"].includes(displayStatus) },
-                  { step: 3, label: "Audit sur site",                    desc: "Visite de vos installations par un auditeur CPU-PME",   done: isCertifie },
-                  { step: 4, label: "Calcul du score de valeur ajoutée", desc: "Évaluation du % de transformation locale",              done: isCertifie },
-                  { step: 5, label: "Attribution du badge",              desc: "Niveau déterminé selon le score obtenu",                done: isCertifie },
-                ].map((item, idx) => (
-                  <div key={idx} className="flex gap-4 p-4">
+                {dashboard.steps.map((item, idx) => (
+                  <div key={item.step} className="flex gap-4 p-4">
                     <div className="flex flex-col items-center">
                       <div className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm",
@@ -541,7 +374,9 @@ export function CertificationBoutique() {
                       )}>
                         {item.done ? <CheckCircle2 className="w-5 h-5" /> : item.step}
                       </div>
-                      {idx < 4 && <div className={cn("w-0.5 h-8 mt-1", item.done ? "bg-green-500" : "bg-muted")} />}
+                      {idx < dashboard.steps.length - 1 && (
+                        <div className={cn("w-0.5 h-8 mt-1", item.done ? "bg-green-500" : "bg-muted")} />
+                      )}
                     </div>
                     <div className="pt-1">
                       <p className={cn("font-medium", item.done && "text-green-600")}>{item.label}</p>
@@ -551,7 +386,7 @@ export function CertificationBoutique() {
                 ))}
               </div>
             </CardContent>
-          </Card> */}
+          </Card>
 
           {/* Niveaux expliqués */}
           <Card>
@@ -561,178 +396,93 @@ export function CertificationBoutique() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {badgeLevels.map((level) => {
-                  const cfg = getBadgeCfg(level.id);
-                  const isCurrentLevel = certData?.badgeType === level.id;
-                  const score = Number(certData?.scoreLocal ?? certData?.current?.scoreLocal ?? 0) || 0;
-                  return (
-                    <div key={level.id} className={cn(
-                      "p-4 rounded-xl border-2 transition-all",
-                      isCurrentLevel ? "border-green-500 bg-green-500/5" : "border-muted"
-                    )}>
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge className={cfg.color}>
-                          <Award className="w-3 h-3 mr-1" />
-                          Made in CI - {level.label}
+                {badgeLevelEntries.map(([key, level]) => (
+                  <div key={key} className={cn(
+                    "p-4 rounded-xl border-2 transition-all",
+                    certification.niveau === key ? "border-green-500 bg-green-500/5" : "border-muted"
+                  )}>
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge className={getBadgeColor(key)}>
+                        <Award className="w-3 h-3 mr-1" />
+                        Made in CI - {level.label}
+                      </Badge>
+                      {certification.niveau === key && (
+                        <Badge variant="outline" className="border-green-500 text-green-600">
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Votre niveau
                         </Badge>
-                        {isCurrentLevel && (
-                          <Badge variant="outline" className="border-green-500 text-green-600">
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Votre niveau
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{level.description}</p>
-                      {cfg.minScore > 0 && (
-                        <div className="mt-2">
-                          <Progress value={Math.min(100, (score / cfg.minScore) * 100)} className="h-1.5" />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Score minimum : {cfg.minScore}% • Votre score : {score}%
-                          </p>
-                        </div>
                       )}
                     </div>
-                  );
-                })}
+                    <p className="text-sm text-muted-foreground">{level.desc}</p>
+                    <div className="mt-2">
+                      <Progress
+                        value={level.minScore > 0 ? Math.min(100, (certification.scoreLocal / level.minScore) * 100) : 100}
+                        className="h-1.5"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Score minimum : {level.minScore}% • Votre score : {certification.scoreLocal}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ── Onglet : Documents ── */}
+        {/* Documents */}
         <TabsContent value="documents" className="space-y-4">
-          {/* Barre de progression globale */}
-          {docsData && (
-            <Card className="border-primary/20">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Documents requis complétés</span>
-                  <span className="text-sm font-bold text-primary">
-                    {docsData.required.completed} / {docsData.required.total}
-                  </span>
-                </div>
-                <Progress
-                  value={(docsData.required.completed / Math.max(docsData.required.total, 1)) * 100}
-                  className="h-2"
-                />
-              </CardContent>
-            </Card>
-          )}
-
           <Card>
             <CardHeader>
               <CardTitle>Documents de certification</CardTitle>
-              <CardDescription>
-                Uploadez les documents requis pour votre dossier de certification
-              </CardDescription>
+              <CardDescription>Documents requis et soumis pour votre certification</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {isLoadingDocs ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (docsData?.documents ?? []).map((doc) => {
-                const DocIcon = getDocIcon(doc.type);
-                const hasFiles = doc.fileUrls.length > 0;
+              {dashboard.checklist.map((item) => {
+                const ItemIcon = getChecklistIcon(item.id);
+                const docStyle = getDocStatusStyle(item.status);
+                const StatusIconDoc = docStyle.icon;
+                const hasDoc = !!item.document;
+                const isUploading = uploadingType === item.id;
+                const firstUrl = item.fileUrls[0];
+
                 return (
                   <div
-                    key={doc.type}
-                    className={cn(
-                      "rounded-lg border transition-colors overflow-hidden",
-                      doc.status === "validated" && "border-green-500/30 bg-green-500/5",
-                      doc.status === "rejected"  && "border-destructive/30 bg-destructive/5",
-                      doc.status === "pending" && hasFiles && "border-amber-500/30 bg-amber-500/5",
-                      doc.status === "pending" && !hasFiles && "border-muted bg-muted/30",
-                    )}
+                    key={item.id}
+                    className={cn("flex items-center gap-4 p-4 rounded-lg border transition-colors", docStyle.rowClass)}
                   >
-                    {/* Ligne principale */}
-                    <div className="flex items-center gap-4 p-4">
-                      <div className={cn(
-                        "p-2 rounded-lg shrink-0",
-                        doc.status === "validated" ? "bg-green-500/10 text-green-500"    :
-                        doc.status === "rejected"  ? "bg-destructive/10 text-destructive" :
-                        hasFiles                   ? "bg-amber-500/10 text-amber-500"    :
-                        "bg-muted text-muted-foreground"
-                      )}>
-                        <DocIcon className="w-5 h-5" />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium">{doc.label}</p>
-                          {doc.isRequired
-                            ? <Badge variant="outline" className="text-xs">Requis</Badge>
-                            : <Badge variant="outline" className="text-xs text-muted-foreground">Optionnel</Badge>
-                          }
-                        </div>
-                        <p className="text-sm text-muted-foreground">{doc.description}</p>
-                        {doc.submittedAt && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Mis à jour le {new Date(doc.submittedAt).toLocaleDateString("fr-FR")}
-                          </p>
-                        )}
-                        {doc.adminComment && (
-                          <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {doc.adminComment}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {doc.status === "validated" && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-                        {doc.status === "rejected"  && <XCircle className="w-5 h-5 text-destructive" />}
-                        {doc.status === "pending" && hasFiles && <Clock className="w-5 h-5 text-amber-500" />}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { setUploadingDoc(doc); setPendingFiles([]); }}
-                        >
-                          {hasFiles ? (
-                            <><PlusCircle className="w-4 h-4 mr-1" />Mettre à jour</>
-                          ) : (
-                            <><Upload className="w-4 h-4 mr-1" />Envoyer</>
-                          )}
-                        </Button>
-                      </div>
+                    <div className={cn("p-2 rounded-lg", docStyle.iconClass)}>
+                      <ItemIcon className="w-5 h-5" />
                     </div>
-
-                    {/* Fichiers déjà uploadés */}
-                    {hasFiles && (
-                      <div className="border-t px-4 py-2 space-y-1">
-                        <p className="text-xs text-muted-foreground font-medium mb-1">
-                          {doc.fileUrls.length} fichier(s) envoyé(s) :
-                        </p>
-                        {doc.fileUrls.map((url, idx) => (
-                          <div key={idx} className="flex items-center justify-between gap-2 text-sm">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <FileText className="w-3 h-3 text-muted-foreground shrink-0" />
-                              <span className="truncate text-xs text-muted-foreground">
-                                {url.split("/").pop() ?? `Fichier ${idx + 1}`}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <a href={url} target="_blank" rel="noreferrer">
-                                <Button variant="ghost" size="icon" className="h-6 w-6">
-                                  <ExternalLink className="w-3 h-3" />
-                                </Button>
-                              </a>
-                              {doc.status !== "validated" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-destructive hover:text-destructive"
-                                  onClick={() => handleRemoveExistingUrl(doc, url)}
-                                  disabled={updateDocMutation.isPending}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{item.label}</p>
+                        {item.required && <Badge variant="outline" className="text-xs">Requis</Badge>}
                       </div>
-                    )}
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                      {hasDoc && item.submittedAt && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {item.document?.nom} • Envoyé le {item.submittedAt}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {hasDoc && <StatusIconDoc className={cn("w-5 h-5", docStyle.iconClass.split(" ")[1])} />}
+                      {hasDoc && firstUrl && (
+                        <Button variant="ghost" size="sm" onClick={() => window.open(firstUrl, "_blank", "noopener,noreferrer")}>
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant={hasDoc ? "outline" : "outline"}
+                        size="sm"
+                        disabled={isUploading}
+                        onClick={() => handleUploadClick(item)}
+                      >
+                        {isUploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                        {hasDoc ? "Renvoyer" : "Envoyer"}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
@@ -740,126 +490,133 @@ export function CertificationBoutique() {
           </Card>
         </TabsContent>
 
-        {/* ── Onglet : Produits badgés ── */}
+        {/* Produits badgés */}
         <TabsContent value="produits" className="space-y-4">
-          {/* Propagation du badge boutique (uniquement si la boutique est certifiée) */}
-          {isCertifie && (
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    <div>
-                      <p className="font-medium">Propagation des badges</p>
-                      <p className="text-sm text-muted-foreground">
-                        Vos produits peuvent hériter du badge boutique. Un produit avec son propre badge garde le badge le plus élevé.
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setShowPropagationDialog(true)}>
-                    Gérer
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {isLoadingProducts ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : productsBadges.length === 0 ? (
+          {!isCertifie ? (
             <Card>
               <CardContent className="p-12 text-center">
-                <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <h3 className="font-semibold mb-2">Aucun produit</h3>
-                <p className="text-sm text-muted-foreground">
-                  Ajoutez des produits à votre boutique pour gérer leurs badges Made in CI.
+                <Award className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="font-semibold mb-2">Certification requise</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Obtenez d'abord la certification boutique pour propager les badges à vos produits
                 </p>
+                <Button onClick={() => setShowDemandeDialog(true)}>
+                  Demander la certification
+                </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {productsBadges.map((produit) => {
-                const effectiveCfg = getBadgeCfg(produit.effectiveBadge);
-                const effectiveLabel = badgeLevels.find(l => l.id === produit.effectiveBadge)?.label ?? produit.effectiveBadge;
-                const req = requestByProduct.get(produit.productId);
-                const reqKey = req ? normalizeReqStatus(req.status) : null;
-                const reqCfg = reqKey ? reqStatusConfig[reqKey] : null;
-                const ReqIcon = reqCfg?.icon;
-                const canRequest = !req || reqKey === "rejected";
-                return (
-                  <Card key={produit.productId}>
+            <>
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium">Propagation des badges</p>
+                        <p className="text-sm text-muted-foreground">
+                          Vos produits héritent automatiquement du badge boutique
+                          {certification.niveau && ` (${dashboard.badgeLevels[certification.niveau]?.label ?? certification.niveau})`}.
+                          Un produit avec son propre badge Made in CI garde le badge le plus élevé.
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowPropagationDialog(true)}>
+                      Gérer
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-3">
+                {produits.map((produit) => (
+                  <Card key={produit.id}>
                     <CardContent className="p-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
-                          <Package className="w-6 h-6 text-muted-foreground" />
+                        <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center text-3xl">
+                          {produit.image}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold">{produit.name}</p>
+                        <div className="flex-1">
+                          <p className="font-semibold">{produit.nom}</p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            {produit.effectiveBadge ? (
-                              <Badge className={effectiveCfg.color}>
+                            {produit.badgeEffectif ? (
+                              <Badge className={getBadgeColor(produit.badgeEffectif)}>
                                 <Award className="w-3 h-3 mr-1" />
-                                Made in CI - {effectiveLabel}
+                                Made in CI - {dashboard.badgeLevels[produit.badgeEffectif]?.label ?? produit.badgeEffectif}
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-muted-foreground">Pas de badge</Badge>
+                              <Badge variant="outline" className="text-muted-foreground">
+                                Pas de badge
+                              </Badge>
                             )}
-                            {produit.inheritFromBoutique && !produit.ownBadge && (
+                            {produit.badgeBoutique && !produit.badgeProduit && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Store className="w-3 h-3" /> Hérité de la boutique
                               </span>
                             )}
-                            {produit.ownBadge && (
+                            {produit.badgeProduit && (
                               <span className="text-xs text-muted-foreground flex items-center gap-1">
                                 <Package className="w-3 h-3" /> Badge propre au produit
                               </span>
                             )}
-                            {reqCfg && ReqIcon && (
-                              <span className={cn("text-xs flex items-center gap-1", reqCfg.color)}>
-                                <ReqIcon className="w-3 h-3" />
-                                Demande : {reqCfg.label}
-                                {reqKey === "in_audit" && req && req.progress > 0 ? ` (${req.progress}%)` : ""}
-                              </span>
-                            )}
                           </div>
-                          {req?.adminComment && reqKey === "rejected" && (
-                            <p className="text-xs text-destructive mt-1 flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3 shrink-0" /> {req.adminComment}
-                            </p>
-                          )}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Score valeur locale : {produit.scoreLocal}%
+                          </p>
                         </div>
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          {isCertifie && (
-                            <div className="text-right">
-                              <p className="text-xs text-muted-foreground mb-1">Badge boutique</p>
-                              <Switch
-                                checked={produit.inheritFromBoutique}
-                                onCheckedChange={(v) => {
-                                  setProductOverrides((prev) => ({ ...prev, [produit.productId]: v }));
-                                }}
-                              />
-                            </div>
-                          )}
-                          {canRequest && (
-                            <Button variant="outline" size="sm" onClick={() => openBadgeRequest(produit.productId)}>
-                              <Award className="w-4 h-4 mr-1" />
-                              Demander un badge
-                            </Button>
-                          )}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">Badge boutique</p>
+                            <Switch
+                              checked={produit.badgeBoutique}
+                              onCheckedChange={(v) => handleToggleProduitBadge(produit.id, v)}
+                            />
+                          </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            </>
           )}
+        </TabsContent>
+
+        {/* Historique */}
+        <TabsContent value="historique" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Journal d'audit</CardTitle>
+              <CardDescription>Historique des actions liées à votre certification</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {dashboard.historique.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Aucun évènement pour le moment.</p>
+              ) : (
+                <div className="space-y-4">
+                  {dashboard.historique.map((event, idx) => (
+                    <div key={idx} className="flex gap-4 items-start">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full mt-2",
+                        event.type === "success" ? "bg-green-500" : event.type === "error" ? "bg-destructive" : "bg-blue-500"
+                      )} />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-sm">{event.action}</p>
+                          <span className="text-xs text-muted-foreground">{event.date}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{event.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
-      {/* ── Dialog : Demande de certification ── */}
+      {/* Dialog Demande de certification */}
       <Dialog open={showDemandeDialog} onOpenChange={setShowDemandeDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -868,69 +625,66 @@ export function CertificationBoutique() {
               Demande de certification Made in CI
             </DialogTitle>
             <DialogDescription>
-              Remplissez ce formulaire pour lancer le processus de certification de votre boutique
+              Choisissez le niveau visé et joignez, si besoin, des documents complémentaires
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
-            {/* Niveau souhaité */}
             <div className="space-y-2">
               <Label>Niveau souhaité *</Label>
               <div className="grid grid-cols-2 gap-3">
-                {badgeLevels.map((level) => {
-                  const cfg = getBadgeCfg(level.id);
-                  return (
-                    <div
-                      key={level.id}
-                      className={cn(
-                        "p-3 rounded-xl border-2 cursor-pointer transition-all text-center",
-                        demandeData.badgeType === level.id
-                          ? "ring-2 ring-primary border-primary"
-                          : "border-muted hover:border-primary/50"
-                      )}
-                      onClick={() => setDemandeData({ ...demandeData, badgeType: level.id })}
-                    >
-                      <Badge className={cn(cfg.color, "mb-2")}>
-                        <Award className="w-3 h-3 mr-1" />
-                        {level.label}
-                      </Badge>
-                      <p className="text-xs text-muted-foreground">{level.description}</p>
-                      {cfg.minScore > 0 && (
-                        <p className="text-xs font-medium mt-1">Score min : {cfg.minScore}%</p>
-                      )}
-                    </div>
-                  );
-                })}
+                {madeInCIBadgeLevels.map((level) => (
+                  <div
+                    key={level.id}
+                    className={cn(
+                      "p-3 rounded-xl border-2 cursor-pointer transition-all text-center",
+                      demandeNiveau === level.id ? "ring-2 ring-primary border-primary" : "border-muted hover:border-primary/50"
+                    )}
+                    onClick={() => setDemandeNiveau(level.id)}
+                  >
+                    <Badge className={cn(getBadgeColor(level.id), "mb-2")}>
+                      <Award className="w-3 h-3 mr-1" />
+                      {level.label}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground">{level.description}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Description du processus */}
             <div className="space-y-2">
-              <Label htmlFor="process">Processus de transformation *</Label>
+              <Label htmlFor="note">Note pour l'équipe CPU-PME</Label>
               <Textarea
-                id="process"
-                placeholder="Détaillez les étapes de transformation réalisées en Côte d'Ivoire..."
-                rows={4}
-                value={demandeData.processDescription}
-                onChange={(e) => setDemandeData({ ...demandeData, processDescription: e.target.value })}
+                id="note"
+                placeholder="Précisez tout élément utile à l'examen de votre dossier..."
+                rows={3}
+                value={demandeNote}
+                onChange={(e) => setDemandeNote(e.target.value)}
               />
             </div>
 
-            {/* Score local estimé */}
             <div className="space-y-2">
-              <Label htmlFor="score">% estimé de valeur ajoutée locale *</Label>
-              <Input
-                id="score"
-                type="number"
-                min={0}
-                max={100}
-                placeholder="Ex: 65"
-                value={demandeData.scoreLocal}
-                onChange={(e) => setDemandeData({ ...demandeData, scoreLocal: e.target.value })}
-              />
+              <Label>Documents complémentaires (optionnel)</Label>
+              <label className="flex items-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground">
+                  {demandeFiles.length > 0
+                    ? `${demandeFiles.length} fichier${demandeFiles.length > 1 ? "s" : ""} sélectionné${demandeFiles.length > 1 ? "s" : ""}`
+                    : "Cliquez pour joindre des fichiers"}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setDemandeFiles(Array.from(e.target.files ?? []))}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Les documents de la checklist se gèrent individuellement dans l'onglet "Documents".
+              </p>
             </div>
 
             <div className="p-4 rounded-lg bg-muted/50 border">
-              <p className="text-sm font-medium mb-1">Ce qui se passe ensuite</p>
+              <p className="text-sm font-medium mb-1">🔍 Ce qui se passe ensuite</p>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
                 <li>Vérification de votre dossier par l'équipe CPU-PME (3-5 jours)</li>
                 <li>Audit sur site si le dossier est conforme (planifié sous 10 jours)</li>
@@ -940,21 +694,19 @@ export function CertificationBoutique() {
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowDemandeDialog(false)} disabled={submitRequestMutation.isPending}>
+              <Button variant="outline" onClick={() => setShowDemandeDialog(false)} disabled={submittingDemande}>
                 Annuler
               </Button>
-              <Button onClick={handleSubmitDemande} disabled={submitRequestMutation.isPending}>
-                {submitRequestMutation.isPending
-                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  : <Award className="w-4 h-4 mr-1" />}
-                Soumettre la demande
+              <Button onClick={handleSubmitDemande} disabled={!demandeNiveau || submittingDemande}>
+                {submittingDemande ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Award className="w-4 h-4 mr-1" />}
+                {submittingDemande ? "Envoi…" : "Soumettre la demande"}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog : Propagation badges ── */}
+      {/* Dialog Propagation badges */}
       <Dialog open={showPropagationDialog} onOpenChange={setShowPropagationDialog}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -967,260 +719,60 @@ export function CertificationBoutique() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {certData?.badgeType && (
-              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Store className="w-4 h-4 text-primary" />
-                  <span className="font-medium">Badge boutique :</span>
-                  <Badge className={getBadgeCfg(certData.badgeType).color}>
-                    Made in CI - {badgeLevels.find(l => l.id === certData.badgeType)?.label ?? certData.badgeType}
+            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+              <div className="flex items-center gap-2 mb-2">
+                <Store className="w-4 h-4 text-primary" />
+                <span className="font-medium">Badge boutique :</span>
+                {certification.niveau && (
+                  <Badge className={getBadgeColor(certification.niveau)}>
+                    Made in CI - {dashboard.badgeLevels[certification.niveau]?.label ?? certification.niveau}
                   </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Les produits activés recevront ce badge. Si un produit a déjà son propre badge Made in CI, le badge le plus élevé sera affiché.
-                </p>
+                )}
               </div>
-            )}
+              <p className="text-sm text-muted-foreground">
+                Les produits activés recevront ce badge. Si un produit a déjà son propre badge Made in CI (obtenu individuellement), le badge le plus élevé sera affiché.
+              </p>
+            </div>
 
             <div className="flex items-center justify-between p-3 rounded-lg border">
               <div>
                 <p className="font-medium">Appliquer à tous les produits</p>
-                <p className="text-sm text-muted-foreground">{productsBadges.length} produit(s) concerné(s)</p>
+                <p className="text-sm text-muted-foreground">{produits.length} produits concernés</p>
               </div>
               <Switch checked={propagateAll} onCheckedChange={setPropagateAll} />
             </div>
 
-            {!propagateAll && (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {productsBadges.map((p) => {
-                  const isChecked = productOverrides[p.productId] ?? p.inheritFromBoutique;
-                  const effectiveLabel = badgeLevels.find(l => l.id === p.effectiveBadge)?.label ?? p.effectiveBadge;
-                  return (
-                    <div key={p.productId} className="flex items-center justify-between p-3 rounded-lg border">
-                      <div className="flex items-center gap-3">
-                        <Package className="w-5 h-5 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{p.name}</p>
-                          {p.effectiveBadge && (
-                            <Badge className={cn(getBadgeCfg(p.effectiveBadge).color, "text-xs mt-0.5")}>
-                              {effectiveLabel}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                      <Switch
-                        checked={isChecked}
-                        onCheckedChange={(v) => setProductOverrides((prev) => ({ ...prev, [p.productId]: v }))}
-                      />
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {produits.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{p.image}</span>
+                    <div>
+                      <p className="text-sm font-medium">{p.nom}</p>
+                      {p.badgeEffectif && (
+                        <Badge className={cn(getBadgeColor(p.badgeEffectif), "text-xs mt-0.5")}>
+                          {dashboard.badgeLevels[p.badgeEffectif]?.label ?? p.badgeEffectif}
+                        </Badge>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                  <Switch
+                    checked={p.badgeBoutique}
+                    onCheckedChange={(v) => handleToggleProduitBadge(p.id, v)}
+                  />
+                </div>
+              ))}
+            </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowPropagationDialog(false)} disabled={propagationMutation.isPending}>
+              <Button variant="outline" onClick={() => setShowPropagationDialog(false)}>
                 Fermer
               </Button>
-              <Button onClick={handleApplyPropagation} disabled={propagationMutation.isPending}>
-                {propagationMutation.isPending
-                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  : <CheckCircle2 className="w-4 h-4 mr-1" />}
+              <Button onClick={handlePropagateAll}>
+                <CheckCircle2 className="w-4 h-4 mr-1" />
                 Appliquer
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog : Demande de badge Made in CI (par produit) ── */}
-      <Dialog open={showBadgeRequestDialog} onOpenChange={setShowBadgeRequestDialog}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-primary" />
-              Demander un badge Made in CI
-            </DialogTitle>
-            <DialogDescription>
-              Produit : {productsBadges.find((p) => p.productId === badgeRequestForm.productId)?.name ?? "—"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            {/* Niveau de badge */}
-            <div className="space-y-2">
-              <Label>Niveau de badge souhaité *</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {badgeLevels.map((level) => {
-                  const cfg = getBadgeCfg(level.id);
-                  return (
-                    <div
-                      key={level.id}
-                      className={cn(
-                        "p-3 rounded-lg border cursor-pointer transition-all text-center",
-                        badgeRequestForm.badgeType === level.id ? "ring-2 ring-primary border-primary" : "border-muted hover:border-primary/50"
-                      )}
-                      onClick={() => setBadgeRequestForm((f) => ({ ...f, badgeType: level.id }))}
-                    >
-                      <Badge className={cn(cfg.color, "mb-1")}>{level.label}</Badge>
-                      <p className="text-xs text-muted-foreground">{level.description}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Processus de transformation */}
-            <div className="space-y-2">
-              <Label htmlFor="reqProcess">Processus de transformation *</Label>
-              <Textarea
-                id="reqProcess"
-                rows={3}
-                placeholder="Décrivez les étapes de transformation réalisées en Côte d'Ivoire..."
-                value={badgeRequestForm.transformationProcess}
-                onChange={(e) => setBadgeRequestForm((f) => ({ ...f, transformationProcess: e.target.value }))}
-              />
-            </div>
-
-            {/* Valeur ajoutée locale */}
-            <div className="space-y-2">
-              <Label htmlFor="reqValue">% de valeur ajoutée locale *</Label>
-              <Input
-                id="reqValue"
-                type="number"
-                min={0}
-                max={100}
-                placeholder="Ex: 75"
-                value={badgeRequestForm.localValueAdded}
-                onChange={(e) => setBadgeRequestForm((f) => ({ ...f, localValueAdded: e.target.value }))}
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowBadgeRequestDialog(false)} disabled={submitBadgeRequestMutation.isPending}>
-                Annuler
-              </Button>
-              <Button onClick={handleSubmitBadgeRequest} disabled={submitBadgeRequestMutation.isPending}>
-                {submitBadgeRequestMutation.isPending
-                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                  : <Award className="w-4 h-4 mr-1" />}
-                Soumettre la demande
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Dialog : Upload / Mise à jour document ── */}
-      <Dialog
-        open={!!uploadingDoc}
-        onOpenChange={(open) => { if (!open) { setUploadingDoc(null); setPendingFiles([]); } }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-primary" />
-              {uploadingDoc?.fileUrls.length ? "Mettre à jour le document" : "Envoyer un document"}
-            </DialogTitle>
-            <DialogDescription>
-              {uploadingDoc?.label} — {uploadingDoc?.description}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            {/* Zone de drop / sélection */}
-            <div
-              className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm font-medium">Cliquez pour sélectionner des fichiers</p>
-              <p className="text-xs text-muted-foreground mt-1">PDF, JPG, PNG — max 10 Mo par fichier</p>
-            </div>
-
-            {/* Input caché */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              multiple
-              accept=".pdf,.jpg,.jpeg,.png,.webp"
-              onChange={handleFileSelect}
-            />
-
-            {/* Fichiers en attente d'upload */}
-            {pendingFiles.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Fichiers sélectionnés :</p>
-                {pendingFiles.map((file, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/50 border text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="truncate">{file.name}</span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        ({(file.size / 1024).toFixed(0)} Ko)
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:text-destructive shrink-0"
-                      onClick={() => handleRemovePendingFile(idx)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Fichiers déjà présents (en mode mise à jour) */}
-            {uploadingDoc && uploadingDoc.fileUrls.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Déjà envoyés :</p>
-                {uploadingDoc.fileUrls.map((url, idx) => (
-                  <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="truncate text-xs text-muted-foreground">
-                        {url.split("/").pop() ?? `Fichier ${idx + 1}`}
-                      </span>
-                    </div>
-                    <a href={url} target="_blank" rel="noreferrer">
-                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-                        <ExternalLink className="w-3 h-3" />
-                      </Button>
-                    </a>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Progress upload */}
-            {isUploading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 rounded-lg bg-muted/50">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Upload en cours…
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2 border-t">
-            <Button
-              variant="outline"
-              onClick={() => { setUploadingDoc(null); setPendingFiles([]); }}
-              disabled={isUploading || updateDocMutation.isPending}
-            >
-              Annuler
-            </Button>
-            <Button
-              onClick={handleSubmitDocument}
-              disabled={pendingFiles.length === 0 || isUploading || updateDocMutation.isPending}
-            >
-              {isUploading || updateDocMutation.isPending
-                ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                : <Upload className="w-4 h-4 mr-1" />}
-              {uploadingDoc?.fileUrls.length ? "Mettre à jour" : "Envoyer"}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -57,7 +57,6 @@ import {
   Filter,
   Download,
   Upload,
-  Link,
   FileText,
   X,
   Send,
@@ -136,125 +135,54 @@ interface MesProduitsProps {
 }
 
 // Composant réutilisable : chaque entrée peut être une URL ou un fichier uploadé
-function UrlOrFileList({
+function MultiFileInput({
   label,
   accept,
-  values,
+  files,
   onChange,
 }: {
   label: string;
   accept: string;
-  values: string[];
-  onChange: (values: string[]) => void;
+  files: File[];
+  onChange: (files: File[]) => void;
 }) {
-  const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [modes, setModes] = useState<("url" | "file")[]>(values.map(() => "url"));
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const setMode = (i: number, mode: "url" | "file") => {
-    const updated = [...modes];
-    updated[i] = mode;
-    setModes(updated);
-    // Réinitialiser la valeur quand on change de mode
-    const updatedVals = [...values];
-    updatedVals[i] = "";
-    onChange(updatedVals);
-  };
-
-  const handleFileChange = (i: number, file: File | null) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const updatedVals = [...values];
-      updatedVals[i] = reader.result as string;
-      onChange(updatedVals);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const addEntry = () => {
-    onChange([...values, ""]);
-    setModes([...modes, "url"]);
+  const addFiles = (picked: FileList | null) => {
+    if (!picked || !picked.length) return;
+    onChange([...files, ...Array.from(picked)]);
   };
 
   const removeEntry = (i: number) => {
-    onChange(values.filter((_, idx) => idx !== i));
-    setModes(modes.filter((_, idx) => idx !== i));
+    onChange(files.filter((_, idx) => idx !== i));
   };
 
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="space-y-3">
-        {values.map((val, i) => (
-          <div key={i} className="space-y-1.5">
-            {/* Toggle URL / Fichier */}
-            <div className="flex gap-1 w-fit rounded-lg border p-0.5 bg-muted">
-              <button
-                type="button"
-                onClick={() => setMode(i, "url")}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded text-xs transition-all",
-                  modes[i] === "url" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
-                )}
-              >
-                <Link className="w-3 h-3" /> URL
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode(i, "file")}
-                className={cn(
-                  "flex items-center gap-1 px-2 py-1 rounded text-xs transition-all",
-                  modes[i] === "file" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"
-                )}
-              >
-                <Upload className="w-3 h-3" /> Fichier
-              </button>
+      <div className="space-y-1.5">
+        {files.map((file, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2 border rounded-md text-sm">
+              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="truncate text-foreground">{file.name}</span>
             </div>
-
-            <div className="flex gap-2">
-              {modes[i] === "url" ? (
-                <Input
-                  placeholder="https://..."
-                  value={val}
-                  onChange={e => {
-                    const updated = [...values];
-                    updated[i] = e.target.value;
-                    onChange(updated);
-                  }}
-                />
-              ) : (
-                <>
-                  <input
-                    ref={el => { fileRefs.current[i] = el; }}
-                    type="file"
-                    accept={accept}
-                    className="hidden"
-                    onChange={e => handleFileChange(i, e.target.files?.[0] ?? null)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileRefs.current[i]?.click()}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 border rounded-md text-sm hover:bg-muted transition-colors text-left"
-                  >
-                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                    {val
-                      ? <span className="truncate text-foreground">Fichier sélectionné ✓</span>
-                      : <span className="text-muted-foreground">Choisir un fichier…</span>}
-                  </button>
-                </>
-              )}
-
-              {values.length > 1 && (
-                <Button variant="ghost" size="icon" type="button" onClick={() => removeEntry(i)}>
-                  <X className="w-4 h-4 text-destructive" />
-                </Button>
-              )}
-            </div>
+            <Button variant="ghost" size="icon" type="button" onClick={() => removeEntry(i)}>
+              <X className="w-4 h-4 text-destructive" />
+            </Button>
           </div>
         ))}
-        <Button variant="outline" size="sm" type="button" onClick={addEntry}>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          multiple
+          className="hidden"
+          onChange={e => { addFiles(e.target.files); e.target.value = ""; }}
+        />
+        <Button variant="outline" size="sm" type="button" onClick={() => inputRef.current?.click()}>
           <Plus className="w-4 h-4 mr-1" />
-          Ajouter
+          Ajouter un fichier
         </Button>
       </div>
     </div>
@@ -324,7 +252,7 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
 
   const openMadeInCIDialog = (product: Product) => {
     setMadeInCIProduct(product);
-    setMadeInCIForm({ badgeType: "", transformationProcess: "", localValueAdded: "", inputInvoicesUrls: [""], productionPhotosUrls: [""] });
+    setMadeInCIForm({ badgeType: "", transformationProcess: "", localValueAdded: "", inputInvoices: [], productionPhotos: [] });
     setBadgeSubmitError(null);
     setBadgeSubmitSuccess(false);
     setShowMadeInCIDialog(true);
@@ -340,8 +268,8 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
         badgeType: madeInCIForm.badgeType,
         transformationProcess: madeInCIForm.transformationProcess,
         localValueAdded: parseFloat(madeInCIForm.localValueAdded) || 0,
-        inputInvoicesUrls: madeInCIForm.inputInvoicesUrls.filter(u => u.trim() !== ""),
-        productionPhotosUrls: madeInCIForm.productionPhotosUrls.filter(u => u.trim() !== ""),
+        inputInvoices: madeInCIForm.inputInvoices,
+        productionPhotos: madeInCIForm.productionPhotos,
       });
       setBadgeSubmitSuccess(true);
     } catch (e: unknown) {
@@ -517,8 +445,8 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
     badgeType: "",
     transformationProcess: "",
     localValueAdded: "",
-    inputInvoicesUrls: [""] as string[],
-    productionPhotosUrls: [""] as string[],
+    inputInvoices: [] as File[],
+    productionPhotos: [] as File[],
   });
   const [isSubmittingBadge, setIsSubmittingBadge] = useState(false);
   const [badgeSubmitError, setBadgeSubmitError] = useState<string | null>(null);
@@ -1257,18 +1185,18 @@ export function MesProduits({ onOpenWizard }: MesProduitsProps) {
                 />
               </div>
 
-              <UrlOrFileList
+              <MultiFileInput
                 label="Factures d'intrants"
                 accept=".pdf,.jpg,.jpeg,.png"
-                values={madeInCIForm.inputInvoicesUrls}
-                onChange={v => setMadeInCIForm(f => ({ ...f, inputInvoicesUrls: v }))}
+                files={madeInCIForm.inputInvoices}
+                onChange={v => setMadeInCIForm(f => ({ ...f, inputInvoices: v }))}
               />
 
-              <UrlOrFileList
+              <MultiFileInput
                 label="Photos de production"
                 accept=".jpg,.jpeg,.png,.webp"
-                values={madeInCIForm.productionPhotosUrls}
-                onChange={v => setMadeInCIForm(f => ({ ...f, productionPhotosUrls: v }))}
+                files={madeInCIForm.productionPhotos}
+                onChange={v => setMadeInCIForm(f => ({ ...f, productionPhotos: v }))}
               />
 
               {badgeSubmitError && (

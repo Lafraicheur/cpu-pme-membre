@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { returnsApi, ordersApi, type BuyerOrder, type ReturnBuyerItem } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,15 +57,15 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { ordersApi, returnsApi, type BuyerOrder, type ReturnReason } from "@/lib/api";
 
 // Types
 type ReclamationStatus = "brouillon" | "soumise" | "en_examen" | "approuvee" | "retour_en_cours" | "recue_vendeur" | "remboursee" | "refusee" | "escalade" | "cloturee";
 type ReclamationType = "retour" | "reclamation" | "litige";
-type ReclamationMotif = ReturnReason;
+type ReclamationMotif = "produit_endommage" | "non_conforme" | "quantite_incorrecte" | "retard_livraison" | "produit_manquant" | "qualite_insuffisante" | "erreur_commande" | "autre";
 
 interface Reclamation {
   id: string;
+  apiId: string;
   commande: string;
   produit: string;
   vendeur: string;
@@ -121,12 +123,14 @@ const statutConfig: Record<ReclamationStatus, { label: string; color: string; ic
 };
 
 const motifLabels: Record<ReclamationMotif, string> = {
-  "Produit endommagé": "Produit endommagé à la réception",
-  "Non conforme": "Produit non conforme à la description",
-  "Quantité incorrecte": "Quantité incorrecte",
-  "Mauvais produit": "Mauvais produit reçu",
-  "Produit défectueux": "Produit défectueux",
-  "Autre": "Autre motif",
+  produit_endommage: "Produit endommagé à la réception",
+  non_conforme: "Produit non conforme à la description",
+  quantite_incorrecte: "Quantité incorrecte",
+  retard_livraison: "Retard de livraison excessif",
+  produit_manquant: "Produit manquant dans la commande",
+  qualite_insuffisante: "Qualité insuffisante",
+  erreur_commande: "Erreur dans la commande",
+  autre: "Autre motif",
 };
 
 const typeLabels: Record<ReclamationType, { label: string; color: string }> = {
@@ -135,131 +139,56 @@ const typeLabels: Record<ReclamationType, { label: string; color: string }> = {
   litige: { label: "Litige", color: "text-red-500" },
 };
 
-interface CommandeAcheteur {
-  id: string;
-  apiId: string;
-  productId: string;
-  vendeur: string;
-  produit: string;
-  montant: number;
-  date: string;
+function getCommandeProduit(cmd: BuyerOrder): string {
+  return cmd.productVariant?.product?.name ?? cmd.product?.name ?? cmd.productVariant?.name ?? "Produit";
 }
 
-function mapCommandeAcheteur(o: BuyerOrder): CommandeAcheteur {
+function getCommandeVendeur(cmd: BuyerOrder): string {
+  return cmd.boutique?.name ?? cmd.boutique?.nom ?? "Vendeur";
+}
+
+function mapReturnToReclamation(r: ReturnBuyerItem): Reclamation {
+  const fmtDate = (d?: string | null) => (d ? d.split("T")[0] : "");
+  const fmtDateTime = (d?: string | null) => (d ? d.replace("T", " ").slice(0, 16) : "");
+
+  const timeline: TimelineEvent[] = [];
+  if (r.createdAt) timeline.push({ date: fmtDateTime(r.createdAt), action: "Réclamation créée", auteur: "Vous", role: "acheteur" });
+  if (r.approvedAt) timeline.push({ date: fmtDateTime(r.approvedAt), action: "Approuvée par le vendeur", auteur: "Vendeur", role: "vendeur" });
+  if (r.rejectedAt) timeline.push({ date: fmtDateTime(r.rejectedAt), action: `Refusée par le vendeur${r.decisionReason ? ` — ${r.decisionReason}` : ""}`, auteur: "Vendeur", role: "vendeur" });
+  if (r.returnedAt) timeline.push({ date: fmtDateTime(r.returnedAt), action: "Produit expédié", auteur: "Vous", role: "acheteur" });
+  if (r.refundedAt) timeline.push({ date: fmtDateTime(r.refundedAt), action: "Remboursement effectué", auteur: "Système", role: "systeme" });
+  if (r.closedAt) timeline.push({ date: fmtDateTime(r.closedAt), action: "Dossier clôturé", auteur: "Système", role: "systeme" });
+
+  const proposition: PropositionResolution | undefined = r.proposition
+    ? {
+        type: (r.proposition.type as PropositionResolution["type"]) ?? "remboursement_partiel",
+        montant: r.proposition.montant,
+        pourcentage: r.proposition.pourcentage,
+        commentaire: r.proposition.commentaire ?? "",
+        dateProposition: r.proposition.dateProposition ?? "",
+      }
+    : undefined;
+
   return {
-    id: o.orderNumber || o.id,
-    apiId: o.id,
-    productId: o.product?.id || o.productVariant?.product?.id || o.productVariantId,
-    vendeur: o.boutique?.name || o.boutique?.nom || (o.boutiqueId ? `Boutique ${o.boutiqueId.slice(0, 8)}` : "—"),
-    produit: o.productVariant?.product?.name || o.product?.name || o.productVariant?.name || (o.productVariantId ? `Article ${o.productVariantId.slice(0, 8)}` : "—"),
-    montant: o.totalPrice || 0,
-    date: o.created_at ? o.created_at.split("T")[0] : "",
+    id: r.returnNumber || r.id,
+    apiId: r.id,
+    commande: r.order?.orderNumber ?? r.orderId,
+    produit: r.product?.name ?? "Produit",
+    vendeur: r.vendor?.name ?? r.vendor?.nom ?? r.boutique?.name ?? r.boutique?.nom ?? "Vendeur",
+    type: ((r.requestType ?? r.type) as ReclamationType) ?? "retour",
+    motif: ((r.motif ?? r.reason) as ReclamationMotif) ?? "autre",
+    statut: r.status as ReclamationStatus,
+    dateCreation: fmtDate(r.createdAt),
+    dateMaj: fmtDate(r.updatedAt),
+    montant: r.requestedAmount ?? r.amount ?? 0,
+    montantRembourse: r.refundedAmount || undefined,
+    description: r.description ?? "",
+    preuves: r.media ?? [],
+    timeline,
+    propositionVendeur: proposition,
+    messageCount: r.messageCount ?? 0,
   };
 }
-
-const mockReclamations: Reclamation[] = [
-  {
-    id: "RCL-2024-001",
-    commande: "CMD-2024-045",
-    produit: "Cacao Premium Grade A",
-    vendeur: "Coopérative Aboisso Cacao",
-    type: "retour",
-    motif: "Non conforme",
-    statut: "en_examen",
-    dateCreation: "2024-01-20",
-    dateMaj: "2024-01-22",
-    montant: 850000,
-    description: "Le taux d'humidité du cacao est de 12% au lieu des 8% annoncés. Le lot ne correspond pas au grade A.",
-    preuves: ["photo_lot.jpg", "rapport_analyse.pdf", "video_ouverture.mp4"],
-    timeline: [
-      { date: "2024-01-20 09:15", action: "Réclamation créée", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-20 09:15", action: "Preuves jointes (3 fichiers)", auteur: "Système", role: "systeme" },
-      { date: "2024-01-20 14:30", action: "Réclamation transmise au vendeur", auteur: "Système", role: "systeme" },
-      { date: "2024-01-21 10:00", action: "En cours d'examen par le vendeur", auteur: "Coopérative Aboisso Cacao", role: "vendeur" },
-    ],
-    propositionVendeur: {
-      type: "remboursement_partiel",
-      pourcentage: 30,
-      montant: 255000,
-      commentaire: "Nous reconnaissons un écart de qualité. Nous proposons un remboursement de 30% sur le lot.",
-      dateProposition: "2024-01-22",
-    },
-    messageCount: 4,
-  },
-  {
-    id: "RCL-2024-002",
-    commande: "CMD-2024-042",
-    produit: "Attiéké séché - 25kg",
-    vendeur: "Femmes de Dabou SARL",
-    type: "retour",
-    motif: "Quantité incorrecte",
-    statut: "approuvee",
-    dateCreation: "2024-01-17",
-    dateMaj: "2024-01-19",
-    montant: 15000,
-    description: "J'ai commandé 5 sacs mais n'en ai reçu que 3. Le BL indique bien 5 sacs.",
-    preuves: ["photo_livraison.jpg", "bon_livraison.pdf"],
-    timeline: [
-      { date: "2024-01-17 11:00", action: "Réclamation créée", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-17 15:00", action: "Transmise au vendeur", auteur: "Système", role: "systeme" },
-      { date: "2024-01-18 09:00", action: "Vendeur a confirmé l'erreur", auteur: "Femmes de Dabou SARL", role: "vendeur" },
-      { date: "2024-01-19 08:30", action: "Retour approuvé - remplacement prévu", auteur: "Femmes de Dabou SARL", role: "vendeur" },
-    ],
-    propositionVendeur: {
-      type: "remplacement",
-      commentaire: "Nous envoyons les 2 sacs manquants sous 48h. Veuillez nous excuser.",
-      dateProposition: "2024-01-19",
-    },
-    messageCount: 3,
-  },
-  {
-    id: "RCL-2024-003",
-    commande: "CMD-2024-038",
-    produit: "Service transport frigorifique",
-    vendeur: "TransFroid CI",
-    type: "litige",
-    motif: "Autre",
-    statut: "escalade",
-    dateCreation: "2024-01-12",
-    dateMaj: "2024-01-20",
-    montant: 75000,
-    description: "Livraison avec 5 jours de retard, marchandises partiellement avariées à cause de la rupture de chaîne du froid.",
-    preuves: ["photo_avarie1.jpg", "photo_avarie2.jpg", "constat_temperature.pdf"],
-    timeline: [
-      { date: "2024-01-12 08:00", action: "Réclamation créée", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-12 16:00", action: "Transmise au vendeur", auteur: "Système", role: "systeme" },
-      { date: "2024-01-14 10:00", action: "Vendeur conteste les dommages", auteur: "TransFroid CI", role: "vendeur" },
-      { date: "2024-01-15 09:00", action: "Réclamation rejetée par le vendeur", auteur: "TransFroid CI", role: "vendeur" },
-      { date: "2024-01-16 10:00", action: "Escalade vers médiation CPU-PME", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-18 14:00", action: "Médiateur assigné", auteur: "CPU-PME", role: "mediateur" },
-      { date: "2024-01-20 11:00", action: "Proposition de médiation : remboursement 50%", auteur: "Médiateur CPU-PME", role: "mediateur" },
-    ],
-    messageCount: 12,
-  },
-  {
-    id: "RCL-2024-004",
-    commande: "CMD-2024-035",
-    produit: "Huile de palme raffinée - 20L",
-    vendeur: "Palmeraie du Sud",
-    type: "retour",
-    motif: "Produit endommagé",
-    statut: "remboursee",
-    dateCreation: "2024-01-09",
-    dateMaj: "2024-01-15",
-    montant: 25000,
-    montantRembourse: 25000,
-    description: "Bidon percé à la livraison, fuite importante.",
-    preuves: ["photo_bidon.jpg"],
-    timeline: [
-      { date: "2024-01-09 14:00", action: "Réclamation créée", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-10 09:00", action: "Approuvée immédiatement par le vendeur", auteur: "Palmeraie du Sud", role: "vendeur" },
-      { date: "2024-01-12 10:00", action: "Produit retourné", auteur: "Vous", role: "acheteur" },
-      { date: "2024-01-13 15:00", action: "Réception confirmée par le vendeur", auteur: "Palmeraie du Sud", role: "vendeur" },
-      { date: "2024-01-15 09:00", action: "Remboursement effectué - 25 000 FCFA via Orange Money", auteur: "Système", role: "systeme" },
-    ],
-    messageCount: 2,
-  },
-];
 
 export function ReclamationsAcheteur() {
   const [activeTab, setActiveTab] = useState("mes-reclamations");
@@ -270,23 +199,19 @@ export function ReclamationsAcheteur() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showPropositionDialog, setShowPropositionDialog] = useState(false);
+  const [showEscalateDialog, setShowEscalateDialog] = useState(false);
+  const [escalateTarget, setEscalateTarget] = useState<Reclamation | null>(null);
+  const [escalateReason, setEscalateReason] = useState("");
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Commandes de l'acheteur (pour le formulaire de création)
-  const [commandesAcheteur, setCommandesAcheteur] = useState<CommandeAcheteur[]>([]);
-  const [isLoadingCommandes, setIsLoadingCommandes] = useState(false);
-
-  const loadCommandesAcheteur = useCallback(() => {
-    setIsLoadingCommandes(true);
-    ordersApi.getBuyerList({ limit: 50 })
-      .then((res) => setCommandesAcheteur((res.data ?? []).map(mapCommandeAcheteur)))
-      .catch(() => setCommandesAcheteur([]))
-      .finally(() => setIsLoadingCommandes(false));
-  }, []);
-
-  useEffect(() => {
-    if (showCreateDialog) loadCommandesAcheteur();
-  }, [showCreateDialog, loadCommandesAcheteur]);
+  const { data: commandesPage, isLoading: isLoadingCommandes } = useQuery({
+    queryKey: ["marketplace", "orders", "buyer", "for-return"],
+    queryFn: () => ordersApi.getBuyerList({ limit: 100 }),
+    enabled: showCreateDialog,
+  });
+  const commandesAcheteur = commandesPage?.data ?? [];
 
   // Formulaire nouvelle réclamation
   const [newRecl, setNewRecl] = useState({
@@ -294,30 +219,56 @@ export function ReclamationsAcheteur() {
     type: "retour" as ReclamationType,
     motif: "" as ReclamationMotif | "",
     description: "",
-    quantity: 1,
+    montantDemande: 0,
+    preuves: [] as File[],
   });
-  const [isSubmittingReclamation, setIsSubmittingReclamation] = useState(false);
-  const [preuves, setPreuves] = useState<File[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFilesSelected = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setPreuves((prev) => [...prev, ...Array.from(files)]);
-  };
+  const createReclamationMutation = useMutation({
+    mutationFn: returnsApi.create,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["marketplace", "returns", "buyer"] });
+      toast({
+        title: "Réclamation créée",
+        description: `${data.returnNumber ?? "Votre réclamation"} a été soumise et transmise au vendeur.`,
+      });
+      setShowCreateDialog(false);
+      setNewRecl({ commande: "", type: "retour", motif: "", description: "", montantDemande: 0, preuves: [] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Erreur",
+        description: error.message || "Impossible de soumettre la réclamation.",
+        variant: "destructive",
+      });
+    },
+  });
 
-  const handleRemovePreuve = (index: number) => {
-    setPreuves((prev) => prev.filter((_, i) => i !== index));
-  };
+  const { data: buyerStats } = useQuery({
+    queryKey: ["marketplace", "returns", "buyer", "stats"],
+    queryFn: returnsApi.getBuyerStats,
+  });
 
   const kpis = {
-    enCours: mockReclamations.filter(r => ["soumise", "en_examen", "retour_en_cours"].includes(r.statut)).length,
-    propositionsAttente: mockReclamations.filter(r => r.propositionVendeur && r.statut === "en_examen").length,
-    litiges: mockReclamations.filter(r => r.statut === "escalade").length,
-    resolues: mockReclamations.filter(r => ["remboursee", "cloturee"].includes(r.statut)).length,
-    montantRecupere: mockReclamations.filter(r => r.montantRembourse).reduce((s, r) => s + (r.montantRembourse || 0), 0),
+    enCours: buyerStats?.enCours ?? 0,
+    propositionsAttente: buyerStats?.propositionsAttente ?? 0,
+    litiges: buyerStats?.litiges ?? 0,
+    resolues: buyerStats?.resolues ?? 0,
+    montantRecupere: buyerStats?.montantRecupere ?? 0,
   };
 
-  const filteredReclamations = mockReclamations.filter(r => {
+  const {
+    data: returnsPage,
+    isLoading: isLoadingReclamations,
+    isError: isReclamationsError,
+    refetch: refetchReclamations,
+  } = useQuery({
+    queryKey: ["marketplace", "returns", "buyer", "list"],
+    queryFn: () => returnsApi.getBuyerReturnsList({ limit: 100 }),
+  });
+
+  const reclamations = (returnsPage?.data ?? []).map(mapReturnToReclamation);
+
+  const filteredReclamations = reclamations.filter(r => {
     const matchSearch = r.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.produit.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.vendeur.toLowerCase().includes(searchQuery.toLowerCase());
@@ -326,68 +277,130 @@ export function ReclamationsAcheteur() {
     return matchSearch && matchStatut && matchType;
   });
 
-  const resetNewRecl = () => {
-    setNewRecl({ commande: "", type: "retour", motif: "", description: "", quantity: 1 });
-    setPreuves([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const handleCreateReclamation = async () => {
-    const cmd = commandesAcheteur.find((c) => c.id === newRecl.commande);
-    if (!cmd || !newRecl.motif || !newRecl.description.trim()) return;
-    setIsSubmittingReclamation(true);
-    try {
-      await returnsApi.create({
-        orderId: cmd.apiId,
-        productId: cmd.productId || undefined,
-        quantity: newRecl.quantity || 1,
-        reason: newRecl.motif,
-        description: newRecl.description.trim(),
-        media: preuves,
-      });
-      toast({
-        title: "Réclamation créée",
-        description: "Votre réclamation a été soumise et transmise au vendeur.",
-      });
-      setShowCreateDialog(false);
-      resetNewRecl();
-    } catch (e) {
-      toast({
-        title: "Erreur",
-        description: e instanceof Error ? e.message : "La soumission de la réclamation a échoué.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmittingReclamation(false);
-    }
-  };
-
-  const handleAcceptProposition = () => {
-    toast({
-      title: "Proposition acceptée",
-      description: "Vous avez accepté la proposition du vendeur. Le processus de résolution est en cours.",
+  const handleCreateReclamation = () => {
+    if (!newRecl.commande || !newRecl.motif || !newRecl.description) return;
+    createReclamationMutation.mutate({
+      orderId: newRecl.commande,
+      requestType: newRecl.type,
+      motif: newRecl.motif,
+      description: newRecl.description,
+      requestedAmount: newRecl.montantDemande || undefined,
+      media: newRecl.preuves,
     });
-    setShowPropositionDialog(false);
   };
 
-  const handleRejectProposition = () => {
-    toast({
-      title: "Proposition refusée",
-      description: "Vous pouvez escalader vers la médiation CPU-PME.",
-    });
-    setShowPropositionDialog(false);
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setNewRecl((prev) => ({ ...prev, preuves: [...prev.preuves, ...Array.from(files)] }));
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setNewRecl((prev) => ({ ...prev, preuves: prev.preuves.filter((_, i) => i !== index) }));
+  };
+
+  const invalidateReturns = () => {
+    queryClient.invalidateQueries({ queryKey: ["marketplace", "returns", "buyer"] });
+  };
+
+  const acceptProposalMutation = useMutation({
+    mutationFn: returnsApi.acceptProposal,
+    onSuccess: () => {
+      invalidateReturns();
+      toast({
+        title: "Proposition acceptée",
+        description: "Vous avez accepté la proposition du vendeur. Le processus de résolution est en cours.",
+      });
+      setShowPropositionDialog(false);
+      setShowDetailDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erreur", description: error.message || "Impossible d'accepter la proposition.", variant: "destructive" });
+    },
+  });
+
+  const rejectProposalMutation = useMutation({
+    mutationFn: returnsApi.rejectProposal,
+    onSuccess: () => {
+      invalidateReturns();
+      toast({
+        title: "Proposition refusée",
+        description: "Vous pouvez escalader vers la médiation CPU-PME.",
+      });
+      setShowPropositionDialog(false);
+      setShowDetailDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erreur", description: error.message || "Impossible de refuser la proposition.", variant: "destructive" });
+    },
+  });
+
+  const confirmReturnedMutation = useMutation({
+    mutationFn: returnsApi.confirmReturned,
+    onSuccess: () => {
+      invalidateReturns();
+      toast({
+        title: "Expédition confirmée",
+        description: "Le vendeur a été notifié de l'expédition de votre retour.",
+      });
+      setShowDetailDialog(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erreur", description: error.message || "Impossible de confirmer l'expédition.", variant: "destructive" });
+    },
+  });
+
+  const escalateMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => returnsApi.escalateBuyer(id, reason),
+    onSuccess: () => {
+      invalidateReturns();
+      toast({
+        title: "Réclamation escaladée",
+        description: "La réclamation a été transmise au médiateur CPU-PME.",
+      });
+      setShowEscalateDialog(false);
+      setShowDetailDialog(false);
+      setEscalateTarget(null);
+      setEscalateReason("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erreur", description: error.message || "Impossible d'escalader la réclamation.", variant: "destructive" });
+    },
+  });
+
+  const handleAcceptProposition = (recl: Reclamation) => {
+    acceptProposalMutation.mutate(recl.apiId);
+  };
+
+  const handleRejectProposition = (recl: Reclamation) => {
+    rejectProposalMutation.mutate(recl.apiId);
+  };
+
+  const handleConfirmReturned = (recl: Reclamation) => {
+    confirmReturnedMutation.mutate(recl.apiId);
   };
 
   const handleEscalate = (recl: Reclamation) => {
-    toast({
-      title: "Réclamation escaladée",
-      description: `La réclamation ${recl.id} a été transmise au médiateur CPU-PME.`,
-    });
+    setEscalateTarget(recl);
+    setEscalateReason("");
+    setShowEscalateDialog(true);
+  };
+
+  const handleConfirmEscalate = () => {
+    if (!escalateTarget || !escalateReason.trim()) return;
+    escalateMutation.mutate({ id: escalateTarget.apiId, reason: escalateReason.trim() });
+  };
+
+  const openDetail = (recl: Reclamation) => {
+    setSelectedReclamation(recl);
+    setShowDetailDialog(true);
+    returnsApi.getBuyerReturnDetail(recl.apiId)
+      .then((full) => setSelectedReclamation(mapReturnToReclamation(full)))
+      .catch(() => { /* on garde les infos de la liste */ });
   };
 
   const renderProgressSteps = (statut: ReclamationStatus) => {
     const steps = ["Soumise", "En examen", "Approuvée", "Retour", "Reçue", "Remboursée"];
-    const currentStep = statutConfig[statut].step;
+    const currentStep = (statutConfig[statut] ?? statutConfig.brouillon).step;
     const isRejected = statut === "refusee";
     const isEscalated = statut === "escalade";
 
@@ -426,7 +439,7 @@ export function ReclamationsAcheteur() {
   return (
     <div className="space-y-6">
       {/* KPIs Acheteur */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="border-blue-500/30">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -547,15 +560,36 @@ export function ReclamationsAcheteur() {
       </Card>
 
       {/* Liste des réclamations */}
+      {isLoadingReclamations ? (
+        <Card><CardContent className="py-12 flex items-center justify-center text-muted-foreground">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement des réclamations...
+        </CardContent></Card>
+      ) : isReclamationsError ? (
+        <Card><CardContent className="py-12 text-center">
+          <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+          <p className="text-sm text-muted-foreground mb-4">Impossible de charger vos réclamations.</p>
+          <Button variant="outline" onClick={() => refetchReclamations()}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Réessayer
+          </Button>
+        </CardContent></Card>
+      ) : filteredReclamations.length === 0 ? (
+        <Card><CardContent className="py-12 text-center">
+          <RotateCcw className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+          <p className="text-sm text-muted-foreground">
+            {reclamations.length === 0 ? "Aucune réclamation pour le moment." : "Aucune réclamation ne correspond à vos filtres."}
+          </p>
+        </CardContent></Card>
+      ) : (
       <div className="space-y-4">
         {filteredReclamations.map((recl) => {
-          const statut = statutConfig[recl.statut];
+          const statut = statutConfig[recl.statut] ?? statutConfig.brouillon;
           const StatutIcon = statut.icon;
-          const typeInfo = typeLabels[recl.type];
+          const typeInfo = typeLabels[recl.type] ?? typeLabels.retour;
           const hasProposition = recl.propositionVendeur && recl.statut === "en_examen";
 
           return (
-            <Card key={recl.id} className={cn(
+            <Card key={recl.apiId} className={cn(
               "hover:shadow-md transition-shadow",
               hasProposition && "border-amber-500/50 ring-1 ring-amber-500/20",
               recl.statut === "escalade" && "border-red-500/50",
@@ -573,7 +607,7 @@ export function ReclamationsAcheteur() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-bold">{recl.id}</span>
                         <Badge variant="outline" className={statut.color}>{statut.label}</Badge>
-                        <Badge variant="outline" className={cn("text-xs", typeInfo.color)}>{typeInfo.label}</Badge>
+                        <Badge variant="secondary" className={cn("text-xs", typeInfo.color)}>{typeInfo.label}</Badge>
                       </div>
                       <p className="font-medium mt-1">{recl.produit}</p>
                       <p className="text-sm text-muted-foreground">
@@ -627,11 +661,22 @@ export function ReclamationsAcheteur() {
                       </p>
                     )}
                     <div className="flex gap-2">
-                      <Button size="sm" className="gap-1" onClick={handleAcceptProposition}>
+                      <Button
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => handleAcceptProposition(recl)}
+                        disabled={acceptProposalMutation.isPending}
+                      >
                         <ThumbsUp className="w-3 h-3" />
                         Accepter
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-1" onClick={handleRejectProposition}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => handleRejectProposition(recl)}
+                        disabled={rejectProposalMutation.isPending}
+                      >
                         <ThumbsDown className="w-3 h-3" />
                         Refuser
                       </Button>
@@ -656,20 +701,29 @@ export function ReclamationsAcheteur() {
                     {recl.timeline.length} étapes
                   </div>
                   <div className="flex gap-2">
+                    {recl.statut === "approuvee" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => handleConfirmReturned(recl)}
+                        disabled={confirmReturnedMutation.isPending}
+                      >
+                        <Truck className="w-3 h-3" />
+                        Confirmer l'expédition
+                      </Button>
+                    )}
                     {recl.statut === "refusee" && (
                       <Button size="sm" variant="destructive" className="gap-1" onClick={() => handleEscalate(recl)}>
                         <AlertTriangle className="w-3 h-3" />
                         Ouvrir un litige
                       </Button>
                     )}
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
+                    <Button
+                      size="sm"
+                      variant="outline"
                       className="gap-1"
-                      onClick={() => {
-                        setSelectedReclamation(recl);
-                        setShowDetailDialog(true);
-                      }}
+                      onClick={() => openDetail(recl)}
                     >
                       <Eye className="w-4 h-4" />
                       Détails
@@ -681,6 +735,7 @@ export function ReclamationsAcheteur() {
           );
         })}
       </div>
+      )}
 
       {/* Dialog Créer une réclamation */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
@@ -699,19 +754,27 @@ export function ReclamationsAcheteur() {
               <Label>Commande concernée *</Label>
               <Select
                 value={newRecl.commande}
-                onValueChange={(v) => setNewRecl({ ...newRecl, commande: v })}
+                onValueChange={(v) => {
+                  const cmd = commandesAcheteur.find(c => c.id === v);
+                  setNewRecl({ ...newRecl, commande: v, montantDemande: cmd?.totalPrice || 0 });
+                }}
                 disabled={isLoadingCommandes}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={isLoadingCommandes ? "Chargement..." : "Sélectionnez une commande"} />
+                  <SelectValue placeholder={isLoadingCommandes ? "Chargement des commandes..." : "Sélectionnez une commande"} />
                 </SelectTrigger>
                 <SelectContent>
+                  {commandesAcheteur.length === 0 && !isLoadingCommandes && (
+                    <div className="px-2 py-3 text-sm text-muted-foreground text-center">
+                      Aucune commande trouvée
+                    </div>
+                  )}
                   {commandesAcheteur.map((cmd) => (
                     <SelectItem key={cmd.id} value={cmd.id}>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono">{cmd.id}</span>
-                        <span className="text-muted-foreground">- {cmd.produit}</span>
-                        <span className="font-semibold">{cmd.montant.toLocaleString()} FCFA</span>
+                        <span className="font-mono">{cmd.orderNumber}</span>
+                        <span className="text-muted-foreground">- {getCommandeProduit(cmd)}</span>
+                        <span className="font-semibold">{cmd.totalPrice.toLocaleString()} FCFA</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -724,10 +787,10 @@ export function ReclamationsAcheteur() {
                     return cmd ? (
                       <div className="flex justify-between">
                         <div>
-                          <p className="font-medium">{cmd.produit}</p>
-                          <p className="text-muted-foreground">Vendeur: {cmd.vendeur}</p>
+                          <p className="font-medium">{getCommandeProduit(cmd)}</p>
+                          <p className="text-muted-foreground">Vendeur: {getCommandeVendeur(cmd)}</p>
                         </div>
-                        <p className="font-bold">{cmd.montant.toLocaleString()} FCFA</p>
+                        <p className="font-bold">{cmd.totalPrice.toLocaleString()} FCFA</p>
                       </div>
                     ) : null;
                   })()}
@@ -782,16 +845,15 @@ export function ReclamationsAcheteur() {
               />
             </div>
 
-            {/* Quantité concernée */}
+            {/* Montant demandé */}
             <div className="space-y-2">
-              <Label>Quantité concernée</Label>
+              <Label>Montant demandé (FCFA)</Label>
               <Input
                 type="number"
-                min={1}
-                value={newRecl.quantity}
-                onChange={(e) => setNewRecl({ ...newRecl, quantity: parseInt(e.target.value) || 1 })}
+                value={newRecl.montantDemande}
+                onChange={(e) => setNewRecl({ ...newRecl, montantDemande: parseInt(e.target.value) || 0 })}
               />
-              <p className="text-xs text-muted-foreground">Nombre d'unités concernées par ce retour</p>
+              <p className="text-xs text-muted-foreground">Montant du remboursement ou de la compensation souhaité</p>
             </div>
 
             {/* Preuves */}
@@ -803,7 +865,10 @@ export function ReclamationsAcheteur() {
                 multiple
                 accept="image/*,video/*,.pdf"
                 className="hidden"
-                onChange={(e) => handleFilesSelected(e.target.files)}
+                onChange={(e) => {
+                  handleFilesSelected(e.target.files);
+                  e.target.value = "";
+                }}
               />
               <div
                 className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-muted/50 cursor-pointer transition-colors"
@@ -824,27 +889,28 @@ export function ReclamationsAcheteur() {
                   variant="outline"
                   size="sm"
                   className="mt-3"
-                  onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
                 >
                   <Camera className="w-4 h-4 mr-1" />
                   Parcourir
                 </Button>
               </div>
-              {preuves.length > 0 && (
+              {newRecl.preuves.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {preuves.map((file, idx) => (
-                    <div key={`${file.name}-${idx}`} className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-lg bg-muted text-sm">
-                      <FileText className="w-4 h-4 text-muted-foreground" />
+                  {newRecl.preuves.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 py-1 pl-2 pr-1 rounded-lg bg-muted text-sm">
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground" />
                       <span className="max-w-[160px] truncate">{file.name}</span>
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="w-5 h-5"
-                        onClick={() => handleRemovePreuve(idx)}
+                        className="p-0.5 rounded hover:bg-background"
+                        onClick={() => handleRemoveFile(idx)}
                       >
-                        <XCircle className="w-4 h-4" />
-                      </Button>
+                        <XCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -856,15 +922,13 @@ export function ReclamationsAcheteur() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={isSubmittingReclamation}>
-              Annuler
-            </Button>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Annuler</Button>
             <Button
               onClick={handleCreateReclamation}
-              disabled={!newRecl.commande || !newRecl.motif || !newRecl.description.trim() || isSubmittingReclamation}
+              disabled={!newRecl.commande || !newRecl.motif || !newRecl.description || createReclamationMutation.isPending}
             >
               <Send className="w-4 h-4 mr-1" />
-              {isSubmittingReclamation ? "Envoi..." : "Soumettre la réclamation"}
+              {createReclamationMutation.isPending ? "Envoi en cours..." : "Soumettre la réclamation"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -874,7 +938,7 @@ export function ReclamationsAcheteur() {
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           {selectedReclamation && (() => {
-            const statut = statutConfig[selectedReclamation.statut];
+            const statut = statutConfig[selectedReclamation.statut] ?? statutConfig.brouillon;
             const StatutIcon = statut.icon;
             return (
               <>
@@ -992,13 +1056,33 @@ export function ReclamationsAcheteur() {
 
                   {/* Actions */}
                   <div className="flex gap-2 justify-end border-t pt-4">
+                    {selectedReclamation.statut === "approuvee" && (
+                      <Button
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => handleConfirmReturned(selectedReclamation)}
+                        disabled={confirmReturnedMutation.isPending}
+                      >
+                        <Truck className="w-4 h-4" />
+                        Confirmer l'expédition
+                      </Button>
+                    )}
                     {selectedReclamation.statut === "en_examen" && selectedReclamation.propositionVendeur && (
                       <>
-                        <Button className="gap-1" onClick={handleAcceptProposition}>
+                        <Button
+                          className="gap-1"
+                          onClick={() => handleAcceptProposition(selectedReclamation)}
+                          disabled={acceptProposalMutation.isPending}
+                        >
                           <ThumbsUp className="w-4 h-4" />
                           Accepter la proposition
                         </Button>
-                        <Button variant="outline" className="gap-1" onClick={handleRejectProposition}>
+                        <Button
+                          variant="outline"
+                          className="gap-1"
+                          onClick={() => handleRejectProposition(selectedReclamation)}
+                          disabled={rejectProposalMutation.isPending}
+                        >
                           <ThumbsDown className="w-4 h-4" />
                           Refuser
                         </Button>
@@ -1015,6 +1099,44 @@ export function ReclamationsAcheteur() {
               </>
             );
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Escalader vers médiation */}
+      <Dialog open={showEscalateDialog} onOpenChange={setShowEscalateDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scale className="w-5 h-5 text-red-500" />
+              Escalader vers médiation
+            </DialogTitle>
+            <DialogDescription>
+              {escalateTarget && `Réclamation ${escalateTarget.id} — un médiateur CPU-PME sera assigné.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label>Motif de l'escalade *</Label>
+            <Textarea
+              placeholder="Expliquez pourquoi vous souhaitez escalader cette réclamation vers la médiation..."
+              rows={4}
+              value={escalateReason}
+              onChange={(e) => setEscalateReason(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEscalateDialog(false)}>Annuler</Button>
+            <Button
+              variant="destructive"
+              className="gap-1"
+              onClick={handleConfirmEscalate}
+              disabled={!escalateReason.trim() || escalateMutation.isPending}
+            >
+              <Scale className="w-4 h-4" />
+              {escalateMutation.isPending ? "Envoi en cours..." : "Escalader"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

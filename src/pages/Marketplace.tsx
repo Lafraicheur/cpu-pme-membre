@@ -79,7 +79,8 @@ import { PanierCheckout } from "@/components/marketplace/PanierCheckout";
 import { BoutiqueVendeur } from "@/components/marketplace/BoutiqueVendeur";
 import { ExpeditionsVendeur } from "@/components/marketplace/ExpeditionsVendeur";
 import { ProduitsReglementes } from "@/components/marketplace/ProduitsReglementes";
-import { HistoriqueTransactions } from "@/components/marketplace/HistoriqueTransactions";
+import { HistoriqueAchats } from "@/components/marketplace/HistoriqueAchats";
+import { HistoriqueVentes } from "@/components/marketplace/HistoriqueVentes";
 import { RFQMessaging } from "@/components/marketplace/RFQMessaging";
 import { NotificationsRFQ } from "@/components/marketplace/NotificationsRFQ";
 import { FacturationVedette } from "@/components/marketplace/FacturationVedette";
@@ -87,6 +88,7 @@ import { DashboardCommissions } from "@/components/marketplace/DashboardCommissi
 import { ReclamationsAcheteur } from "@/components/marketplace/ReclamationsAcheteur";
 import { NotificationsRetoursLitiges } from "@/components/marketplace/NotificationsRetoursLitiges";
 import { CertificationBoutique } from "@/components/marketplace/CertificationBoutique";
+import { MadeInCI } from "@/components/marketplace/MadeInCI";
 
 // Mock data pour les produits
 const mockProducts = [
@@ -271,12 +273,12 @@ export default function Marketplace() {
         label: "Retours & Litiges",
         icon: RotateCcw,
       },
-      // {
-      //   id: "gestion-stock" as MenuSection,
-      //   label: "Gestion du stock",
-      //   icon: BarChart3,
-      // },
-      // { id: "expeditions" as MenuSection, label: "Expéditions", icon: Truck },
+      {
+        id: "gestion-stock" as MenuSection,
+        label: "Gestion du stock",
+        icon: BarChart3,
+      },
+      { id: "expeditions" as MenuSection, label: "Expéditions", icon: Truck },
 
       // { id: "paiements" as MenuSection, label: "Paiements", icon: CreditCard },
       {
@@ -284,21 +286,21 @@ export default function Marketplace() {
         label: "Certification boutique",
         icon: BadgeCheck,
       },
-      // {
-      //   id: "made-in-ci" as MenuSection,
-      //   label: "Made in CI (produits)",
-      //   icon: Award,
-      // },
+      {
+        id: "made-in-ci" as MenuSection,
+        label: "Made in CI (produits)",
+        icon: Award,
+      },
       {
         id: "produits-reglementes" as MenuSection,
         label: "Produits réglementés",
         icon: AlertTriangle,
       },
-      // {
-      //   id: "historique-ventes" as MenuSection,
-      //   label: "Historique ventes",
-      //   icon: FileText,
-      // },
+      {
+        id: "historique-ventes" as MenuSection,
+        label: "Historique ventes",
+        icon: FileText,
+      },
       // { id: "facturation-vedette" as MenuSection, label: "Facturation vedette", icon: FileText },
       // { id: "dashboard-commissions" as MenuSection, label: "Dashboard commissions", icon: BarChart3 },
       // { id: "analytics" as MenuSection, label: "Analytics", icon: BarChart3 },
@@ -322,8 +324,10 @@ export default function Marketplace() {
         return <AcheteurCommandes />;
 
       case "historique-achats":
+        return <HistoriqueAchats />;
+
       case "historique-ventes":
-        return <HistoriqueTransactions />;
+        return <HistoriqueVentes />;
 
       case "mes-devis":
         return <RFQAcheteur />;
@@ -356,6 +360,8 @@ export default function Marketplace() {
         return <RFQVendeur />;
 
       case "made-in-ci":
+        return <MadeInCI/>;
+
       case "certification-boutique":
         return <CertificationBoutique />;
 

@@ -32,9 +32,13 @@ import {
   Calendar,
   MapPin,
   RefreshCw,
+  Upload,
+  X,
+  User,
+  DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { rfqApi, type RFQVendorReceived, type RFQVendorStats } from "@/lib/api";
+import { rfqApi, type RFQVendorReceived, type RFQVendorStats, type RFQNegotiationMessage } from "@/lib/api";
 
 type RFQStatus = "Received" | "Quoted" | "Negotiating" | "Won" | "Lost" | "Expired";
 
@@ -51,6 +55,7 @@ interface RFQ {
   status: RFQStatus;
   budget?: number;
   details?: string;
+  quoteId?: string;
 }
 
 /** Mappe le statut renvoyé par l'API vers le statut d'affichage. */
@@ -78,6 +83,7 @@ function mapReceived(r: RFQVendorReceived): RFQ {
     status: mapRFQStatus(r.status),
     budget: r.estimatedBudget ?? undefined,
     details: r.specifications ?? undefined,
+    quoteId: r.myQuote?.id,
   };
 }
 
@@ -108,6 +114,28 @@ export function RFQVendeur() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Dialog Négociation
+  const [showNegotiationDialog, setShowNegotiationDialog] = useState(false);
+  const [negotiationRFQ, setNegotiationRFQ] = useState<RFQ | null>(null);
+  const [negotiationMessages, setNegotiationMessages] = useState<RFQNegotiationMessage[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [messageFiles, setMessageFiles] = useState<File[]>([]);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  const [showProformaForm, setShowProformaForm] = useState(false);
+  const [proformaData, setProformaData] = useState({
+    proformaNumber: "",
+    totalAmount: "",
+    depositRate: "30",
+    depositAmount: "",
+    validUntil: "",
+    note: "",
+  });
+  const [isSendingProforma, setIsSendingProforma] = useState(false);
+  const [proformaError, setProformaError] = useState<string | null>(null);
 
   const loadReceived = useCallback(() => {
     setIsLoading(true);
@@ -142,6 +170,78 @@ export function RFQVendeur() {
       setSubmitError(e instanceof Error ? e.message : "Erreur lors de l'envoi du devis.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openNegotiation = (rfq: RFQ) => {
+    if (!rfq.quoteId) return;
+    setNegotiationRFQ(rfq);
+    setNegotiationMessages([]);
+    setMessagesError(null);
+    setNewMessage("");
+    setMessageFiles([]);
+    setShowProformaForm(false);
+    setProformaError(null);
+    setShowNegotiationDialog(true);
+    setIsLoadingMessages(true);
+    rfqApi.getVendorNegotiationMessages(rfq.quoteId)
+      .then(setNegotiationMessages)
+      .catch(() => setMessagesError("Impossible de charger les messages."))
+      .finally(() => setIsLoadingMessages(false));
+  };
+
+  const handleSendMessage = async () => {
+    if (!negotiationRFQ?.quoteId || !newMessage.trim()) return;
+    const quoteId = negotiationRFQ.quoteId;
+    setIsSendingMessage(true);
+    setMessagesError(null);
+    try {
+      if (negotiationMessages.length > 0) {
+        const updated = await rfqApi.sendVendorNegotiationMessage(quoteId, newMessage.trim(), messageFiles);
+        setNegotiationMessages(updated);
+      } else {
+        await rfqApi.openVendorNegotiation(quoteId, newMessage.trim(), messageFiles);
+        const updated = await rfqApi.getVendorNegotiationMessages(quoteId);
+        setNegotiationMessages(updated);
+      }
+      setNewMessage("");
+      setMessageFiles([]);
+      loadReceived();
+    } catch (e: unknown) {
+      setMessagesError(e instanceof Error ? e.message : "Erreur lors de l'envoi du message.");
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  const handleSendProforma = async () => {
+    if (!negotiationRFQ?.quoteId) return;
+    const totalAmount = parseFloat(proformaData.totalAmount);
+    if (!proformaData.proformaNumber.trim() || isNaN(totalAmount) || totalAmount <= 0) {
+      setProformaError("Le numéro de proforma et le montant total sont requis.");
+      return;
+    }
+    const quoteId = negotiationRFQ.quoteId;
+    setIsSendingProforma(true);
+    setProformaError(null);
+    try {
+      await rfqApi.sendVendorProforma(quoteId, {
+        proformaNumber: proformaData.proformaNumber.trim(),
+        totalAmount,
+        depositRate: parseFloat(proformaData.depositRate) || 0,
+        depositAmount: parseFloat(proformaData.depositAmount) || 0,
+        validUntil: proformaData.validUntil,
+        note: proformaData.note || undefined,
+      });
+      setShowProformaForm(false);
+      setProformaData({ proformaNumber: "", totalAmount: "", depositRate: "30", depositAmount: "", validUntil: "", note: "" });
+      const updated = await rfqApi.getVendorNegotiationMessages(quoteId);
+      setNegotiationMessages(updated);
+      loadReceived();
+    } catch (e: unknown) {
+      setProformaError(e instanceof Error ? e.message : "Erreur lors de l'envoi de la proforma.");
+    } finally {
+      setIsSendingProforma(false);
     }
   };
 
@@ -328,8 +428,8 @@ export function RFQVendeur() {
                           Répondre
                         </Button>
                       )}
-                      {rfq.status === "Negotiating" && (
-                        <Button size="sm" variant="outline">
+                      {(rfq.status === "Negotiating" || rfq.status === "Quoted") && rfq.quoteId && (
+                        <Button size="sm" variant="outline" onClick={() => openNegotiation(rfq)}>
                           <MessageSquare className="w-4 h-4 mr-1" />
                           Négocier
                         </Button>
@@ -494,7 +594,7 @@ export function RFQVendeur() {
               </div>
 
               {selectedRFQ.status === "Received" && (
-                <Button 
+                <Button
                   className="w-full"
                   onClick={() => {
                     setShowQuoteDialog(true);
@@ -504,10 +604,254 @@ export function RFQVendeur() {
                   Envoyer un devis
                 </Button>
               )}
+              {(selectedRFQ.status === "Negotiating" || selectedRFQ.status === "Quoted") && selectedRFQ.quoteId && (
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => openNegotiation(selectedRFQ)}
+                >
+                  <MessageSquare className="w-4 h-4 mr-1" />
+                  Négocier
+                </Button>
+              )}
             </div>
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Dialog Négociation */}
+      <Dialog open={showNegotiationDialog} onOpenChange={setShowNegotiationDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              Négociation — {negotiationRFQ?.id}
+            </DialogTitle>
+            <DialogDescription>
+              {negotiationRFQ?.besoin} • {negotiationRFQ?.demandeur}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-hidden flex flex-col py-2">
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto space-y-3 mb-4 min-h-[200px]">
+              {isLoadingMessages ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Chargement des messages...
+                </div>
+              ) : negotiationMessages.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Aucun message pour le moment. Envoyez le premier message pour ouvrir la négociation.</p>
+                </div>
+              ) : (
+                negotiationMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={cn(
+                      "p-3 rounded-lg max-w-[85%]",
+                      msg.senderRole === "vendor" ? "bg-primary/10 ml-auto" : "bg-muted"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <User className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs font-medium">
+                        {msg.senderRole === "vendor" ? "Vous" : "Acheteur"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {msg.createdAt ? new Date(msg.createdAt).toLocaleString("fr-FR") : ""}
+                      </span>
+                    </div>
+                    <p className="text-sm">{msg.content}</p>
+                    {msg.proformaNumber && (
+                      <div className="mt-2 p-2 rounded-lg bg-background/60 text-xs space-y-0.5">
+                        <p className="font-medium">Proforma {msg.proformaNumber}</p>
+                        <p>Total : {msg.proformaTotal.toLocaleString()} FCFA</p>
+                        <p>Acompte : {msg.proformaDepositRate}% ({msg.proformaDepositAmount.toLocaleString()} FCFA)</p>
+                        {msg.proformaValidUntil && (
+                          <p>Valide jusqu'au {new Date(msg.proformaValidUntil).toLocaleDateString("fr-FR")}</p>
+                        )}
+                      </div>
+                    )}
+                    {msg.attachmentsUrls?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {msg.attachmentsUrls.map((url, idx) => (
+                          <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                            <Badge variant="outline" className="text-xs gap-1">
+                              <FileText className="w-3 h-3" />
+                              Pièce jointe {idx + 1}
+                            </Badge>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {messagesError && (
+              <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm flex items-center gap-2 mb-3">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {messagesError}
+              </div>
+            )}
+
+            {/* Formulaire proforma */}
+            {showProformaForm && (
+              <div className="border rounded-lg p-3 space-y-3 mb-3 bg-muted/30">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-primary" />
+                    Envoyer une proforma
+                  </p>
+                  <button onClick={() => setShowProformaForm(false)}>
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Numéro de proforma *</Label>
+                    <Input
+                      placeholder="PRO-2024-001"
+                      value={proformaData.proformaNumber}
+                      onChange={(e) => setProformaData({ ...proformaData, proformaNumber: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Montant total (FCFA) *</Label>
+                    <Input
+                      type="number"
+                      placeholder="1400000"
+                      value={proformaData.totalAmount}
+                      onChange={(e) => setProformaData({ ...proformaData, totalAmount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Taux d'acompte (%)</Label>
+                    <Input
+                      type="number"
+                      value={proformaData.depositRate}
+                      onChange={(e) => setProformaData({ ...proformaData, depositRate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Montant de l'acompte (FCFA)</Label>
+                    <Input
+                      type="number"
+                      placeholder="420000"
+                      value={proformaData.depositAmount}
+                      onChange={(e) => setProformaData({ ...proformaData, depositAmount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Valide jusqu'au</Label>
+                    <Input
+                      type="date"
+                      value={proformaData.validUntil}
+                      onChange={(e) => setProformaData({ ...proformaData, validUntil: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs">Note</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="Voici notre facture proforma."
+                      value={proformaData.note}
+                      onChange={(e) => setProformaData({ ...proformaData, note: e.target.value })}
+                    />
+                  </div>
+                </div>
+                {proformaError && (
+                  <div className="p-2 rounded-lg bg-destructive/10 text-destructive text-xs flex items-center gap-2">
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    {proformaError}
+                  </div>
+                )}
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={isSendingProforma || !proformaData.proformaNumber || !proformaData.totalAmount}
+                  onClick={handleSendProforma}
+                >
+                  {isSendingProforma
+                    ? <><RefreshCw className="w-4 h-4 mr-1 animate-spin" />Envoi...</>
+                    : <><Send className="w-4 h-4 mr-1" />Envoyer la proforma</>}
+                </Button>
+              </div>
+            )}
+
+            {/* Zone de saisie */}
+            <div className="space-y-2 border-t pt-3">
+              <Textarea
+                placeholder="Rédigez votre message..."
+                rows={3}
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+              />
+              {messageFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {messageFiles.map((f, idx) => (
+                    <Badge key={idx} variant="secondary" className="gap-1 pr-1">
+                      {f.name}
+                      <button
+                        type="button"
+                        onClick={() => setMessageFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex">
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.files ?? []);
+                        setMessageFiles((prev) => [...prev, ...selected]);
+                        e.target.value = "";
+                      }}
+                    />
+                    <Button variant="outline" size="sm" className="gap-1" asChild>
+                      <span>
+                        <Upload className="w-4 h-4" />
+                        Joindre
+                      </span>
+                    </Button>
+                  </label>
+                  {!showProformaForm && (
+                    <Button variant="outline" size="sm" className="gap-1" onClick={() => setShowProformaForm(true)}>
+                      <DollarSign className="w-4 h-4" />
+                      Proforma
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowNegotiationDialog(false)}>
+                    Fermer
+                  </Button>
+                  <Button
+                    disabled={isSendingMessage || !newMessage.trim()}
+                    onClick={handleSendMessage}
+                  >
+                    {isSendingMessage
+                      ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                      : <Send className="w-4 h-4 mr-1" />}
+                    Envoyer
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

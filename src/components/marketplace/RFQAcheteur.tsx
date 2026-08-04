@@ -40,7 +40,7 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { rfqApi, regionsApi, type RFQApiType, type Region, type RFQFromAPI, type RFQOffer } from "@/lib/api";
+import { rfqApi, regionsApi, type Region, type RFQFromAPI, type RFQOffer } from "@/lib/api";
 import { RestrictedButton } from "@/components/shared/RestrictedButton";
 import { useKycGate } from "@/hooks/useKycStatus";
 
@@ -54,16 +54,6 @@ const RFQ_API_CATEGORIES = [
   "Artisanat & Industries Créatives",
 ] as const;
 
-const TYPE_TO_API: Record<RFQType, RFQApiType> = {
-  b2b_volume: "B2B Volume",
-  service: "Service",
-  custom_product: "Sur mesure",
-  variable_price: "Prix variable",
-  standard: "Standard",
-};
-
-
-
 type StatusDisplay = { label: string; color: string; icon: typeof Clock };
 const statusConfig: Record<string, StatusDisplay> = {
   "Brouillon":          { label: "Brouillon",          color: "text-muted-foreground", icon: FileText },
@@ -75,18 +65,15 @@ const statusConfig: Record<string, StatusDisplay> = {
   "Expirée":            { label: "Expirée",             color: "text-muted-foreground", icon: Clock },
   "Proforma reçue":     { label: "Proforma reçue",      color: "text-amber-500",        icon: FileText },
   "Acompte en attente": { label: "Acompte en attente",  color: "text-purple-500",       icon: DollarSign },
+  "Draft":              { label: "Brouillon",           color: "text-muted-foreground", icon: FileText },
+  "Published":          { label: "Publiée",             color: "text-blue-500",         icon: Send },
+  "Quoted":             { label: "Offres reçues",       color: "text-primary",          icon: DollarSign },
+  "Accepted":           { label: "Acceptée",            color: "text-green-500",        icon: CheckCircle2 },
+  "Cancelled":          { label: "Annulée",             color: "text-destructive",      icon: XCircle },
+  "Closed":             { label: "Clôturée",            color: "text-muted-foreground", icon: CheckCircle2 },
+  "Expired":            { label: "Expirée",             color: "text-muted-foreground", icon: Clock },
 };
 const defaultStatus: StatusDisplay = { label: "Inconnu", color: "text-muted-foreground", icon: Clock };
-
-type TypeDisplay = { label: string; color: string; description: string };
-const typeConfig: Record<string, TypeDisplay> = {
-  "B2B Volume":  { label: "B2B Volume",  color: "bg-blue-500/10 text-blue-600",   description: "Achats en lots/volumes" },
-  "Service":     { label: "Service",     color: "bg-purple-500/10 text-purple-600", description: "Prestation, maintenance, consulting" },
-  "Sur mesure":  { label: "Sur mesure",  color: "bg-amber-500/10 text-amber-600", description: "Confection, fabrication" },
-  "Prix variable":{ label: "Prix variable", color: "bg-green-500/10 text-green-600", description: "Transport, options, délais" },
-  "Standard":    { label: "Standard",    color: "bg-gray-500/10 text-gray-600",   description: "Demande classique" },
-};
-const defaultType: TypeDisplay = { label: "Standard", color: "bg-gray-500/10 text-gray-600", description: "" };
 
 const typeConfigForm: Record<RFQType, { label: string; color: string; description: string }> = {
   b2b_volume:    { label: "B2B Volume",   color: "bg-blue-500/10 text-blue-600",    description: "Achats en lots/volumes" },
@@ -159,6 +146,16 @@ export function RFQAcheteur() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [apiRegions, setApiRegions] = useState<Region[]>([]);
 
+  // Annuler un RFQ
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<RFQFromAPI | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  // Confirmer l'acompte
+  const [confirmingDepositId, setConfirmingDepositId] = useState<string | null>(null);
+  const [depositError, setDepositError] = useState<string | null>(null);
+
   const handleSubmit = async (publishNow: boolean) => {
     setSubmitError(null);
     const qty = parseFloat(rfqData.quantite);
@@ -169,15 +166,21 @@ export function RFQAcheteur() {
     setIsSubmitting(true);
     try {
       await rfqApi.create({
-        title: rfqData.besoin,
+        type: rfqData.type,
         productNeed: rfqData.besoin,
-        description: rfqData.specifications || undefined,
-        category: rfqData.categorie,
+        category: rfqData.categorie || undefined,
         quantity: qty,
         unit: rfqData.unite,
-        deadline: new Date(rfqData.deadline).toISOString(),
-        type: TYPE_TO_API[rfqData.type],
         deliveryZone: rfqData.zone,
+        deadline: rfqData.deadline,
+        estimatedBudget: rfqData.estimatedBudget ? parseFloat(rfqData.estimatedBudget) : undefined,
+        specifications: rfqData.specifications || undefined,
+        recurrence: (rfqData.type === "b2b_volume" || rfqData.type === "service") ? (rfqData.recurrence || undefined) : undefined,
+        options: rfqData.type === "variable_price" && rfqData.options.length > 0 ? rfqData.options : undefined,
+        proformaRequired: (rfqData.type === "custom_product" || rfqData.type === "service") ? rfqData.proformaRequired : undefined,
+        depositPercent: (rfqData.type === "custom_product" || rfqData.type === "service") && rfqData.proformaRequired
+          ? parseFloat(rfqData.depositPercent)
+          : undefined,
         publishNow,
         files: files.length > 0 ? files : undefined,
       });
@@ -194,6 +197,35 @@ export function RFQAcheteur() {
       setSubmitError(err instanceof Error ? err.message : "Erreur lors de la création");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelRFQ = async () => {
+    if (!cancelTarget) return;
+    setCancelError(null);
+    setIsCancelling(true);
+    try {
+      await rfqApi.cancel(cancelTarget.rfqId);
+      setShowCancelDialog(false);
+      setCancelTarget(null);
+      rfqApi.getAll().then(setRfqs).catch(() => {});
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : "Erreur lors de l'annulation");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleConfirmDeposit = async (rfq: RFQFromAPI) => {
+    setDepositError(null);
+    setConfirmingDepositId(rfq.rfqId);
+    try {
+      await rfqApi.confirmDeposit(rfq.rfqId);
+      rfqApi.getAll().then(setRfqs).catch(() => {});
+    } catch (err) {
+      setDepositError(err instanceof Error ? err.message : "Erreur lors de la confirmation de l'acompte");
+    } finally {
+      setConfirmingDepositId(null);
     }
   };
 
@@ -215,10 +247,14 @@ export function RFQAcheteur() {
             Créez des RFQ et recevez des offres des vendeurs
           </p>
         </div>
-        <RestrictedButton onClick={() => setShowCreateDialog(true)} allowed={canCreateRFQ} reason={createRFQReason}>
+        {/* <RestrictedButton onClick={() => setShowCreateDialog(true)} allowed={canCreateRFQ} reason={createRFQReason}>
           <Plus className="w-4 h-4 mr-1" />
           Nouvelle demande
-        </RestrictedButton>
+        </RestrictedButton> */}
+         <Button onClick={() => setShowCreateDialog(true)}>
+          <Plus className="w-4 h-4 mr-1" />
+          Nouvelle demande
+        </Button>
       </div>
 
       {submitSuccess && (
@@ -226,6 +262,16 @@ export function RFQAcheteur() {
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           Votre demande de devis a été publiée avec succès.
           <button className="ml-auto hover:opacity-70" onClick={() => setSubmitSuccess(false)}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {depositError && (
+        <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {depositError}
+          <button className="ml-auto hover:opacity-70" onClick={() => setDepositError(null)}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -255,10 +301,14 @@ export function RFQAcheteur() {
           {rfqs.map((rfq) => {
             const status = statusConfig[rfq.status] ?? defaultStatus;
             const StatusIcon = status.icon;
-            const typeInfo = typeConfig[rfq.type] ?? defaultType;
+            const typeInfo = typeConfigForm[rfq.type as RFQType] ?? typeConfigForm.standard;
+            const isDraft = rfq.status === "Brouillon" || rfq.status === "Draft";
+            const terminalStatuses = ["Annulée", "Cancelled", "Clôturée", "Closed", "Acceptée", "Accepted", "Expirée", "Expired"];
+            const isCancellable = !terminalStatuses.includes(rfq.status);
+            const needsDepositConfirmation = rfq.proformaRequired && !["Annulée", "Cancelled", "Clôturée", "Closed"].includes(rfq.status);
 
             return (
-              <Card key={rfq.id} className="flex flex-col">
+              <Card key={rfq.rfqId} className="flex flex-col">
                 <CardContent className="p-4 flex flex-col flex-1">
                   {/* En-tête : N° RFQ + Statut + Type */}
                   <div className="flex items-center justify-between gap-2 mb-3">
@@ -266,7 +316,7 @@ export function RFQAcheteur() {
                       <div className="p-2 rounded-lg bg-muted shrink-0">
                         <StatusIcon className={cn("w-4 h-4", status.color)} />
                       </div>
-                      <span className="font-mono text-sm font-medium">{rfq.rfqNumber}</span>
+                      <span className="font-mono text-sm font-medium">{rfq.id}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Badge variant="outline" className={cn("text-xs", status.color)}>
@@ -279,17 +329,17 @@ export function RFQAcheteur() {
                   </div>
 
                   {/* Besoin */}
-                  <p className="font-semibold mb-2 line-clamp-1">{rfq.productNeed}</p>
+                  <p className="font-semibold mb-2 line-clamp-1">{rfq.besoin}</p>
 
                   {/* Détails */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
                     <span className="flex items-center gap-1">
                       <Package className="w-3 h-3 shrink-0" />
-                      {parseFloat(rfq.quantity).toLocaleString()} {rfq.unit}
+                      {rfq.quantite.toLocaleString()} {rfq.unite}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 shrink-0" />
-                      {rfq.deliveryZone}
+                      {rfq.zone}
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3 shrink-0" />
@@ -300,8 +350,8 @@ export function RFQAcheteur() {
                   {/* Budget + Offres */}
                   <div className="flex items-center justify-between mt-auto pt-3 border-t">
                     <div>
-                      {rfq.estimatedBudget ? (
-                        <p className="font-bold text-primary">{rfq.estimatedBudget.toLocaleString()} FCFA</p>
+                      {rfq.budget ? (
+                        <p className="font-bold text-primary">{rfq.budget.toLocaleString()} FCFA</p>
                       ) : (
                         <p className="text-sm text-muted-foreground">Budget non défini</p>
                       )}
@@ -312,15 +362,15 @@ export function RFQAcheteur() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      {rfq.status === "Brouillon" && (
+                      {isDraft && (
                         <Button
                           size="sm"
                           variant="default"
-                          disabled={publishingId === rfq.id}
+                          disabled={publishingId === rfq.rfqId}
                           onClick={async () => {
-                            setPublishingId(rfq.id);
+                            setPublishingId(rfq.rfqId);
                             try {
-                              await rfqApi.publish(rfq.id);
+                              await rfqApi.publish(rfq.rfqId);
                               rfqApi.getAll().then(setRfqs).catch(() => {});
                             } catch {
                               // silencieux, l'erreur peut être affichée plus tard
@@ -329,7 +379,7 @@ export function RFQAcheteur() {
                             }
                           }}
                         >
-                          {publishingId === rfq.id
+                          {publishingId === rfq.rfqId
                             ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                             : <Send className="w-4 h-4 mr-1" />}
                           Publier
@@ -344,7 +394,7 @@ export function RFQAcheteur() {
                             setOffers([]);
                             setIsLoadingOffers(true);
                             setShowOffersDialog(true);
-                            rfqApi.getOffers(rfq.id)
+                            rfqApi.getOffers(rfq.rfqId)
                               .then(setOffers)
                               .catch(() => {})
                               .finally(() => setIsLoadingOffers(false));
@@ -352,6 +402,33 @@ export function RFQAcheteur() {
                         >
                           <DollarSign className="w-4 h-4 mr-1" />
                           Offres
+                        </Button>
+                      )}
+                      {needsDepositConfirmation && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={confirmingDepositId === rfq.rfqId}
+                          onClick={() => handleConfirmDeposit(rfq)}
+                        >
+                          {confirmingDepositId === rfq.rfqId
+                            ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                          Acompte versé
+                        </Button>
+                      )}
+                      {isCancellable && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                          onClick={() => {
+                            setCancelTarget(rfq);
+                            setCancelError(null);
+                            setShowCancelDialog(true);
+                          }}
+                        >
+                          <XCircle className="w-4 h-4" />
                         </Button>
                       )}
                       <Button
@@ -414,13 +491,13 @@ export function RFQAcheteur() {
             </div>
 
             <div className="space-y-2">
-              <Label>Catégorie *</Label>
+              <Label>Catégorie</Label>
               <Select
                 value={rfqData.categorie}
                 onValueChange={(v) => setRfqData({ ...rfqData, categorie: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une catégorie" />
+                  <SelectValue placeholder="Sélectionner une catégorie (optionnel)" />
                 </SelectTrigger>
                 <SelectContent>
                   {RFQ_API_CATEGORIES.map((cat) => (
@@ -467,8 +544,8 @@ export function RFQAcheteur() {
               </div>
             </div>
 
-            {/* Récurrence pour B2B Volume */}
-            {rfqData.type === "b2b_volume" && (
+            {/* Récurrence pour B2B Volume et Service */}
+            {(rfqData.type === "b2b_volume" || rfqData.type === "service") && (
               <div className="space-y-2">
                 <Label>Récurrence</Label>
                 <Select 
@@ -680,7 +757,7 @@ export function RFQAcheteur() {
               </Button>
               {/* Bouton Brouillon masqué temporairement */}
               <Button
-                disabled={isSubmitting || !rfqData.besoin || !rfqData.categorie || !rfqData.quantite || !rfqData.unite || !rfqData.zone || !rfqData.deadline}
+                disabled={isSubmitting || !rfqData.besoin || !rfqData.quantite || !rfqData.unite || !rfqData.zone || !rfqData.deadline}
                 onClick={() => handleSubmit(true)}
               >
                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
@@ -697,7 +774,7 @@ export function RFQAcheteur() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-primary" />
-              {selectedRFQ?.rfqNumber}
+              {selectedRFQ?.id}
             </DialogTitle>
             <DialogDescription>
               Détails de la demande de devis
@@ -706,16 +783,16 @@ export function RFQAcheteur() {
           {selectedRFQ && (
             <div className="space-y-3 py-2">
               {[
-                { label: "Besoin", value: selectedRFQ.productNeed },
-                { label: "Type", value: selectedRFQ.type },
-                { label: "Catégorie", value: selectedRFQ.category },
-                { label: "Quantité", value: `${parseFloat(selectedRFQ.quantity).toLocaleString()} ${selectedRFQ.unit}` },
-                { label: "Zone de livraison", value: selectedRFQ.deliveryZone },
+                { label: "Besoin", value: selectedRFQ.besoin },
+                { label: "Type", value: (typeConfigForm[selectedRFQ.type as RFQType] ?? typeConfigForm.standard).label },
+                { label: "Catégorie", value: selectedRFQ.categorie ?? "—" },
+                { label: "Quantité", value: `${selectedRFQ.quantite.toLocaleString()} ${selectedRFQ.unite}` },
+                { label: "Zone de livraison", value: selectedRFQ.zone },
                 { label: "Date limite", value: selectedRFQ.deadline },
-                { label: "Budget estimé", value: selectedRFQ.estimatedBudget ? `${selectedRFQ.estimatedBudget.toLocaleString()} FCFA` : "Non défini" },
-                { label: "Spécifications", value: selectedRFQ.specifications ?? "—" },
-                { label: "Statut", value: selectedRFQ.status },
-                { label: "Créé le", value: new Date(selectedRFQ.createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) },
+                { label: "Budget estimé", value: selectedRFQ.budget ? `${selectedRFQ.budget.toLocaleString()} FCFA` : "Non défini" },
+                { label: "Spécifications", value: selectedRFQ.details ?? "—" },
+                { label: "Statut", value: (statusConfig[selectedRFQ.status] ?? defaultStatus).label },
+                { label: "Créé le", value: new Date(selectedRFQ.dateCreation).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-start gap-3 text-sm">
                   <span className="w-36 shrink-0 text-muted-foreground">{label}</span>
@@ -728,18 +805,30 @@ export function RFQAcheteur() {
             <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
               Fermer
             </Button>
+            {selectedRFQ?.proformaRequired && (
+              <Button
+                variant="outline"
+                disabled={confirmingDepositId === selectedRFQ.rfqId}
+                onClick={() => handleConfirmDeposit(selectedRFQ)}
+              >
+                {confirmingDepositId === selectedRFQ.rfqId
+                  ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                Acompte versé
+              </Button>
+            )}
             <Button
               onClick={() => {
                 if (!selectedRFQ) return;
                 setEditData({
-                  productNeed: selectedRFQ.productNeed,
-                  category: selectedRFQ.category,
-                  quantity: selectedRFQ.quantity,
-                  unit: selectedRFQ.unit,
-                  deliveryZone: selectedRFQ.deliveryZone,
+                  productNeed: selectedRFQ.besoin,
+                  category: selectedRFQ.categorie ?? "",
+                  quantity: selectedRFQ.quantite.toString(),
+                  unit: selectedRFQ.unite,
+                  deliveryZone: selectedRFQ.zone,
                   deadline: selectedRFQ.deadline,
-                  estimatedBudget: selectedRFQ.estimatedBudget?.toString() ?? "",
-                  specifications: selectedRFQ.specifications ?? "",
+                  estimatedBudget: selectedRFQ.budget?.toString() ?? "",
+                  specifications: selectedRFQ.details ?? "",
                   type: selectedRFQ.type,
                 });
                 setSaveError(null);
@@ -759,7 +848,7 @@ export function RFQAcheteur() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Modifier la demande</DialogTitle>
-            <DialogDescription>{selectedRFQ?.rfqNumber}</DialogDescription>
+            <DialogDescription>{selectedRFQ?.id}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -767,8 +856,8 @@ export function RFQAcheteur() {
               <Select value={editData.type ?? ""} onValueChange={(v) => setEditData({ ...editData, type: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(typeConfig).map(([key]) => (
-                    <SelectItem key={key} value={key}>{key}</SelectItem>
+                  {Object.entries(typeConfigForm).map(([key, config]) => (
+                    <SelectItem key={key} value={key}>{config.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -860,7 +949,7 @@ export function RFQAcheteur() {
                   }
                   setIsSaving(true);
                   try {
-                    await rfqApi.update(selectedRFQ.id, {
+                    await rfqApi.update(selectedRFQ.rfqId, {
                       type: editData.type,
                       productNeed: editData.productNeed,
                       category: editData.category,
@@ -945,7 +1034,7 @@ export function RFQAcheteur() {
                   await rfqApi.negotiateOffer(selectedOffer.id, counterPrice, negotiateMessage);
                   setShowNegotiateDialog(false);
                   if (selectedRFQ) {
-                    rfqApi.getOffers(selectedRFQ.id).then(setOffers).catch(() => {});
+                    rfqApi.getOffers(selectedRFQ.rfqId).then(setOffers).catch(() => {});
                   }
                 } catch (err) {
                   setNegotiateError(err instanceof Error ? err.message : "Erreur lors de la négociation");
@@ -1005,7 +1094,7 @@ export function RFQAcheteur() {
                   await rfqApi.rejectOffer(selectedOffer.id, rejectReason || "Rejet de l'offre");
                   setShowRejectDialog(false);
                   if (selectedRFQ) {
-                    rfqApi.getOffers(selectedRFQ.id).then(setOffers).catch(() => {});
+                    rfqApi.getOffers(selectedRFQ.rfqId).then(setOffers).catch(() => {});
                     rfqApi.getAll().then(setRfqs).catch(() => {});
                   }
                 } catch (err) {
@@ -1028,7 +1117,7 @@ export function RFQAcheteur() {
           <DialogHeader>
             <DialogTitle>Offres reçues</DialogTitle>
             <DialogDescription>
-              {selectedRFQ?.productNeed} — {selectedRFQ ? parseFloat(selectedRFQ.quantity).toLocaleString() : ""} {selectedRFQ?.unit}
+              {selectedRFQ?.besoin} — {selectedRFQ ? selectedRFQ.quantite.toLocaleString() : ""} {selectedRFQ?.unite}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
@@ -1090,7 +1179,7 @@ export function RFQAcheteur() {
                             setProformaActionId(offer.id);
                             try {
                               await rfqApi.rejectProforma(offer.id);
-                              rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                              rfqApi.getOffers(selectedRFQ!.rfqId).then(setOffers).catch(() => {});
                             } catch { /* silencieux */ }
                             finally { setProformaActionId(null); }
                           }}
@@ -1106,7 +1195,7 @@ export function RFQAcheteur() {
                             setProformaActionId(offer.id);
                             try {
                               await rfqApi.acceptProforma(offer.id);
-                              rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                              rfqApi.getOffers(selectedRFQ!.rfqId).then(setOffers).catch(() => {});
                             } catch { /* silencieux */ }
                             finally { setProformaActionId(null); }
                           }}
@@ -1152,7 +1241,7 @@ export function RFQAcheteur() {
                           setAcceptingOfferId(offer.id);
                           try {
                             await rfqApi.acceptOffer(offer.id);
-                            rfqApi.getOffers(selectedRFQ!.id).then(setOffers).catch(() => {});
+                            rfqApi.getOffers(selectedRFQ!.rfqId).then(setOffers).catch(() => {});
                             rfqApi.getAll().then(setRfqs).catch(() => {});
                           } catch { /* silencieux */ }
                           finally { setAcceptingOfferId(null); }
@@ -1168,6 +1257,36 @@ export function RFQAcheteur() {
                 </Card>
               ))
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Annuler un RFQ */}
+      <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-destructive" />
+              Annuler la demande {cancelTarget?.id}
+            </DialogTitle>
+            <DialogDescription>
+              Cette action annule définitivement la demande de devis. Les vendeurs ne pourront plus y répondre.
+            </DialogDescription>
+          </DialogHeader>
+          {cancelError && (
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-lg p-3">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {cancelError}
+            </div>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)} disabled={isCancelling}>
+              Retour
+            </Button>
+            <Button variant="destructive" disabled={isCancelling} onClick={handleCancelRFQ}>
+              {isCancelling ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Confirmer l'annulation
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

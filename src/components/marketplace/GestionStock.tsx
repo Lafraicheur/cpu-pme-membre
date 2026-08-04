@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { stockApi, type StockVendorKpis, type StockAlerteUrgente, type StockVendorItem as StockVendorItemAPI, type StockVendorMovementApi, type ReplenishmentOrderApi } from "@/lib/api";
+
+const THRESHOLD_TO_API: Record<string, string> = { alerte: "alert", critique: "critical", custom: "custom" };
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +65,8 @@ import { cn } from "@/lib/utils";
 
 interface StockItem {
   id: string;
+  productId: string;
+  variantId: string | null;
   nom: string;
   sku: string;
   categorie: string;
@@ -77,6 +82,29 @@ interface StockItem {
   dernierMouvement: string;
   tendance: "up" | "down" | "stable";
   image: string;
+}
+
+function mapStockItem(it: StockVendorItemAPI): StockItem {
+  return {
+    id: it.id,
+    productId: it.productId,
+    variantId: it.variantId,
+    nom: it.nom,
+    sku: it.sku,
+    categorie: it.categorie,
+    stockActuel: it.stockActuel,
+    seuilAlerte: it.seuilAlerte,
+    seuilCritique: it.seuilCritique,
+    stockOptimal: it.stockOptimal,
+    unite: it.unite,
+    prixAchat: it.prixAchat,
+    fournisseur: it.fournisseur,
+    delaiReappro: it.delaiReappro,
+    autoReappro: it.autoReappro,
+    dernierMouvement: it.dernierMouvement ?? "",
+    tendance: (it.tendance === "up" || it.tendance === "down") ? it.tendance : "stable",
+    image: it.image || "",
+  };
 }
 
 interface StockMovement {
@@ -103,113 +131,38 @@ interface ReapproOrder {
   type: "auto" | "manuel";
 }
 
-// Mock data
-const mockStockItems: StockItem[] = [
-  {
-    id: "1",
-    nom: "Cacao Premium Grade A",
-    sku: "CAC-PRM-001",
-    categorie: "Agro-industrie",
-    stockActuel: 12,
-    seuilAlerte: 20,
-    seuilCritique: 5,
-    stockOptimal: 50,
-    unite: "tonne",
-    prixAchat: 750000,
-    fournisseur: "Coopérative Aboisso",
-    delaiReappro: 7,
-    autoReappro: true,
-    dernierMouvement: "2024-03-14",
-    tendance: "down",
-    image: "🍫",
-  },
-  {
-    id: "2",
-    nom: "Attiéké séché - 25kg",
-    sku: "ATT-SEC-025",
-    categorie: "Produits vivriers",
-    stockActuel: 3,
-    seuilAlerte: 15,
-    seuilCritique: 5,
-    stockOptimal: 100,
-    unite: "sac",
-    prixAchat: 12000,
-    fournisseur: "Femmes de Dabou",
-    delaiReappro: 3,
-    autoReappro: true,
-    dernierMouvement: "2024-03-15",
-    tendance: "down",
-    image: "🌾",
-  },
-  {
-    id: "3",
-    nom: "Huile de palme raffinée - 20L",
-    sku: "HPR-20L-001",
-    categorie: "Huiles végétales",
-    stockActuel: 85,
-    seuilAlerte: 30,
-    seuilCritique: 10,
-    stockOptimal: 150,
-    unite: "bidon",
-    prixAchat: 20000,
-    fournisseur: "Palmeraie du Sud",
-    delaiReappro: 5,
-    autoReappro: false,
-    dernierMouvement: "2024-03-12",
-    tendance: "stable",
-    image: "🫒",
-  },
-  {
-    id: "4",
-    nom: "Café torréfié premium",
-    sku: "CAF-TOR-PRE",
-    categorie: "Café",
-    stockActuel: 45,
-    seuilAlerte: 25,
-    seuilCritique: 10,
-    stockOptimal: 100,
-    unite: "kg",
-    prixAchat: 10000,
-    fournisseur: "Torréfacteurs d'Abidjan",
-    delaiReappro: 4,
-    autoReappro: true,
-    dernierMouvement: "2024-03-13",
-    tendance: "up",
-    image: "☕",
-  },
-  {
-    id: "5",
-    nom: "Noix de cajou brutes",
-    sku: "NCJ-BRT-001",
-    categorie: "Fruits secs",
-    stockActuel: 0,
-    seuilAlerte: 20,
-    seuilCritique: 5,
-    stockOptimal: 80,
-    unite: "kg",
-    prixAchat: 8000,
-    fournisseur: "Producteurs de Bondoukou",
-    delaiReappro: 10,
-    autoReappro: true,
-    dernierMouvement: "2024-03-10",
-    tendance: "down",
-    image: "🥜",
-  },
-];
+const MOVEMENT_TYPES = ["entree", "sortie", "ajustement", "retour"] as const;
 
-const mockMovements: StockMovement[] = [
-  { id: "1", produitId: "1", produitNom: "Cacao Premium Grade A", type: "sortie", quantite: 5, motif: "Vente", reference: "CMD-2024-156", date: "2024-03-15 14:30", utilisateur: "Jean K." },
-  { id: "2", produitId: "2", produitNom: "Attiéké séché - 25kg", type: "sortie", quantite: 12, motif: "Vente", reference: "CMD-2024-157", date: "2024-03-15 11:20", utilisateur: "Marie A." },
-  { id: "3", produitId: "3", produitNom: "Huile de palme raffinée", type: "entree", quantite: 50, motif: "Réception commande", reference: "REC-2024-089", date: "2024-03-14 09:00", utilisateur: "Paul M." },
-  { id: "4", produitId: "1", produitNom: "Cacao Premium Grade A", type: "ajustement", quantite: -2, motif: "Inventaire", reference: "INV-2024-012", date: "2024-03-13 16:45", utilisateur: "Admin" },
-  { id: "5", produitId: "4", produitNom: "Café torréfié premium", type: "retour", quantite: 3, motif: "Retour client", reference: "RET-2024-023", date: "2024-03-12 10:15", utilisateur: "Marie A." },
-];
+function mapMovement(m: StockVendorMovementApi): StockMovement {
+  return {
+    id: m.id,
+    produitId: m.produitId,
+    produitNom: m.produitNom,
+    type: (MOVEMENT_TYPES as readonly string[]).includes(m.type) ? (m.type as StockMovement["type"]) : "ajustement",
+    quantite: m.quantite,
+    motif: m.motif,
+    reference: m.reference,
+    date: m.date,
+    utilisateur: m.utilisateur,
+  };
+}
 
-const mockReapproOrders: ReapproOrder[] = [
-  { id: "1", produitId: "2", produitNom: "Attiéké séché - 25kg", quantite: 100, fournisseur: "Femmes de Dabou", statut: "confirmed", dateCommande: "2024-03-15", dateEstimee: "2024-03-18", type: "auto" },
-  { id: "2", produitId: "5", produitNom: "Noix de cajou brutes", quantite: 80, fournisseur: "Producteurs de Bondoukou", statut: "shipped", dateCommande: "2024-03-12", dateEstimee: "2024-03-22", type: "auto" },
-  { id: "3", produitId: "1", produitNom: "Cacao Premium Grade A", quantite: 40, fournisseur: "Coopérative Aboisso", statut: "pending", dateCommande: "2024-03-15", dateEstimee: "2024-03-22", type: "auto" },
-];
+const REAPPRO_STATUSES = ["pending", "confirmed", "shipped", "received", "cancelled"] as const;
+const REAPPRO_TYPES = ["auto", "manuel"] as const;
+
+function mapReplenishment(o: ReplenishmentOrderApi): ReapproOrder {
+  return {
+    id: o.id,
+    produitId: o.produitId,
+    produitNom: o.produitNom,
+    quantite: o.quantite,
+    fournisseur: o.fournisseur,
+    statut: (REAPPRO_STATUSES as readonly string[]).includes(o.statut) ? (o.statut as ReapproOrder["statut"]) : "pending",
+    dateCommande: o.dateCommande,
+    dateEstimee: o.dateEstimee,
+    type: (REAPPRO_TYPES as readonly string[]).includes(o.type) ? (o.type as ReapproOrder["type"]) : "manuel",
+  };
+}
 
 const statusConfig = {
   pending: { label: "En attente", color: "text-amber-500", bgColor: "bg-amber-500/10", icon: Clock },
@@ -227,9 +180,32 @@ const movementTypeConfig = {
 };
 
 export function GestionStock() {
-  const [stockItems, setStockItems] = useState<StockItem[]>(mockStockItems);
-  const [movements] = useState<StockMovement[]>(mockMovements);
-  const [reapproOrders, setReapproOrders] = useState<ReapproOrder[]>(mockReapproOrders);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [isLoadingItems, setIsLoadingItems] = useState(true);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [isLoadingMovements, setIsLoadingMovements] = useState(true);
+  const [movementsError, setMovementsError] = useState<string | null>(null);
+  const [reapproOrders, setReapproOrders] = useState<ReapproOrder[]>([]);
+  const [isLoadingReappro, setIsLoadingReappro] = useState(true);
+  const [reapproListError, setReapproListError] = useState<string | null>(null);
+  const [reapproActionId, setReapproActionId] = useState<string | null>(null);
+
+  // Paramètres globaux stock
+  const [globalSettings, setGlobalSettings] = useState({
+    autoReapproGlobal: true,
+    seuilDeclenchement: "alerte",
+    quantiteCommande: "optimal",
+    quantiteFixe: "",
+    emailStockBas: true,
+    emailRupture: true,
+    smsUrgences: false,
+    notificationApp: true,
+  });
+  const [isLoadingGlobalSettings, setIsLoadingGlobalSettings] = useState(true);
+  const [isSavingGlobalSettings, setIsSavingGlobalSettings] = useState(false);
+  const [globalSettingsError, setGlobalSettingsError] = useState<string | null>(null);
+  const [globalSettingsSaved, setGlobalSettingsSaved] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<string>("all");
   const [selectedItem, setSelectedItem] = useState<StockItem | null>(null);
@@ -238,29 +214,190 @@ export function GestionStock() {
   const [showReapproDialog, setShowReapproDialog] = useState(false);
   const [movementType, setMovementType] = useState<"entree" | "sortie">("entree");
   const [movementQuantity, setMovementQuantity] = useState("");
+  const [isSubmittingMovement, setIsSubmittingMovement] = useState(false);
+  const [movementError, setMovementError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Stats
-  const stats = {
-    totalProduits: stockItems.length,
-    enRupture: stockItems.filter(i => i.stockActuel === 0).length,
-    alerteBasse: stockItems.filter(i => i.stockActuel > 0 && i.stockActuel <= i.seuilAlerte).length,
-    alerteCritique: stockItems.filter(i => i.stockActuel > 0 && i.stockActuel <= i.seuilCritique).length,
-    autoReapproActif: stockItems.filter(i => i.autoReappro).length,
-    commandesEnCours: reapproOrders.filter(o => !["received", "cancelled"].includes(o.statut)).length,
-    valeurStock: stockItems.reduce((acc, i) => acc + (i.stockActuel * i.prixAchat), 0),
+  const [settingsForm, setSettingsForm] = useState({
+    seuilAlerte: "",
+    seuilCritique: "",
+    stockOptimal: "",
+    fournisseur: "",
+    delaiReappro: "",
+    prixAchat: "",
+    autoReappro: false,
+  });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  const [reapproQuantity, setReapproQuantity] = useState("");
+  const [isSubmittingReappro, setIsSubmittingReappro] = useState(false);
+  const [reapproError, setReapproError] = useState<string | null>(null);
+
+  // KPIs et alertes urgentes (API réelle)
+  const [apiKpis, setApiKpis] = useState<StockVendorKpis | null>(null);
+  const [alertesUrgentes, setAlertesUrgentes] = useState<StockAlerteUrgente[]>([]);
+  const [isLoadingKpis, setIsLoadingKpis] = useState(true);
+
+  const fetchDashboard = useCallback(() => {
+    setIsLoadingKpis(true);
+    stockApi.getVendorDashboard({ search: searchQuery || undefined, level: stockFilter })
+      .then((res) => {
+        setApiKpis(res.kpis);
+        setAlertesUrgentes(res.alertesUrgentes ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingKpis(false));
+  }, [searchQuery, stockFilter]);
+
+  const fetchItems = useCallback(() => {
+    setIsLoadingItems(true);
+    setItemsError(null);
+    stockApi.getVendorItems({ search: searchQuery || undefined, level: stockFilter })
+      .then((res) => setStockItems(res.items.map(mapStockItem)))
+      .catch(() => setItemsError("Impossible de charger le stock."))
+      .finally(() => setIsLoadingItems(false));
+  }, [searchQuery, stockFilter]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchDashboard();
+      fetchItems();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [fetchDashboard, fetchItems]);
+
+  const fetchMovements = useCallback(() => {
+    setIsLoadingMovements(true);
+    setMovementsError(null);
+    stockApi.getVendorMovements({ limit: 50 })
+      .then((res) => setMovements(res.movements.map(mapMovement)))
+      .catch(() => setMovementsError("Impossible de charger l'historique des mouvements."))
+      .finally(() => setIsLoadingMovements(false));
+  }, []);
+
+  useEffect(() => { fetchMovements(); }, [fetchMovements]);
+
+  const fetchReappro = useCallback(() => {
+    setIsLoadingReappro(true);
+    setReapproListError(null);
+    stockApi.getVendorReplenishments()
+      .then((res) => setReapproOrders(res.orders.map(mapReplenishment)))
+      .catch(() => setReapproListError("Impossible de charger les commandes de réapprovisionnement."))
+      .finally(() => setIsLoadingReappro(false));
+  }, []);
+
+  useEffect(() => { fetchReappro(); }, [fetchReappro]);
+
+  const handleConfirmReappro = async (order: ReapproOrder) => {
+    setReapproActionId(order.id);
+    try {
+      await stockApi.confirmReplenishment(order.id);
+      fetchReappro();
+    } catch {
+      // silencieux
+    } finally {
+      setReapproActionId(null);
+    }
   };
 
-  const filteredItems = stockItems.filter(item => {
-    const matchesSearch = item.nom.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (stockFilter === "all") return matchesSearch;
-    if (stockFilter === "rupture") return matchesSearch && item.stockActuel === 0;
-    if (stockFilter === "critique") return matchesSearch && item.stockActuel > 0 && item.stockActuel <= item.seuilCritique;
-    if (stockFilter === "alerte") return matchesSearch && item.stockActuel > item.seuilCritique && item.stockActuel <= item.seuilAlerte;
-    if (stockFilter === "ok") return matchesSearch && item.stockActuel > item.seuilAlerte;
-    return matchesSearch;
-  });
+  const handleShipReappro = async (order: ReapproOrder) => {
+    setReapproActionId(order.id);
+    try {
+      await stockApi.shipReplenishment(order.id);
+      fetchReappro();
+    } catch {
+      // silencieux
+    } finally {
+      setReapproActionId(null);
+    }
+  };
+
+  const handleReceiveReappro = async (order: ReapproOrder) => {
+    setReapproActionId(order.id);
+    try {
+      await stockApi.receiveReplenishment(order.id);
+      fetchReappro();
+      fetchItems();
+      fetchDashboard();
+      fetchMovements();
+    } catch {
+      // silencieux
+    } finally {
+      setReapproActionId(null);
+    }
+  };
+
+  const handleCancelReappro = async (order: ReapproOrder) => {
+    setReapproActionId(order.id);
+    try {
+      await stockApi.cancelReplenishment(order.id);
+      fetchReappro();
+    } catch {
+      // silencieux
+    } finally {
+      setReapproActionId(null);
+    }
+  };
+
+  const fetchGlobalSettings = useCallback(() => {
+    setIsLoadingGlobalSettings(true);
+    stockApi.getVendorSettings()
+      .then((res) => {
+        const s = res.settings;
+        setGlobalSettings({
+          autoReapproGlobal: s.autoReapproGlobal,
+          seuilDeclenchement: s.seuilDeclenchement || "alerte",
+          quantiteCommande: s.quantiteCommande || "optimal",
+          quantiteFixe: s.quantiteFixe != null ? String(s.quantiteFixe) : "",
+          emailStockBas: s.notifications?.emailStockBas ?? true,
+          emailRupture: s.notifications?.emailRupture ?? true,
+          smsUrgences: s.notifications?.smsUrgences ?? false,
+          notificationApp: s.notifications?.notificationApp ?? true,
+        });
+      })
+      .catch(() => {})
+      .finally(() => setIsLoadingGlobalSettings(false));
+  }, []);
+
+  useEffect(() => { fetchGlobalSettings(); }, [fetchGlobalSettings]);
+
+  const handleSaveGlobalSettings = async () => {
+    setIsSavingGlobalSettings(true);
+    setGlobalSettingsError(null);
+    setGlobalSettingsSaved(false);
+    try {
+      await stockApi.updateVendorSettings({
+        autoReplenishmentEnabled: globalSettings.autoReapproGlobal,
+        triggerThreshold: THRESHOLD_TO_API[globalSettings.seuilDeclenchement] ?? globalSettings.seuilDeclenchement,
+        orderQuantityMode: globalSettings.quantiteCommande,
+        fixedOrderQuantity: globalSettings.quantiteCommande === "fixed"
+          ? (parseInt(globalSettings.quantiteFixe, 10) || undefined)
+          : undefined,
+        emailLowStock: globalSettings.emailStockBas,
+        emailOutOfStock: globalSettings.emailRupture,
+        smsUrgency: globalSettings.smsUrgences,
+        appNotification: globalSettings.notificationApp,
+      });
+      setGlobalSettingsSaved(true);
+    } catch (e) {
+      setGlobalSettingsError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement des paramètres.");
+    } finally {
+      setIsSavingGlobalSettings(false);
+    }
+  };
+
+  const stats = apiKpis ?? {
+    totalProduits: 0,
+    enRupture: 0,
+    alerteBasse: 0,
+    alerteCritique: 0,
+    autoReapproActif: 0,
+    commandesEnCours: 0,
+    valeurStock: 0,
+  };
+
+  const filteredItems = stockItems;
 
   const getStockStatus = (item: StockItem) => {
     if (item.stockActuel === 0) return { label: "Rupture", color: "text-red-600", bgColor: "bg-red-500/10" };
@@ -269,47 +406,116 @@ export function GestionStock() {
     return { label: "OK", color: "text-green-600", bgColor: "bg-green-500/10" };
   };
 
-  const handleMovement = () => {
+  const handleMovement = async () => {
     if (!selectedItem || !movementQuantity) return;
-    
-    const qty = parseInt(movementQuantity);
-    const newStock = movementType === "entree" 
-      ? selectedItem.stockActuel + qty 
-      : Math.max(0, selectedItem.stockActuel - qty);
-    
-    setStockItems(stockItems.map(i => 
-      i.id === selectedItem.id ? { ...i, stockActuel: newStock, dernierMouvement: new Date().toISOString().split('T')[0] } : i
-    ));
-    
-    setShowMovementDialog(false);
-    setMovementQuantity("");
-    setSelectedItem(null);
+    const qty = parseInt(movementQuantity, 10);
+    if (isNaN(qty) || qty <= 0) return;
+    setIsSubmittingMovement(true);
+    setMovementError(null);
+    try {
+      await stockApi.recordMovement({
+        productId: selectedItem.productId,
+        variantId: selectedItem.variantId ?? undefined,
+        type: movementType,
+        quantity: qty,
+        reason: movementType === "entree" ? "Entrée manuelle" : "Sortie manuelle",
+      });
+      setShowMovementDialog(false);
+      setMovementQuantity("");
+      setSelectedItem(null);
+      fetchItems();
+      fetchDashboard();
+      fetchMovements();
+    } catch (e) {
+      setMovementError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement du mouvement.");
+    } finally {
+      setIsSubmittingMovement(false);
+    }
   };
 
-  const handleToggleAutoReappro = (itemId: string) => {
-    setStockItems(stockItems.map(i => 
-      i.id === itemId ? { ...i, autoReappro: !i.autoReappro } : i
-    ));
+  const handleToggleAutoReappro = async (item: StockItem) => {
+    const next = !item.autoReappro;
+    setTogglingId(item.id);
+    setStockItems(prev => prev.map(i => i.id === item.id ? { ...i, autoReappro: next } : i));
+    try {
+      await stockApi.toggleAutoReappro(item.productId, next, item.variantId ?? undefined);
+      fetchDashboard();
+    } catch {
+      setStockItems(prev => prev.map(i => i.id === item.id ? { ...i, autoReappro: !next } : i));
+    } finally {
+      setTogglingId(null);
+    }
   };
 
-  const handleManualReappro = () => {
+  const openSettingsDialog = (item: StockItem) => {
+    setSelectedItem(item);
+    setSettingsForm({
+      seuilAlerte: String(item.seuilAlerte),
+      seuilCritique: String(item.seuilCritique),
+      stockOptimal: String(item.stockOptimal),
+      fournisseur: item.fournisseur,
+      delaiReappro: String(item.delaiReappro),
+      prixAchat: String(item.prixAchat),
+      autoReappro: item.autoReappro,
+    });
+    setSettingsError(null);
+    setShowSettingsDialog(true);
+  };
+
+  const handleSaveSettings = async () => {
     if (!selectedItem) return;
-    
-    const newOrder: ReapproOrder = {
-      id: `${Date.now()}`,
-      produitId: selectedItem.id,
-      produitNom: selectedItem.nom,
-      quantite: selectedItem.stockOptimal - selectedItem.stockActuel,
-      fournisseur: selectedItem.fournisseur,
-      statut: "pending",
-      dateCommande: new Date().toISOString().split('T')[0],
-      dateEstimee: new Date(Date.now() + selectedItem.delaiReappro * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      type: "manuel",
-    };
-    
-    setReapproOrders([newOrder, ...reapproOrders]);
-    setShowReapproDialog(false);
-    setSelectedItem(null);
+    setIsSavingSettings(true);
+    setSettingsError(null);
+    try {
+      await stockApi.updateSettings(selectedItem.productId, {
+        alertThreshold: parseInt(settingsForm.seuilAlerte, 10) || 0,
+        criticalThreshold: parseInt(settingsForm.seuilCritique, 10) || 0,
+        optimalStock: parseInt(settingsForm.stockOptimal, 10) || 0,
+        supplierName: settingsForm.fournisseur || undefined,
+        replenishmentDelayDays: parseInt(settingsForm.delaiReappro, 10) || undefined,
+        purchasePrice: parseFloat(settingsForm.prixAchat) || undefined,
+        autoReplenishment: settingsForm.autoReappro,
+      }, selectedItem.variantId ?? undefined);
+      setShowSettingsDialog(false);
+      setSelectedItem(null);
+      fetchItems();
+      fetchDashboard();
+    } catch (e) {
+      setSettingsError(e instanceof Error ? e.message : "Erreur lors de l'enregistrement.");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const openReapproDialog = (item: StockItem | null) => {
+    setSelectedItem(item);
+    setReapproQuantity(item ? String(Math.max(0, item.stockOptimal - item.stockActuel)) : "");
+    setReapproError(null);
+    setShowReapproDialog(true);
+  };
+
+  const handleManualReappro = async () => {
+    if (!selectedItem || !reapproQuantity) return;
+    const qty = parseInt(reapproQuantity, 10);
+    if (isNaN(qty) || qty <= 0) return;
+    setIsSubmittingReappro(true);
+    setReapproError(null);
+    try {
+      await stockApi.createReplenishment({
+        productId: selectedItem.productId,
+        variantId: selectedItem.variantId ?? undefined,
+        quantity: qty,
+      });
+      setShowReapproDialog(false);
+      setSelectedItem(null);
+      setReapproQuantity("");
+      fetchReappro();
+      fetchDashboard();
+    } catch (e) {
+      setReapproError(e instanceof Error ? e.message : "Erreur lors de la commande.");
+    } finally {
+      setIsSubmittingReappro(false);
+    }
   };
 
   return (
@@ -323,7 +529,7 @@ export function GestionStock() {
                 <Package className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.totalProduits}</p>
+                <p className="text-2xl font-bold">{isLoadingKpis ? "…" : stats.totalProduits}</p>
                 <p className="text-sm text-muted-foreground">Références</p>
               </div>
             </div>
@@ -340,7 +546,7 @@ export function GestionStock() {
                 <XCircle className="w-5 h-5 text-red-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-red-600">{stats.enRupture}</p>
+                <p className="text-2xl font-bold text-red-600">{isLoadingKpis ? "…" : stats.enRupture}</p>
                 <p className="text-sm text-muted-foreground">En rupture</p>
               </div>
             </div>
@@ -354,7 +560,7 @@ export function GestionStock() {
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-amber-600">{stats.alerteBasse}</p>
+                <p className="text-2xl font-bold text-amber-600">{isLoadingKpis ? "…" : stats.alerteBasse}</p>
                 <p className="text-sm text-muted-foreground">Stock bas</p>
               </div>
             </div>
@@ -371,7 +577,7 @@ export function GestionStock() {
                 <Zap className="w-5 h-5 text-green-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stats.autoReapproActif}</p>
+                <p className="text-2xl font-bold">{isLoadingKpis ? "…" : stats.autoReapproActif}</p>
                 <p className="text-sm text-muted-foreground">Auto-réappro</p>
               </div>
             </div>
@@ -390,32 +596,40 @@ export function GestionStock() {
               <Bell className="w-5 h-5 text-red-500 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold text-red-700">Alertes stock urgentes</p>
-                <div className="mt-2 space-y-1">
-                  {stockItems.filter(i => i.stockActuel === 0).map(item => (
-                    <div key={item.id} className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2">
-                        <span>{item.image}</span>
-                        <span className="font-medium">{item.nom}</span>
-                        <Badge variant="destructive" className="text-xs">RUPTURE</Badge>
-                      </span>
-                      <Button size="sm" variant="outline" onClick={() => { setSelectedItem(item); setShowReapproDialog(true); }}>
-                        Commander
-                      </Button>
-                    </div>
-                  ))}
-                  {stockItems.filter(i => i.stockActuel > 0 && i.stockActuel <= i.seuilCritique).map(item => (
-                    <div key={item.id} className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2">
-                        <span>{item.image}</span>
-                        <span className="font-medium">{item.nom}</span>
-                        <Badge className="bg-orange-500/10 text-orange-600 text-xs">Critique: {item.stockActuel} {item.unite}(s)</Badge>
-                      </span>
-                      <Button size="sm" variant="outline" onClick={() => { setSelectedItem(item); setShowReapproDialog(true); }}>
-                        Commander
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                {alertesUrgentes.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    {alertesUrgentes.map((alerte, idx) => {
+                      const isRupture = alerte.niveau ? alerte.niveau === "rupture" : (alerte.stockActuel ?? 0) === 0;
+                      const matched = stockItems.find(i => i.nom === alerte.nom || i.id === alerte.productId);
+                      return (
+                        <div key={alerte.id ?? idx} className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2">
+                            <span>{alerte.image ?? "📦"}</span>
+                            <span className="font-medium">{alerte.nom ?? "Produit"}</span>
+                            {isRupture ? (
+                              <Badge variant="destructive" className="text-xs">RUPTURE</Badge>
+                            ) : (
+                              <Badge className="bg-orange-500/10 text-orange-600 text-xs">
+                                Critique: {alerte.stockActuel} {alerte.unite ?? ""}(s)
+                              </Badge>
+                            )}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openReapproDialog(matched ?? null)}
+                          >
+                            Commander
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {stats.enRupture} rupture(s) et {stats.alerteCritique} produit(s) en stock critique
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -487,6 +701,34 @@ export function GestionStock() {
           </Card>
 
           {/* Liste des produits */}
+          {isLoadingItems ? (
+            <div className="flex items-center justify-center h-40">
+              <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Chargement du stock...</span>
+            </div>
+          ) : itemsError ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-destructive opacity-70" />
+                <h3 className="font-semibold mb-2">Erreur de chargement</h3>
+                <p className="text-sm text-muted-foreground mb-4">{itemsError}</p>
+                <Button variant="outline" onClick={fetchItems}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Réessayer
+                </Button>
+              </CardContent>
+            </Card>
+          ) : filteredItems.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="font-semibold mb-2">Aucun article en stock</h3>
+                <p className="text-sm text-muted-foreground">
+                  Aucun article ne correspond à vos critères.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <Table>
               <TableHeader>
@@ -504,13 +746,18 @@ export function GestionStock() {
               <TableBody>
                 {filteredItems.map((item) => {
                   const status = getStockStatus(item);
-                  const stockPercentage = Math.min(100, (item.stockActuel / item.stockOptimal) * 100);
-                  
+                  const stockPercentage = item.stockOptimal > 0 ? Math.min(100, (item.stockActuel / item.stockOptimal) * 100) : 0;
+                  const hasPhoto = /^https?:\/\//.test(item.image);
+
                   return (
                     <TableRow key={item.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">{item.image}</span>
+                          {hasPhoto ? (
+                            <img src={item.image} alt={item.nom} className="w-9 h-9 rounded object-cover shrink-0" />
+                          ) : (
+                            <span className="text-2xl">📦</span>
+                          )}
                           <div>
                             <p className="font-medium">{item.nom}</p>
                             <p className="text-xs text-muted-foreground">{item.categorie}</p>
@@ -538,7 +785,8 @@ export function GestionStock() {
                       <TableCell className="text-center">
                         <Switch
                           checked={item.autoReappro}
-                          onCheckedChange={() => handleToggleAutoReappro(item.id)}
+                          disabled={togglingId === item.id}
+                          onCheckedChange={() => handleToggleAutoReappro(item)}
                         />
                       </TableCell>
                       <TableCell className="text-center">
@@ -548,34 +796,34 @@ export function GestionStock() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => { setSelectedItem(item); setMovementType("entree"); setShowMovementDialog(true); }}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => { setSelectedItem(item); setMovementType("entree"); setMovementQuantity(""); setMovementError(null); setShowMovementDialog(true); }}
                             title="Entrée stock"
                           >
                             <Plus className="w-4 h-4 text-green-500" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => { setSelectedItem(item); setMovementType("sortie"); setShowMovementDialog(true); }}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => { setSelectedItem(item); setMovementType("sortie"); setMovementQuantity(""); setMovementError(null); setShowMovementDialog(true); }}
                             title="Sortie stock"
                           >
                             <Minus className="w-4 h-4 text-red-500" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => { setSelectedItem(item); setShowSettingsDialog(true); }}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openSettingsDialog(item)}
                             title="Paramètres"
                           >
                             <Settings className="w-4 h-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
+                          <Button
+                            variant="ghost"
                             size="icon"
-                            onClick={() => { setSelectedItem(item); setShowReapproDialog(true); }}
+                            onClick={() => openReapproDialog(item)}
                             title="Commander"
                           >
                             <Truck className="w-4 h-4 text-primary" />
@@ -588,6 +836,7 @@ export function GestionStock() {
               </TableBody>
             </Table>
           </Card>
+          )}
         </TabsContent>
 
         {/* Onglet Mouvements */}
@@ -598,6 +847,26 @@ export function GestionStock() {
               <CardDescription>Suivi des entrées, sorties et ajustements de stock</CardDescription>
             </CardHeader>
             <CardContent>
+              {isLoadingMovements ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Chargement des mouvements...
+                </div>
+              ) : movementsError ? (
+                <div className="py-12 text-center">
+                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+                  <p className="text-sm text-muted-foreground mb-4">{movementsError}</p>
+                  <Button variant="outline" onClick={fetchMovements}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Réessayer
+                  </Button>
+                </div>
+              ) : movements.length === 0 ? (
+                <div className="py-12 text-center">
+                  <History className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground">Aucun mouvement de stock enregistré.</p>
+                </div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -614,7 +883,7 @@ export function GestionStock() {
                   {movements.map((mvt) => {
                     const typeConfig = movementTypeConfig[mvt.type];
                     const TypeIcon = typeConfig.icon;
-                    
+
                     return (
                       <TableRow key={mvt.id}>
                         <TableCell className="text-sm">{mvt.date}</TableCell>
@@ -633,13 +902,14 @@ export function GestionStock() {
                           </span>
                         </TableCell>
                         <TableCell>{mvt.motif}</TableCell>
-                        <TableCell className="font-mono text-xs">{mvt.reference}</TableCell>
+                        <TableCell className="font-mono text-xs">{mvt.reference || "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{mvt.utilisateur}</TableCell>
                       </TableRow>
                     );
                   })}
                 </TableBody>
               </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -653,13 +923,33 @@ export function GestionStock() {
                   <CardTitle className="text-lg">Commandes de réapprovisionnement</CardTitle>
                   <CardDescription>Suivi des commandes automatiques et manuelles</CardDescription>
                 </div>
-                <Button onClick={() => setShowReapproDialog(true)}>
+                <Button onClick={() => openReapproDialog(null)}>
                   <Plus className="w-4 h-4 mr-1" />
                   Nouvelle commande
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
+              {isLoadingReappro ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Chargement des commandes...
+                </div>
+              ) : reapproListError ? (
+                <div className="py-12 text-center">
+                  <AlertTriangle className="w-10 h-10 mx-auto mb-3 text-destructive opacity-70" />
+                  <p className="text-sm text-muted-foreground mb-4">{reapproListError}</p>
+                  <Button variant="outline" onClick={fetchReappro}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Réessayer
+                  </Button>
+                </div>
+              ) : reapproOrders.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Truck className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground">Aucune commande de réapprovisionnement.</p>
+                </div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -677,7 +967,8 @@ export function GestionStock() {
                   {reapproOrders.map((order) => {
                     const status = statusConfig[order.statut];
                     const StatusIcon = status.icon;
-                    
+                    const busy = reapproActionId === order.id;
+
                     return (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">{order.produitNom}</TableCell>
@@ -699,22 +990,26 @@ export function GestionStock() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            {order.statut === "pending" && (
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => handleConfirmReappro(order)}>
+                                {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                                Confirmer
+                              </Button>
+                            )}
+                            {order.statut === "confirmed" && (
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => handleShipReappro(order)}>
+                                {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Truck className="w-4 h-4 mr-1" />}
+                                Marquer expédiée
+                              </Button>
+                            )}
                             {order.statut === "shipped" && (
-                              <Button variant="outline" size="sm" onClick={() => {
-                                setReapproOrders(reapproOrders.map(o => 
-                                  o.id === order.id ? { ...o, statut: "received" } : o
-                                ));
-                              }}>
-                                <CheckCircle2 className="w-4 h-4 mr-1" />
+                              <Button variant="outline" size="sm" disabled={busy} onClick={() => handleReceiveReappro(order)}>
+                                {busy ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
                                 Réceptionner
                               </Button>
                             )}
                             {order.statut === "pending" && (
-                              <Button variant="ghost" size="icon" className="text-red-500" onClick={() => {
-                                setReapproOrders(reapproOrders.map(o => 
-                                  o.id === order.id ? { ...o, statut: "cancelled" } : o
-                                ));
-                              }}>
+                              <Button variant="ghost" size="icon" className="text-red-500" disabled={busy} onClick={() => handleCancelReappro(order)}>
                                 <XCircle className="w-4 h-4" />
                               </Button>
                             )}
@@ -725,12 +1020,20 @@ export function GestionStock() {
                   })}
                 </TableBody>
               </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Onglet Paramètres */}
         <TabsContent value="parametres" className="space-y-4">
+          {isLoadingGlobalSettings ? (
+            <div className="flex items-center justify-center h-40">
+              <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+              <span className="ml-3 text-muted-foreground">Chargement des paramètres...</span>
+            </div>
+          ) : (
+          <>
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -746,14 +1049,20 @@ export function GestionStock() {
                     <p className="font-medium">Activer l'auto-réapprovisionnement</p>
                     <p className="text-sm text-muted-foreground">Déclenche les commandes automatiquement</p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={globalSettings.autoReapproGlobal}
+                    onCheckedChange={(checked) => setGlobalSettings({ ...globalSettings, autoReapproGlobal: checked })}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">Seuil de déclenchement</p>
                     <p className="text-sm text-muted-foreground">Commander quand stock ≤ seuil alerte</p>
                   </div>
-                  <Select defaultValue="alerte">
+                  <Select
+                    value={globalSettings.seuilDeclenchement}
+                    onValueChange={(v) => setGlobalSettings({ ...globalSettings, seuilDeclenchement: v })}
+                  >
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
@@ -769,7 +1078,10 @@ export function GestionStock() {
                     <p className="font-medium">Quantité à commander</p>
                     <p className="text-sm text-muted-foreground">Atteindre le stock optimal</p>
                   </div>
-                  <Select defaultValue="optimal">
+                  <Select
+                    value={globalSettings.quantiteCommande}
+                    onValueChange={(v) => setGlobalSettings({ ...globalSettings, quantiteCommande: v })}
+                  >
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
@@ -780,6 +1092,17 @@ export function GestionStock() {
                     </SelectContent>
                   </Select>
                 </div>
+                {globalSettings.quantiteCommande === "fixed" && (
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium">Quantité fixe</p>
+                    <Input
+                      type="number"
+                      className="w-[140px]"
+                      value={globalSettings.quantiteFixe}
+                      onChange={(e) => setGlobalSettings({ ...globalSettings, quantiteFixe: e.target.value })}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -797,32 +1120,64 @@ export function GestionStock() {
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <span>Email alerte stock bas</span>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={globalSettings.emailStockBas}
+                    onCheckedChange={(checked) => setGlobalSettings({ ...globalSettings, emailStockBas: checked })}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <span>Email rupture de stock</span>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={globalSettings.emailRupture}
+                    onCheckedChange={(checked) => setGlobalSettings({ ...globalSettings, emailRupture: checked })}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-4 h-4 text-muted-foreground" />
                     <span>SMS urgences</span>
                   </div>
-                  <Switch />
+                  <Switch
+                    checked={globalSettings.smsUrgences}
+                    onCheckedChange={(checked) => setGlobalSettings({ ...globalSettings, smsUrgences: checked })}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Bell className="w-4 h-4 text-muted-foreground" />
                     <span>Notification app</span>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={globalSettings.notificationApp}
+                    onCheckedChange={(checked) => setGlobalSettings({ ...globalSettings, notificationApp: checked })}
+                  />
                 </div>
               </CardContent>
             </Card>
           </div>
+
+          {globalSettingsError && (
+            <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+              {globalSettingsError}
+            </div>
+          )}
+          {globalSettingsSaved && !globalSettingsError && (
+            <div className="p-3 rounded-lg bg-green-500/10 text-sm text-green-700">
+              Paramètres enregistrés avec succès.
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button onClick={handleSaveGlobalSettings} disabled={isSavingGlobalSettings}>
+              {isSavingGlobalSettings ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Enregistrer les paramètres
+            </Button>
+          </div>
+          </>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -858,11 +1213,22 @@ export function GestionStock() {
                 <p className="font-medium text-red-700">Nouveau stock: {selectedItem ? Math.max(0, selectedItem.stockActuel - (parseInt(movementQuantity) || 0)) : 0} {selectedItem?.unite}(s)</p>
               </div>
             )}
+            {movementError && (
+              <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+                {movementError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowMovementDialog(false)}>Annuler</Button>
-            <Button onClick={handleMovement} disabled={!movementQuantity}>
-              {movementType === "entree" ? <Plus className="w-4 h-4 mr-1" /> : <Minus className="w-4 h-4 mr-1" />}
+            <Button variant="outline" onClick={() => setShowMovementDialog(false)} disabled={isSubmittingMovement}>Annuler</Button>
+            <Button onClick={handleMovement} disabled={!movementQuantity || isSubmittingMovement}>
+              {isSubmittingMovement ? (
+                <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+              ) : movementType === "entree" ? (
+                <Plus className="w-4 h-4 mr-1" />
+              ) : (
+                <Minus className="w-4 h-4 mr-1" />
+              )}
               Confirmer
             </Button>
           </DialogFooter>
@@ -880,36 +1246,74 @@ export function GestionStock() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Seuil d'alerte</Label>
-                <Input type="number" defaultValue={selectedItem?.seuilAlerte} />
+                <Input
+                  type="number"
+                  value={settingsForm.seuilAlerte}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, seuilAlerte: e.target.value })}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Seuil critique</Label>
-                <Input type="number" defaultValue={selectedItem?.seuilCritique} />
+                <Input
+                  type="number"
+                  value={settingsForm.seuilCritique}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, seuilCritique: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-2">
               <Label>Stock optimal</Label>
-              <Input type="number" defaultValue={selectedItem?.stockOptimal} />
+              <Input
+                type="number"
+                value={settingsForm.stockOptimal}
+                onChange={(e) => setSettingsForm({ ...settingsForm, stockOptimal: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Prix d'achat (FCFA)</Label>
+              <Input
+                type="number"
+                value={settingsForm.prixAchat}
+                onChange={(e) => setSettingsForm({ ...settingsForm, prixAchat: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Fournisseur principal</Label>
-              <Input defaultValue={selectedItem?.fournisseur} />
+              <Input
+                value={settingsForm.fournisseur}
+                onChange={(e) => setSettingsForm({ ...settingsForm, fournisseur: e.target.value })}
+              />
             </div>
             <div className="space-y-2">
               <Label>Délai de réapprovisionnement (jours)</Label>
-              <Input type="number" defaultValue={selectedItem?.delaiReappro} />
+              <Input
+                type="number"
+                value={settingsForm.delaiReappro}
+                onChange={(e) => setSettingsForm({ ...settingsForm, delaiReappro: e.target.value })}
+              />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Réapprovisionnement automatique</p>
                 <p className="text-sm text-muted-foreground">Commander automatiquement sous le seuil</p>
               </div>
-              <Switch defaultChecked={selectedItem?.autoReappro} />
+              <Switch
+                checked={settingsForm.autoReappro}
+                onCheckedChange={(checked) => setSettingsForm({ ...settingsForm, autoReappro: checked })}
+              />
             </div>
+            {settingsError && (
+              <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+                {settingsError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>Annuler</Button>
-            <Button onClick={() => setShowSettingsDialog(false)}>Enregistrer</Button>
+            <Button variant="outline" onClick={() => setShowSettingsDialog(false)} disabled={isSavingSettings}>Annuler</Button>
+            <Button onClick={handleSaveSettings} disabled={isSavingSettings}>
+              {isSavingSettings ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : null}
+              Enregistrer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -937,25 +1341,31 @@ export function GestionStock() {
               </div>
               <div className="space-y-2">
                 <Label>Quantité à commander</Label>
-                <Input 
-                  type="number" 
-                  defaultValue={selectedItem.stockOptimal - selectedItem.stockActuel}
+                <Input
+                  type="number"
+                  value={reapproQuantity}
+                  onChange={(e) => setReapproQuantity(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Suggestion: {selectedItem.stockOptimal - selectedItem.stockActuel} {selectedItem.unite}(s) pour atteindre le stock optimal
+                  Suggestion: {Math.max(0, selectedItem.stockOptimal - selectedItem.stockActuel)} {selectedItem.unite}(s) pour atteindre le stock optimal
                 </p>
               </div>
               <div className="p-3 bg-primary/5 rounded-lg">
                 <p className="text-sm">
                   <span className="font-medium">Coût estimé:</span>{" "}
-                  {((selectedItem.stockOptimal - selectedItem.stockActuel) * selectedItem.prixAchat).toLocaleString()} FCFA
+                  {((parseInt(reapproQuantity, 10) || 0) * selectedItem.prixAchat).toLocaleString()} FCFA
                 </p>
               </div>
+              {reapproError && (
+                <div className="p-3 rounded-lg bg-destructive/10 text-sm text-destructive">
+                  {reapproError}
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
               <Label>Sélectionner un produit</Label>
-              <Select onValueChange={(val) => setSelectedItem(stockItems.find(i => i.id === val) || null)}>
+              <Select onValueChange={(val) => openReapproDialog(stockItems.find(i => i.id === val) || null)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Choisir un produit..." />
                 </SelectTrigger>
@@ -968,9 +1378,9 @@ export function GestionStock() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowReapproDialog(false); setSelectedItem(null); }}>Annuler</Button>
-            <Button onClick={handleManualReappro} disabled={!selectedItem}>
-              <Truck className="w-4 h-4 mr-1" />
+            <Button variant="outline" onClick={() => { setShowReapproDialog(false); setSelectedItem(null); }} disabled={isSubmittingReappro}>Annuler</Button>
+            <Button onClick={handleManualReappro} disabled={!selectedItem || !reapproQuantity || isSubmittingReappro}>
+              {isSubmittingReappro ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Truck className="w-4 h-4 mr-1" />}
               Commander
             </Button>
           </DialogFooter>

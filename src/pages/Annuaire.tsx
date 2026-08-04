@@ -26,7 +26,7 @@ import {
   Award,
 } from "lucide-react";
 
-const API_BASE = import.meta.env.VITE_API_URL_DEV || "https://back.cpupme.ci";
+const API_BASE = import.meta.env.VITE_API_URL || "https://back.cpupme.ci";
 
 function getToken(): string | null {
   return localStorage.getItem("cpu-access-token");

@@ -56,32 +56,25 @@ interface RegulatedProduct {
   id: string;
   nom: string;
   categorie: string;
-  sousCategorie: string;
   typeReglementation: string;
   typeReglementationLabel: string;
+  typeReglementationIcon: string;
   status: ComplianceStatus;
   documentsValidated: number;
   documentsRequired: number;
   missingDocuments: string[];
   dateExpiration: string | null;
-  alertMessage: string | null;
-  image: string;
+  dernierAudit: string | null;
+  commentaireAdmin: string | null;
+  image: string | null;
+  documents: RegulatedProductDocumentApi[];
 }
 
 const REGULATION_TYPES: { value: string; label: string; icon: string }[] = [
-  { value: "securite_alimentaire", label: "Sécurité alimentaire", icon: "🍽️" },
-  { value: "cosmetiques", label: "Cosmétiques", icon: "💄" },
-  { value: "phytosanitaires", label: "Phytosanitaires", icon: "🌿" },
+  { value: "alimentaire", label: "Sécurité alimentaire", icon: "🍽️" },
+  { value: "cosmetique", label: "Cosmétiques", icon: "💄" },
+  { value: "phytosanitaire", label: "Phytosanitaires", icon: "🌿" },
 ];
-
-const COMPLIANCE_STATUS_MAP: Record<string, ComplianceStatus> = {
-  conforme: "approved",
-  en_attente: "pending",
-  non_conforme: "rejected",
-  expire: "expired",
-  expiree: "expired",
-  incomplet: "incomplete",
-};
 
 const statusConfig: Record<ComplianceStatus, { label: string; color: string; icon: typeof CheckCircle2; bgColor: string }> = {
   pending: { label: "En attente", color: "text-amber-500", icon: Clock, bgColor: "bg-amber-500/10" },
@@ -90,6 +83,7 @@ const statusConfig: Record<ComplianceStatus, { label: string; color: string; ico
   expired: { label: "Expiré", color: "text-orange-500", icon: AlertCircle, bgColor: "bg-orange-500/10" },
   incomplete: { label: "Incomplet", color: "text-muted-foreground", icon: AlertTriangle, bgColor: "bg-muted" },
 };
+const defaultStatus = statusConfig.incomplete;
 
 const DOC_STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
   missing: { label: "Manquant", color: "text-muted-foreground", bgColor: "bg-muted" },
@@ -101,14 +95,14 @@ const DOC_STATUS_CONFIG: Record<string, { label: string; color: string; bgColor:
 
 function getDocStatusConfig(doc: RegulatedProductDocumentApi) {
   const key = (doc.status ?? "").toLowerCase();
-  return DOC_STATUS_CONFIG[key] ?? (doc.fileUrl
+  return DOC_STATUS_CONFIG[key] ?? (doc.fichier
     ? { label: "En vérification", color: "text-amber-500", bgColor: "bg-amber-500/10" }
     : { label: "Manquant", color: "text-muted-foreground", bgColor: "bg-muted" });
 }
 
-function parseMissingDocuments(alertMessage?: string | null): string[] {
-  if (!alertMessage) return [];
-  return alertMessage
+function parseMissingDocuments(commentaireAdmin?: string | null): string[] {
+  if (!commentaireAdmin) return [];
+  return commentaireAdmin
     .split(/(?<=\.)\s+/)
     .map((s) => s.replace(/^Veuillez fournir\s*:\s*/i, "").replace(/\.$/, "").trim())
     .filter(Boolean);
@@ -117,18 +111,20 @@ function parseMissingDocuments(alertMessage?: string | null): string[] {
 function mapApiRegulatedProduct(r: RegulatedProductApi): RegulatedProduct {
   return {
     id: r.id,
-    nom: r.productName ?? "Produit",
-    categorie: r.productCategory ?? "",
-    sousCategorie: r.productSubCategory ?? "",
-    typeReglementation: r.regulatedCategoryType ?? "",
-    typeReglementationLabel: r.regulatedCategoryLabel ?? "",
-    status: COMPLIANCE_STATUS_MAP[r.complianceStatus] ?? "incomplete",
+    nom: r.nom ?? "Produit",
+    categorie: r.categorie ?? "",
+    typeReglementation: r.typeReglementation ?? "",
+    typeReglementationLabel: r.typeReglementationLabel ?? "",
+    typeReglementationIcon: r.typeReglementationIcon ?? "🛡️",
+    status: (r.status as ComplianceStatus) ?? "incomplete",
     documentsValidated: r.documentsValidated ?? 0,
     documentsRequired: r.documentsRequired ?? 0,
-    missingDocuments: parseMissingDocuments(r.alertMessage),
-    dateExpiration: r.nearestExpiry ?? null,
-    alertMessage: r.alertMessage ?? null,
-    image: "🛡️",
+    missingDocuments: parseMissingDocuments(r.commentaireAdmin),
+    dateExpiration: r.dateExpiration ?? null,
+    dernierAudit: r.dernierAudit ?? null,
+    commentaireAdmin: r.commentaireAdmin ?? null,
+    image: r.image ?? null,
+    documents: r.documents ?? [],
   };
 }
 
@@ -142,8 +138,6 @@ export function ProduitsReglementes() {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<RegulatedProduct | null>(null);
   const [showDocumentDialog, setShowDocumentDialog] = useState(false);
-  const [documents, setDocuments] = useState<RegulatedProductDocumentApi[]>([]);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<RegulatedProductDocumentApi | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadExpiresAt, setUploadExpiresAt] = useState("");
@@ -151,16 +145,21 @@ export function ProduitsReglementes() {
 
   const [apiStats, setApiStats] = useState<RegulatedProductsStats | null>(null);
 
-  const fetchProducts = useCallback(() => {
+  const fetchProducts = useCallback((): Promise<RegulatedProduct[]> => {
     setIsLoading(true);
     setError(null);
-    regulatedProductsApi.getAll({ status: statusFilter, q: searchQuery || undefined, page, limit: 20 })
+    return regulatedProductsApi.getAll({ status: statusFilter, q: searchQuery || undefined, page, limit: 20 })
       .then((res) => {
-        setProducts(res.data.map(mapApiRegulatedProduct));
+        const mapped = res.data.map(mapApiRegulatedProduct);
+        setProducts(mapped);
         setApiStats(res.stats);
         setTotalPages(res.totalPages || 1);
+        return mapped;
       })
-      .catch(() => setError("Impossible de charger les produits réglementés."))
+      .catch(() => {
+        setError("Impossible de charger les produits réglementés.");
+        return [];
+      })
       .finally(() => setIsLoading(false));
   }, [statusFilter, searchQuery, page]);
 
@@ -174,32 +173,16 @@ export function ProduitsReglementes() {
     setPage(1);
   }, [searchQuery, statusFilter]);
 
-  const stats = {
-    total: apiStats?.total ?? 0,
-    approved: apiStats?.conforme ?? 0,
-    pending: apiStats?.enAttente ?? 0,
-    rejected: apiStats?.nonConforme ?? 0,
-    expiringSoon: apiStats?.expirentBientot ?? 0,
-  };
+  const stats = apiStats ?? { total: 0, approved: 0, pending: 0, rejected: 0, expiringSoon: 0 };
 
   const getDocumentProgress = (product: RegulatedProduct) => {
     if (product.documentsRequired === 0) return 0;
     return (product.documentsValidated / product.documentsRequired) * 100;
   };
 
-  const fetchDocuments = (productId: string) => {
-    setLoadingDocuments(true);
-    regulatedProductsApi.getDocuments(productId)
-      .then(setDocuments)
-      .catch(() => setDocuments([]))
-      .finally(() => setLoadingDocuments(false));
-  };
-
   const openDocumentDialog = (product: RegulatedProduct) => {
     setSelectedProduct(product);
     setShowDocumentDialog(true);
-    setDocuments([]);
-    fetchDocuments(product.id);
   };
 
   const openUploadDialog = (doc: RegulatedProductDocumentApi) => {
@@ -217,8 +200,10 @@ export function ProduitsReglementes() {
       setUploadingDoc(null);
       setUploadFile(null);
       setUploadExpiresAt("");
-      if (selectedProduct) fetchDocuments(selectedProduct.id);
-      fetchProducts();
+      const refreshed = await fetchProducts();
+      if (selectedProduct) {
+        setSelectedProduct(refreshed.find((p) => p.id === selectedProduct.id) ?? null);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "L'envoi du document a échoué.");
     } finally {
@@ -444,31 +429,33 @@ export function ProduitsReglementes() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {products.map((product) => {
-            const status = statusConfig[product.status];
+            const status = statusConfig[product.status] ?? defaultStatus;
             const StatusIcon = status.icon;
             const progress = getDocumentProgress(product);
-            const regulation = REGULATION_TYPES.find(rt => rt.value === product.typeReglementation);
+            const hasPhoto = !!product.image && /^https?:\/\//.test(product.image);
 
             return (
               <Card key={product.id} className="hover:shadow-md transition-all">
                 <CardContent className="p-0">
-                  <div className="relative bg-gradient-to-br from-primary/10 to-secondary/10 p-6 flex items-center justify-center h-24 rounded-t-lg">
-                    <span className="text-4xl">{regulation?.icon ?? product.image}</span>
-                    <Badge className={cn("absolute top-2 left-2", status.bgColor, status.color, "border-0")}>
+                  <div className="relative bg-gradient-to-br from-primary/10 to-secondary/10 p-6 flex items-center justify-center h-24 rounded-t-lg overflow-hidden">
+                    {hasPhoto ? (
+                      <img src={product.image ?? undefined} alt={product.nom} className="w-full h-full object-cover absolute inset-0" />
+                    ) : (
+                      <span className="text-4xl">{product.typeReglementationIcon}</span>
+                    )}
+                    <Badge className={cn("absolute top-2 left-2 z-10", status.bgColor, status.color, "border-0")}>
                       <StatusIcon className="w-3 h-3 mr-1" />
                       {status.label}
                     </Badge>
-                    <Badge variant="outline" className="absolute top-2 right-2 bg-background/80">
-                      {product.typeReglementationLabel || regulation?.label || product.typeReglementation}
+                    <Badge variant="outline" className="absolute top-2 right-2 bg-background/80 z-10">
+                      {product.typeReglementationLabel || product.typeReglementation}
                     </Badge>
                   </div>
 
                   <div className="p-4 space-y-4">
                     <div>
                       <h3 className="font-semibold">{product.nom}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {product.categorie}{product.sousCategorie ? ` • ${product.sousCategorie}` : ""}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{product.categorie}</p>
                     </div>
 
                     {/* Progress documents */}
@@ -497,10 +484,16 @@ export function ProduitsReglementes() {
                       </div>
                     )}
 
+                    {product.dernierAudit && (
+                      <p className="text-xs text-muted-foreground">
+                        Dernier audit : {new Date(product.dernierAudit).toLocaleDateString('fr-FR')}
+                      </p>
+                    )}
+
                     {/* Alerte */}
-                    {product.alertMessage && (
+                    {product.commentaireAdmin && (
                       <div className="p-3 rounded-lg bg-muted text-sm">
-                        <p className="text-muted-foreground">{product.alertMessage}</p>
+                        <p className="text-muted-foreground">{product.commentaireAdmin}</p>
                       </div>
                     )}
 
@@ -604,9 +597,7 @@ export function ProduitsReglementes() {
               <Card className="bg-muted/50">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">
-                      {REGULATION_TYPES.find(rt => rt.value === selectedProduct.typeReglementation)?.icon}
-                    </span>
+                    <span className="text-2xl">{selectedProduct.typeReglementationIcon}</span>
                     <div>
                       <p className="font-medium">
                         {selectedProduct.typeReglementationLabel || selectedProduct.typeReglementation}
@@ -621,18 +612,13 @@ export function ProduitsReglementes() {
               </Card>
 
               {/* Liste des documents */}
-              {loadingDocuments ? (
-                <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
-                  <span className="text-sm text-muted-foreground">Chargement des documents...</span>
-                </div>
-              ) : documents.length > 0 ? (
+              {selectedProduct.documents.length > 0 ? (
                 <div className="space-y-3">
-                  {documents.map((doc) => {
+                  {selectedProduct.documents.map((doc) => {
                     const docStatus = getDocStatusConfig(doc);
-                    const label = doc.name ?? "Document";
+                    const label = doc.type || "Document";
                     return (
-                      <Card key={doc.id} className={cn("border", !doc.fileUrl && "border-dashed")}>
+                      <Card key={doc.id} className={cn("border", !doc.fichier && "border-dashed")}>
                         <CardContent className="p-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -641,9 +627,9 @@ export function ProduitsReglementes() {
                               </div>
                               <div>
                                 <p className="font-medium">{label}</p>
-                                {doc.expiresAt && (
+                                {doc.dateExpiration && (
                                   <p className="text-xs text-muted-foreground">
-                                    Expire le {new Date(doc.expiresAt).toLocaleDateString('fr-FR')}
+                                    Expire le {new Date(doc.dateExpiration).toLocaleDateString('fr-FR')}
                                   </p>
                                 )}
                               </div>
@@ -658,13 +644,13 @@ export function ProduitsReglementes() {
                                 onClick={() => openUploadDialog(doc)}
                               >
                                 <Upload className="w-4 h-4 mr-1" />
-                                {doc.fileUrl ? "Remplacer" : "Uploader"}
+                                {doc.fichier ? "Remplacer" : "Uploader"}
                               </Button>
                             </div>
                           </div>
-                          {doc.rejectionReason && (
+                          {doc.commentaire && (
                             <div className="mt-3 p-2 rounded bg-destructive/10 text-sm text-destructive">
-                              {doc.rejectionReason}
+                              {doc.commentaire}
                             </div>
                           )}
                         </CardContent>
@@ -694,7 +680,7 @@ export function ProduitsReglementes() {
           <DialogHeader>
             <DialogTitle>Uploader un document</DialogTitle>
             <DialogDescription>
-              {uploadingDoc?.name}
+              {uploadingDoc?.type}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -721,12 +707,10 @@ export function ProduitsReglementes() {
                 PDF, JPG, PNG (max 10 Mo)
               </p>
             </label>
-            {uploadingDoc?.hasExpiry && (
-              <div className="space-y-2">
-                <Label>Date d'expiration</Label>
-                <Input type="date" value={uploadExpiresAt} onChange={(e) => setUploadExpiresAt(e.target.value)} />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Date d'expiration (optionnel)</Label>
+              <Input type="date" value={uploadExpiresAt} onChange={(e) => setUploadExpiresAt(e.target.value)} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" disabled={isUploading} onClick={() => setUploadingDoc(null)}>

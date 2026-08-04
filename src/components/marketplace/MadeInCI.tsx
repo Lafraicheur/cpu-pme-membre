@@ -1,9 +1,7 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -24,136 +22,153 @@ import {
 } from "@/components/ui/select";
 import {
   Award,
+  Upload,
   CheckCircle2,
   Clock,
   AlertCircle,
   XCircle,
   FileText,
-  Image,
-  Package,
   ChevronRight,
   Eye,
   HelpCircle,
   Loader2,
+  Paperclip,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
-  madeInCIBadgeLevelsApi,
-  madeInCIProductsApi,
+  madeInCIApi,
   madeInCIRequestsApi,
-  MadeInCIBadgeLevel,
+  type MadeInCIDashboardData,
 } from "@/lib/api";
-import { toast } from "@/components/ui/use-toast";
 
-// Couleurs et critères statiques associés à chaque niveau de badge
-const badgeLevelConfig: Record<string, { color: string; requirements: string[] }> = {
-  or: {
-    color: "bg-primary text-primary-foreground",
-    requirements: ["Transformation majeure en CI", "Intrants locaux >70%", "Certification qualité"],
-  },
-  argent: {
-    color: "bg-secondary text-secondary-foreground",
-    requirements: ["Transformation significative", "Intrants locaux >50%"],
-  },
-  bronze: {
-    color: "bg-amber-600 text-white",
-    requirements: ["Transformation de base", "Conditionnement local"],
-  },
-  innovation_ivoire: {
-    color: "bg-cyan-500 text-white",
-    requirements: ["Brevet ou modèle déposé", "Innovation technique", "R&D locale"],
-  },
+type BadgeStatus = "Draft" | "Submitted" | "InAudit" | "Approved" | "Rejected";
+
+const BADGE_COLORS: Record<string, string> = {
+  or: "bg-primary text-primary-foreground",
+  argent: "bg-secondary text-secondary-foreground",
+  bronze: "bg-amber-600 text-white",
+  innovation: "bg-cyan-500 text-white",
 };
 
-const defaultConfig = { color: "bg-muted text-muted-foreground", requirements: [] };
-
-function getBadgeConfig(id: string) {
-  return badgeLevelConfig[id] ?? defaultConfig;
+function getBadgeColor(code: string | null | undefined): string {
+  if (!code) return "bg-muted text-muted-foreground";
+  return BADGE_COLORS[code.toLowerCase()] ?? "bg-primary text-primary-foreground";
 }
 
-function getBadgeColorIcon(color: string): string {
-  if (color.includes("primary")) return "text-primary";
-  if (color.includes("secondary")) return "text-secondary";
-  if (color.includes("amber")) return "text-amber-600";
-  if (color.includes("cyan")) return "text-cyan-500";
-  return "text-muted-foreground";
-}
-
-// Mapping des statuts API vers l'affichage
-type StatusKey = "draft" | "submitted" | "in_audit" | "approved" | "rejected";
-
-const statusConfig: Record<StatusKey, { label: string; color: string; icon: typeof Clock }> = {
-  draft: { label: "Brouillon", color: "text-muted-foreground", icon: FileText },
-  submitted: { label: "Soumis", color: "text-blue-500", icon: Clock },
-  in_audit: { label: "En audit", color: "text-amber-500", icon: Eye },
-  approved: { label: "Approuvé", color: "text-green-500", icon: CheckCircle2 },
-  rejected: { label: "Refusé", color: "text-destructive", icon: XCircle },
+const statusConfig: Record<BadgeStatus, { label: string; color: string; icon: typeof Clock }> = {
+  Draft: { label: "Brouillon", color: "text-muted-foreground", icon: FileText },
+  Submitted: { label: "Soumis", color: "text-blue-500", icon: Clock },
+  InAudit: { label: "En audit", color: "text-amber-500", icon: Eye },
+  Approved: { label: "Approuvé", color: "text-green-500", icon: CheckCircle2 },
+  Rejected: { label: "Refusé", color: "text-destructive", icon: XCircle },
 };
 
-function normalizeStatus(status: string): StatusKey {
-  const s = status.toLowerCase();
-  if (s === "submitted") return "submitted";
-  if (s === "in_audit" || s === "inaudit") return "in_audit";
-  if (s === "approved") return "approved";
-  if (s === "rejected") return "rejected";
-  return "draft";
+const STATUS_ALIASES: Record<string, BadgeStatus> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  pending: "Submitted",
+  in_review: "Submitted",
+  in_audit: "InAudit",
+  inaudit: "InAudit",
+  audit: "InAudit",
+  approved: "Approved",
+  validated: "Approved",
+  certifie: "Approved",
+  rejected: "Rejected",
+  refused: "Rejected",
+  refuse: "Rejected",
+};
+
+function normalizeStatus(raw: string): BadgeStatus {
+  return STATUS_ALIASES[raw.toLowerCase().replace(/[\s-]/g, "_")] ?? "Submitted";
 }
 
 export function MadeInCI() {
-  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [dashboard, setDashboard] = useState<MadeInCIDashboardData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [showRequestDialog, setShowRequestDialog] = useState(false);
-  const [formData, setFormData] = useState({
-    productId: "",
-    badgeType: "",
-    transformationProcess: "",
-    localValueAdded: "",
+  const [submitting, setSubmitting] = useState(false);
+  const [requestData, setRequestData] = useState({
+    produit: "",
+    niveau: "",
+    descriptionProcess: "",
+    pourcentageLocal: "",
   });
+  const [inputInvoices, setInputInvoices] = useState<File[]>([]);
+  const [productionPhotos, setProductionPhotos] = useState<File[]>([]);
 
-  // Chargement des niveaux de badge
-  const { data: badgeLevels = [], isLoading: isLoadingLevels } = useQuery<MadeInCIBadgeLevel[]>({
-    queryKey: ["madeInCI", "badgeLevels"],
-    queryFn: madeInCIBadgeLevelsApi.getAll,
-  });
-
-  // Chargement de mes demandes
-  const { data: myRequests = [], isLoading: isLoadingRequests } = useQuery({
-    queryKey: ["madeInCI", "myRequests"],
-    queryFn: madeInCIRequestsApi.getMyRequests,
-  });
-
-  // Chargement de mes produits (pour le formulaire)
-  const { data: myProducts = [], isLoading: isLoadingProducts } = useQuery({
-    queryKey: ["madeInCI", "myProducts"],
-    queryFn: madeInCIProductsApi.getMyProducts,
-  });
-
-  // Soumission d'une demande
-  const submitMutation = useMutation({
-    mutationFn: madeInCIRequestsApi.submit,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["madeInCI", "myRequests"] });
-      setShowRequestDialog(false);
-      setFormData({ productId: "", badgeType: "", transformationProcess: "", localValueAdded: "" });
-      toast({ title: "Demande soumise", description: "Votre demande de badge Made in CI a été envoyée." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const approvedCount = myRequests.filter((r) => normalizeStatus(r.status) === "approved").length;
-
-  function handleSubmit() {
-    if (!formData.productId || !formData.badgeType || !formData.transformationProcess || !formData.localValueAdded) {
-      toast({ title: "Champs requis", description: "Veuillez remplir tous les champs obligatoires.", variant: "destructive" });
-      return;
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const data = await madeInCIApi.getDashboard();
+      setDashboard(data);
+    } catch {
+      setError("Impossible de charger vos données Made in CI.");
     }
-    submitMutation.mutate({
-      productId: formData.productId,
-      badgeType: formData.badgeType,
-      transformationProcess: formData.transformationProcess,
-      localValueAdded: parseFloat(formData.localValueAdded),
-    });
+  }, []);
+
+  useEffect(() => {
+    fetchDashboard().finally(() => setIsLoading(false));
+  }, [fetchDashboard]);
+
+  const badgeLevelEntries = Object.entries(dashboard?.badgeLevels ?? {});
+  const approvedCount = dashboard?.stats.approvedCount ?? 0;
+  const demandes = dashboard?.demandes ?? [];
+  const produits = dashboard?.produits ?? [];
+
+  const openRequestDialog = (niveau?: string) => {
+    setRequestData({ produit: "", niveau: niveau ?? "", descriptionProcess: "", pourcentageLocal: "" });
+    setInputInvoices([]);
+    setProductionPhotos([]);
+    setShowRequestDialog(true);
+  };
+
+  const handleSubmitRequest = async () => {
+    if (!requestData.produit || !requestData.niveau || !requestData.descriptionProcess) return;
+    setSubmitting(true);
+    try {
+      await madeInCIRequestsApi.submit({
+        productId: requestData.produit,
+        badgeType: requestData.niveau,
+        transformationProcess: requestData.descriptionProcess,
+        localValueAdded: parseFloat(requestData.pourcentageLocal) || undefined,
+        inputInvoices,
+        productionPhotos,
+      });
+      toast({ title: "Demande envoyée", description: "Votre demande de badge a été soumise." });
+      setShowRequestDialog(false);
+      await fetchDashboard();
+    } catch (err) {
+      toast({
+        title: "Erreur",
+        description: err instanceof Error ? err.message : "Impossible de soumettre la demande.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !dashboard) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center text-muted-foreground">
+          {error || "Impossible de charger cette section."}
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -176,7 +191,7 @@ export function MadeInCI() {
                 <p className="text-sm text-muted-foreground">Badges obtenus</p>
                 <p className="text-2xl font-bold text-primary">{approvedCount}</p>
               </div>
-              <Button onClick={() => setShowRequestDialog(true)}>
+              <Button onClick={() => openRequestDialog()}>
                 <Award className="w-4 h-4 mr-1" />
                 Demander un badge
               </Button>
@@ -192,13 +207,8 @@ export function MadeInCI() {
           <TabsTrigger value="guide">Guide</TabsTrigger>
         </TabsList>
 
-        {/* Onglet : Mes demandes */}
         <TabsContent value="demandes" className="space-y-4">
-          {isLoadingRequests ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : myRequests.length === 0 ? (
+          {demandes.length === 0 ? (
             <Card>
               <CardContent className="p-12 text-center">
                 <Award className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
@@ -206,38 +216,33 @@ export function MadeInCI() {
                 <p className="text-sm text-muted-foreground mb-4">
                   Demandez un badge Made in CI pour valoriser vos produits
                 </p>
-                <Button onClick={() => setShowRequestDialog(true)}>
+                <Button onClick={() => openRequestDialog()}>
                   Faire une demande
                 </Button>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
-              {myRequests.map((req) => {
-                const statusKey = normalizeStatus(req.status);
-                const status = statusConfig[statusKey];
+              {demandes.map((request) => {
+                const level = dashboard.badgeLevels[request.badgeType];
+                const status = statusConfig[normalizeStatus(request.status)];
                 const StatusIcon = status.icon;
-                const config = getBadgeConfig(req.badgeType);
-                const badgeLevel = badgeLevels.find((l) => l.id === req.badgeType);
 
                 return (
-                  <Card key={req.id}>
+                  <Card key={request.id}>
                     <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Award className={cn("w-6 h-6", getBadgeColorIcon(config.color))} />
+                          <div className={cn("p-2 rounded-lg", getBadgeColor(request.badgeType).split(" ")[0] + "/10")}>
+                            <Award className="w-6 h-6 text-primary" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs text-muted-foreground">{req.id.slice(0, 8)}…</span>
-                              <Badge className={config.color}>
-                                {badgeLevel ? badgeLevel.label : req.badgeType}
-                              </Badge>
-                            </div>
-                            <p className="font-medium">{req.product?.name ?? req.productId}</p>
+                            <Badge className={getBadgeColor(request.badgeType)}>
+                              {level?.label ?? request.badgeType}
+                            </Badge>
+                            <p className="font-medium mt-1">{request.product?.name ?? "Produit"}</p>
                             <p className="text-sm text-muted-foreground">
-                              Soumis le {new Date(req.submittedAt).toLocaleDateString("fr-FR")}
+                              Soumis le {request.submittedAt ? new Date(request.submittedAt).toLocaleDateString("fr-FR") : "—"}
                             </p>
                           </div>
                         </div>
@@ -249,20 +254,20 @@ export function MadeInCI() {
                                 {status.label}
                               </span>
                             </div>
-                            {statusKey === "in_audit" && req.progress > 0 && (
+                            {normalizeStatus(request.status) === "InAudit" && (
                               <div className="flex items-center gap-2 mt-1">
-                                <Progress value={req.progress} className="w-20 h-2" />
-                                <span className="text-xs text-muted-foreground">{req.progress}%</span>
+                                <Progress value={request.progress} className="w-20 h-2" />
+                                <span className="text-xs text-muted-foreground">{request.progress}%</span>
                               </div>
                             )}
                           </div>
                         </div>
                       </div>
-                      {req.adminComment && (
+                      {request.adminComment && (
                         <div className="mt-3 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
                           <p className="text-sm text-destructive flex items-center gap-2">
                             <AlertCircle className="w-4 h-4" />
-                            {req.adminComment}
+                            {request.adminComment}
                           </p>
                         </div>
                       )}
@@ -274,118 +279,81 @@ export function MadeInCI() {
           )}
         </TabsContent>
 
-        {/* Onglet : Niveaux de badge */}
         <TabsContent value="niveaux" className="space-y-4">
-          {isLoadingLevels ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {badgeLevels.map((level) => {
-                const config = getBadgeConfig(level.id);
-                return (
-                  <Card key={level.id} className="relative overflow-hidden">
-                    <div className={cn("absolute top-0 left-0 w-1 h-full", config.color.split(" ")[0])} />
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Badge className={config.color}>{level.label}</Badge>
-                      </CardTitle>
-                      <CardDescription>{level.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {config.requirements.length > 0 && (
-                        <>
-                          <h4 className="text-sm font-medium mb-2">Critères requis :</h4>
-                          <ul className="space-y-1">
-                            {config.requirements.map((req, i) => (
-                              <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
-                                <CheckCircle2 className="w-4 h-4 text-primary" />
-                                {req}
-                              </li>
-                            ))}
-                          </ul>
-                        </>
-                      )}
-                      <Button
-                        variant="outline"
-                        className="w-full mt-4"
-                        onClick={() => {
-                          setFormData({ ...formData, badgeType: level.id });
-                          setShowRequestDialog(true);
-                        }}
-                      >
-                        Demander ce badge
-                        <ChevronRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {badgeLevelEntries.map(([key, level]) => (
+              <Card key={key} className="relative overflow-hidden">
+                <div className={cn("absolute top-0 left-0 w-1 h-full", getBadgeColor(key).split(" ")[0])} />
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Badge className={getBadgeColor(key)}>{level.label}</Badge>
+                  </CardTitle>
+                  <CardDescription>{level.desc}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <h4 className="text-sm font-medium mb-2">Critères requis :</h4>
+                  <ul className="space-y-1">
+                    {level.requirements.map((req, i) => (
+                      <li key={i} className="text-sm text-muted-foreground flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-primary" />
+                        {req}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4"
+                    onClick={() => openRequestDialog(key)}
+                  >
+                    Demander ce badge
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
 
-        {/* Onglet : Guide */}
         <TabsContent value="guide" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <HelpCircle className="w-5 h-5 text-primary" />
-                Guide du Label Made in CI
+                {dashboard.guide.title}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <h4 className="font-semibold mb-2">1. Qu'est-ce que le label Made in CI ?</h4>
-                <p className="text-muted-foreground text-sm">
-                  Le label Made in Côte d'Ivoire certifie que votre produit a été transformé localement
-                  avec une part significative de valeur ajoutée ivoirienne. Il valorise la production
-                  nationale et renforce la confiance des acheteurs.
-                </p>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2">2. Comment obtenir le label ?</h4>
-                <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                  <li>Choisissez le niveau de badge adapté à votre produit</li>
-                  <li>Remplissez le questionnaire de demande</li>
-                  <li>Fournissez les preuves requises (factures intrants, photos, etc.)</li>
-                  <li>Un audit sera réalisé par CPU-PME</li>
-                  <li>En cas d'approbation, le badge est attribué à votre produit</li>
-                </ol>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2">3. Documents requis</h4>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Factures d'achat des intrants locaux
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Image className="w-4 h-4" />
-                    Photos de l'unité de production
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Descriptif du processus de transformation
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="font-semibold mb-2">4. Validité et renouvellement</h4>
-                <p className="text-muted-foreground text-sm">
-                  Le label est valide 2 ans et doit être renouvelé avec mise à jour des preuves.
-                  Un contrôle peut être effectué à tout moment.
-                </p>
-              </div>
+              {dashboard.guide.sections.map((section, idx) => (
+                <div key={idx}>
+                  <h4 className="font-semibold mb-2">{idx + 1}. {section.title}</h4>
+                  {section.content && (
+                    <p className="text-muted-foreground text-sm">{section.content}</p>
+                  )}
+                  {section.steps && (
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                      {section.steps.map((step, i) => <li key={i}>{step}</li>)}
+                    </ol>
+                  )}
+                  {section.items && (
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {section.items.map((item, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 shrink-0" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {/* Dialog : Demande de badge */}
+      {/* Dialog Demande badge */}
       <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Demander un badge Made in CI</DialogTitle>
             <DialogDescription>
@@ -393,91 +361,104 @@ export function MadeInCI() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* Sélection du produit */}
             <div className="space-y-2">
               <Label htmlFor="produit">Produit concerné *</Label>
               <Select
-                value={formData.productId}
-                onValueChange={(v) => setFormData({ ...formData, productId: v })}
-                disabled={isLoadingProducts}
+                value={requestData.produit}
+                onValueChange={(v) => setRequestData({ ...requestData, produit: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={isLoadingProducts ? "Chargement…" : "Sélectionner un produit"} />
+                  <SelectValue placeholder="Sélectionner un produit" />
                 </SelectTrigger>
                 <SelectContent>
-                  {myProducts.map((p) => (
+                  {produits.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Sélection du niveau de badge */}
             <div className="space-y-2">
               <Label>Niveau de badge souhaité *</Label>
-              {isLoadingLevels ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  {badgeLevels.map((level) => {
-                    const config = getBadgeConfig(level.id);
-                    return (
-                      <div
-                        key={level.id}
-                        className={cn(
-                          "p-3 rounded-lg border cursor-pointer transition-all text-center",
-                          formData.badgeType === level.id && "ring-2 ring-primary"
-                        )}
-                        onClick={() => setFormData({ ...formData, badgeType: level.id })}
-                      >
-                        <Badge className={cn(config.color, "mb-1")}>{level.label}</Badge>
-                        <p className="text-xs text-muted-foreground">{level.description}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-2">
+                {badgeLevelEntries.map(([key, level]) => (
+                  <div
+                    key={key}
+                    className={cn(
+                      "p-3 rounded-lg border cursor-pointer transition-all text-center",
+                      requestData.niveau === key && "ring-2 ring-primary"
+                    )}
+                    onClick={() => setRequestData({ ...requestData, niveau: key })}
+                  >
+                    <Badge className={cn(getBadgeColor(key), "mb-1")}>{level.label}</Badge>
+                    <p className="text-xs text-muted-foreground">{level.desc}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {/* Processus de transformation */}
             <div className="space-y-2">
               <Label htmlFor="process">Processus de transformation *</Label>
               <Textarea
                 id="process"
                 placeholder="Décrivez les étapes de transformation réalisées en Côte d'Ivoire..."
                 rows={3}
-                value={formData.transformationProcess}
-                onChange={(e) => setFormData({ ...formData, transformationProcess: e.target.value })}
+                value={requestData.descriptionProcess}
+                onChange={(e) => setRequestData({ ...requestData, descriptionProcess: e.target.value })}
               />
             </div>
 
-            {/* Valeur ajoutée locale */}
             <div className="space-y-2">
-              <Label htmlFor="valeur">% de valeur ajoutée locale *</Label>
-              <Input
-                id="valeur"
+              <Label htmlFor="pourcentage">% estimé de valeur ajoutée locale</Label>
+              <input
+                id="pourcentage"
                 type="number"
                 min={0}
                 max={100}
                 placeholder="Ex: 75"
-                value={formData.localValueAdded}
-                onChange={(e) => setFormData({ ...formData, localValueAdded: e.target.value })}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                value={requestData.pourcentageLocal}
+                onChange={(e) => setRequestData({ ...requestData, pourcentageLocal: e.target.value })}
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col items-center gap-1 border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:bg-muted/50 transition-colors">
+                <Paperclip className="w-5 h-5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {inputInvoices.length > 0 ? `${inputInvoices.length} fichier(s)` : "Factures intrants"}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setInputInvoices(Array.from(e.target.files ?? []))}
+                />
+              </label>
+              <label className="flex flex-col items-center gap-1 border-2 border-dashed rounded-lg p-3 text-center cursor-pointer hover:bg-muted/50 transition-colors">
+                <Upload className="w-5 h-5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {productionPhotos.length > 0 ? `${productionPhotos.length} fichier(s)` : "Photos production"}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setProductionPhotos(Array.from(e.target.files ?? []))}
+                />
+              </label>
+            </div>
+
             <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => setShowRequestDialog(false)} disabled={submitMutation.isPending}>
+              <Button variant="outline" onClick={() => setShowRequestDialog(false)} disabled={submitting}>
                 Annuler
               </Button>
-              <Button onClick={handleSubmit} disabled={submitMutation.isPending}>
-                {submitMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                ) : (
-                  <Award className="w-4 h-4 mr-1" />
-                )}
-                Soumettre la demande
+              <Button
+                onClick={handleSubmitRequest}
+                disabled={submitting || !requestData.produit || !requestData.niveau || !requestData.descriptionProcess}
+              >
+                {submitting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Award className="w-4 h-4 mr-1" />}
+                {submitting ? "Envoi…" : "Soumettre la demande"}
               </Button>
             </div>
           </div>

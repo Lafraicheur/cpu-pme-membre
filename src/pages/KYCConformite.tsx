@@ -13,12 +13,32 @@ import {
   RefreshCw, X, Check, Loader2, ExternalLink, Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   kycApi,
   type KycCase, type KycMyRequiredDocumentsResponse,
   type KycLevelData, type KycLevelEntry,
   type KycLevelDocumentsResponse, type KycRequiredDocument, type KycUploadedDocument,
 } from "@/lib/api";
+
+// ── Filtrage des niveaux KYC par type de membre ───────────────────────────────
+// BASIC / Moyen / Renforcé : membres Individuel & Entreprise uniquement.
+// Associatif : membres Associatif uniquement. Institution : membres Institution uniquement.
+type KycMemberCategory = "individuel_entreprise" | "associatif" | "institution";
+
+function getMemberKycCategory(typeMembre?: string): KycMemberCategory {
+  const n = (typeMembre ?? "").toLowerCase();
+  if (n.includes("associat")) return "associatif";
+  if (n.includes("instit")) return "institution";
+  return "individuel_entreprise";
+}
+
+function levelMatchesCategory(level: { code: string; name: string }, category: KycMemberCategory): boolean {
+  const text = `${level.code} ${level.name}`.toLowerCase();
+  if (text.includes("associat")) return category === "associatif";
+  if (text.includes("instit")) return category === "institution";
+  return category === "individuel_entreprise";
+}
 
 // ── Mapping visuel par code KYC ───────────────────────────────────────────────
 const LEVEL_VISUALS: Record<string, {
@@ -169,6 +189,8 @@ function DocumentCard({
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function KYCConformite() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const memberCategory = getMemberKycCategory(user?.typeMembre);
 
   const [kycCase, setKycCase]             = useState<KycCase | null>(null);
   const [kycTopLevels, setKycTopLevels]   = useState<KycLevelData[]>([]);
@@ -192,8 +214,9 @@ export default function KYCConformite() {
   // ── Dérivés ────────────────────────────────────────────────────────────────
   const targetLevelId = kycCase?.targetKycLevelId ?? "";
   const caseStatus    = kycCase?.status ?? "not_started";
-  const isLocked      = caseStatus === "submitted" || caseStatus === "in_review" || caseStatus === "approved";
-  const isRejected    = caseStatus === "rejected";
+  const isLocked        = caseStatus === "submitted" || caseStatus === "in_review" || caseStatus === "approved";
+  const isPendingReview = caseStatus === "submitted" || caseStatus === "in_review";
+  const isRejected      = caseStatus === "rejected";
 
   const canSubmit =
     (caseStatus === "draft" || caseStatus === "rejected" || caseStatus === "expired") &&
@@ -213,11 +236,19 @@ export default function KYCConformite() {
     ]);
     if (caseRes.status === "fulfilled")      setKycCase(caseRes.value);
     if (allLevelsRes.status === "fulfilled") {
-      setKycTopLevels([...allLevelsRes.value.levels].sort((a, b) => a.level.sortOrder - b.level.sortOrder));
+      setKycTopLevels(
+        [...allLevelsRes.value.levels]
+          .filter((l) => levelMatchesCategory(l.level, memberCategory))
+          .sort((a, b) => a.level.sortOrder - b.level.sortOrder)
+      );
     }
     if (myDocsRes.status === "fulfilled")    setMyRequiredDocs(myDocsRes.value);
     if (levelsRes.status === "fulfilled") {
-      setKycLevelsList([...levelsRes.value.levels].sort((a, b) => a.sortOrder - b.sortOrder));
+      setKycLevelsList(
+        [...levelsRes.value.levels]
+          .filter((l) => levelMatchesCategory(l, memberCategory))
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+      );
     }
   };
 
@@ -233,9 +264,13 @@ export default function KYCConformite() {
         ]);
         setKycCase(kycCaseData);
         setMyRequiredDocs(myDocsData);
-        const sortedTop = [...allLevelsData.levels].sort((a, b) => a.level.sortOrder - b.level.sortOrder);
+        const sortedTop = [...allLevelsData.levels]
+          .filter((l) => levelMatchesCategory(l.level, memberCategory))
+          .sort((a, b) => a.level.sortOrder - b.level.sortOrder);
         setKycTopLevels(sortedTop);
-        const sortedLevels = [...levelsData.levels].sort((a, b) => a.sortOrder - b.sortOrder);
+        const sortedLevels = [...levelsData.levels]
+          .filter((l) => levelMatchesCategory(l, memberCategory))
+          .sort((a, b) => a.sortOrder - b.sortOrder);
         setKycLevelsList(sortedLevels);
         const initId = kycCaseData.targetKycLevelId ?? sortedLevels[0]?.id ?? "";
         setActiveLevelId(initId);
@@ -621,7 +656,7 @@ export default function KYCConformite() {
               const isLoadingDocs = isTarget ? false : loadingLevelIds.has(level.id);
 
               // Bouton "Sélectionner ce niveau" : visible si non cible + canSelect + dossier non verrouillé
-              const showStartButton = !isTarget && level.canSelect && !isLocked;
+              const showStartButton = !isTarget && level.canSelect && !isPendingReview;
 
               return (
                 <TabsContent key={level.id} value={level.id} className="space-y-6">

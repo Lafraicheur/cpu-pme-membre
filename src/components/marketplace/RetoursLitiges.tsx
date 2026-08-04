@@ -62,7 +62,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { returnsApi, litigesApi, type ReturnVendor, type ReturnVendorStats, type LitigeVendor, type LitigeStatusApi } from "@/lib/api";
+import { returnsApi, litigesApi, type ReturnVendor, type ReturnVendorStats, type LitigeVendor } from "@/lib/api";
 
 // Types
 type RetourStatus = "ReturnRequested" | "Approved" | "Rejected" | "InTransit" | "Received" | "Inspected" | "Refunded" | "PartialRefund" | "Closed";
@@ -265,6 +265,9 @@ export function RetoursLitiges() {
   const [reponseType, setReponseType] = useState<string>("");
   const [montantPropose, setMontantPropose] = useState<number>(0);
   const [motifRefus, setMotifRefus] = useState("");
+  const [inspectionNotes, setInspectionNotes] = useState("");
+  const [inspectionDecision, setInspectionDecision] = useState("");
+  const [inspectionAmount, setInspectionAmount] = useState("");
   const { toast } = useToast();
 
   const [retours, setRetours] = useState<Retour[]>([]);
@@ -276,9 +279,9 @@ export function RetoursLitiges() {
   const loadRetours = useCallback(() => {
     setRetoursLoading(true);
     setRetoursError(null);
-    Promise.all([returnsApi.getVendorList(), returnsApi.getVendorStats()])
-      .then(([list, stats]) => {
-        setRetours(list.map(mapReturn));
+    Promise.all([returnsApi.getVendorList({ limit: 100 }), returnsApi.getVendorStats()])
+      .then(([page, stats]) => {
+        setRetours(page.data.map(mapReturn));
         setRetoursStats(stats);
       })
       .catch(() => setRetoursError("Impossible de charger les retours."))
@@ -295,8 +298,8 @@ export function RetoursLitiges() {
   const loadLitiges = useCallback(() => {
     setLitigesLoading(true);
     setLitigesError(null);
-    litigesApi.getVendorList()
-      .then((list) => setLitiges(list.map(mapLitige)))
+    litigesApi.getVendorList({ limit: 100 })
+      .then((page) => setLitiges(page.data.map(mapLitige)))
       .catch(() => setLitigesError("Impossible de charger les litiges."))
       .finally(() => setLitigesLoading(false));
   }, []);
@@ -363,12 +366,39 @@ export function RetoursLitiges() {
     }
   };
 
-  const handleConfirmReception = (retour: Retour) => {
-    toast({ title: "Réception confirmée", description: `Le colis retour ${retour.id} a été marqué comme reçu. Procédez à l'inspection.` });
+  const handleConfirmReception = async (retour: Retour) => {
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.confirmReception(retour.apiId);
+      toast({ title: "Réception confirmée", description: `Le colis retour ${retour.id} a été marqué comme reçu. Procédez à l'inspection.` });
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de la confirmation de réception.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
-  const handleSubmitInspection = (retour: Retour) => {
-    toast({ title: "Inspection terminée", description: `L'inspection du retour ${retour.id} est enregistrée.` });
+  const handleSubmitInspection = async (retour: Retour) => {
+    if (!inspectionDecision) {
+      toast({ title: "Décision requise", description: "Veuillez choisir une décision de remboursement.", variant: "destructive" });
+      return;
+    }
+    setActionLoadingId(retour.apiId);
+    try {
+      await returnsApi.inspect(retour.apiId, {
+        inspectionNotes: inspectionNotes || undefined,
+        decision: inspectionDecision,
+        proposedAmount: inspectionAmount ? parseInt(inspectionAmount, 10) : undefined,
+      });
+      toast({ title: "Inspection terminée", description: `L'inspection du retour ${retour.id} est enregistrée.` });
+      setShowRetourDetail(false);
+      loadRetours();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de l'enregistrement de l'inspection.", variant: "destructive" });
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   const handleProcessRefund = async (retour: Retour, montant: number) => {
@@ -429,23 +459,35 @@ export function RetoursLitiges() {
     }
   };
 
-  const updateLitigeStatus = async (status: LitigeStatusApi, comment: string, successMsg: string) => {
+  const handleAcceptMediation = async () => {
     if (!selectedLitige) return;
     setLitigeActionLoading(true);
     try {
-      await litigesApi.updateStatus(selectedLitige.apiId, status, comment);
-      toast({ title: successMsg });
+      await litigesApi.acceptMediation(selectedLitige.apiId, newMessage || undefined);
+      toast({ title: "Proposition acceptée" });
       setShowMediationDialog(false);
       loadLitiges();
     } catch (e: unknown) {
-      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de la mise à jour.", variant: "destructive" });
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de l'acceptation.", variant: "destructive" });
     } finally {
       setLitigeActionLoading(false);
     }
   };
 
-  const handleAcceptMediation = () => updateLitigeStatus("Résolu", "Proposition de médiation acceptée.", "Proposition acceptée");
-  const handleContestMediation = () => updateLitigeStatus("En médiation", "Le vendeur conteste la proposition.", "Contestation enregistrée");
+  const handleContestMediation = async () => {
+    if (!selectedLitige) return;
+    setLitigeActionLoading(true);
+    try {
+      await litigesApi.contestMediation(selectedLitige.apiId, newMessage || undefined);
+      toast({ title: "Contestation enregistrée" });
+      setShowMediationDialog(false);
+      loadLitiges();
+    } catch (e: unknown) {
+      toast({ title: "Erreur", description: e instanceof Error ? e.message : "Échec de la contestation.", variant: "destructive" });
+    } finally {
+      setLitigeActionLoading(false);
+    }
+  };
 
   const renderRetourProgress = (statut: RetourStatus) => {
     const steps = ["Demandé", "Approuvé", "En transit", "Reçu", "Inspecté", "Remboursé"];
@@ -680,8 +722,8 @@ export function RetoursLitiges() {
                         </>
                       )}
                       {retour.statut === "InTransit" && (
-                        <Button size="sm" className="gap-1" onClick={() => handleConfirmReception(retour)}>
-                          <Package className="w-3 h-3" />
+                        <Button size="sm" className="gap-1" disabled={busy} onClick={() => handleConfirmReception(retour)}>
+                          {busy ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
                           Confirmer réception
                         </Button>
                       )}
@@ -697,7 +739,13 @@ export function RetoursLitiges() {
                           Clôturer
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" onClick={() => { setSelectedRetour(retour); setShowRetourDetail(true); }}>
+                      <Button size="sm" variant="ghost" onClick={() => {
+                        setSelectedRetour(retour);
+                        setInspectionNotes(retour.inspectionNotes || "");
+                        setInspectionDecision(retour.montantPropose ? "remboursement_partiel" : "");
+                        setInspectionAmount(retour.montantPropose ? String(retour.montantPropose) : "");
+                        setShowRetourDetail(true);
+                      }}>
                         <Eye className="w-4 h-4" />
                       </Button>
                         </>
@@ -907,27 +955,44 @@ export function RetoursLitiges() {
                         <Textarea
                           placeholder="Décrivez l'état du produit reçu, confirmer ou infirmer les dommages..."
                           rows={3}
-                          defaultValue={selectedRetour.inspectionNotes || ""}
+                          value={inspectionNotes}
+                          onChange={(e) => setInspectionNotes(e.target.value)}
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Décision de remboursement</Label>
-                        <Select defaultValue={selectedRetour.montantPropose ? "partiel" : ""}>
+                        <Select value={inspectionDecision} onValueChange={setInspectionDecision}>
                           <SelectTrigger>
                             <SelectValue placeholder="Choisir la décision" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="total">Remboursement total ({selectedRetour.montant.toLocaleString()} FCFA)</SelectItem>
-                            <SelectItem value="partiel">Remboursement partiel</SelectItem>
+                            <SelectItem value="remboursement_total">Remboursement total ({selectedRetour.montant.toLocaleString()} FCFA)</SelectItem>
+                            <SelectItem value="remboursement_partiel">Remboursement partiel</SelectItem>
                             <SelectItem value="remplacement">Remplacement du produit</SelectItem>
                             <SelectItem value="avoir">Avoir sur prochaine commande</SelectItem>
                             <SelectItem value="refus">Refus (justification obligatoire)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+                      {(inspectionDecision === "remboursement_partiel" || inspectionDecision === "avoir") && (
+                        <div className="space-y-2">
+                          <Label>Montant proposé (FCFA)</Label>
+                          <Input
+                            type="number"
+                            value={inspectionAmount}
+                            onChange={(e) => setInspectionAmount(e.target.value)}
+                          />
+                        </div>
+                      )}
                       {selectedRetour.statut === "Received" && (
-                        <Button className="w-full gap-2" onClick={() => handleSubmitInspection(selectedRetour)}>
-                          <CheckCircle2 className="w-4 h-4" />
+                        <Button
+                          className="w-full gap-2"
+                          disabled={actionLoadingId === selectedRetour.apiId}
+                          onClick={() => handleSubmitInspection(selectedRetour)}
+                        >
+                          {actionLoadingId === selectedRetour.apiId
+                            ? <RefreshCw className="w-4 h-4 animate-spin" />
+                            : <CheckCircle2 className="w-4 h-4" />}
                           Valider l'inspection
                         </Button>
                       )}

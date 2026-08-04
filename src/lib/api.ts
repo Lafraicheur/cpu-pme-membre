@@ -1,6 +1,6 @@
 import { getCookie } from "@/lib/cookies";
 
-const API_BASE = import.meta.env.VITE_API_URL_DEV || "https://back.cpupme.ci";
+const API_BASE = import.meta.env.VITE_API_URL || "https://back.cpupme.ci";
 
 function getToken(): string | null {
   return localStorage.getItem("cpu-access-token") ?? getCookie("cpu-access-token");
@@ -657,7 +657,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -675,7 +675,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -693,7 +693,7 @@ export const evenementsApi = {
       image_flayer: e.image_flayer
         ? e.image_flayer.startsWith("http")
           ? decodeHtml(e.image_flayer)
-          : `${import.meta.env.VITE_API_URL_DEV || ""}${e.image_flayer}`
+          : `${import.meta.env.VITE_API_URL || ""}${e.image_flayer}`
         : null,
     }));
   },
@@ -780,6 +780,7 @@ export interface MadeInCIBadgeLevel {
   id: string;
   label: string;
   description: string;
+  requirements: string[];
 }
 
 export interface MadeInCIProduct {
@@ -811,6 +812,27 @@ export interface MadeInCIRequest {
   };
 }
 
+export interface MadeInCIBadgeLevelInfo {
+  label: string;
+  desc: string;
+  requirements: string[];
+}
+
+export interface MadeInCIGuideSection {
+  title: string;
+  content?: string;
+  steps?: string[];
+  items?: string[];
+}
+
+export interface MadeInCIDashboardData {
+  stats: { approvedCount: number; pendingCount: number };
+  demandes: MadeInCIRequest[];
+  produits: MadeInCIProduct[];
+  badgeLevels: Record<string, MadeInCIBadgeLevelInfo>;
+  guide: { title: string; sections: MadeInCIGuideSection[] };
+}
+
 export const madeInCIBadgeLevelsApi = {
   getAll: async (): Promise<MadeInCIBadgeLevel[]> => {
     const res = await request<{ success: boolean; data: MadeInCIBadgeLevel[] }>(
@@ -829,27 +851,53 @@ export const madeInCIProductsApi = {
   },
 };
 
+export const madeInCIApi = {
+  getDashboard: async (): Promise<MadeInCIDashboardData> => {
+    const res = await request<{ success: boolean; data: MadeInCIDashboardData }>(
+      "/api/marketplace/made-in-ci/dashboard"
+    );
+    return res.data;
+  },
+};
+
 export const madeInCIRequestsApi = {
   getMyRequests: async (): Promise<MadeInCIRequest[]> => {
-    const res = await request<{ success: boolean; data: MadeInCIRequest[] }>(
+    const res = await request<{ success: boolean; data: { data: MadeInCIRequest[] } }>(
       "/api/marketplace/made-in-ci/requests/me"
+    );
+    return res.data?.data ?? [];
+  },
+
+  getById: async (id: string): Promise<MadeInCIRequest> => {
+    const res = await request<{ success: boolean; data: MadeInCIRequest }>(
+      `/api/marketplace/made-in-ci/requests/${encodeURIComponent(id)}`
     );
     return res.data;
   },
 
+  /** POST .../made-in-ci/requests — multipart/form-data. */
   submit: async (body: {
     productId: string;
     badgeType: string;
     transformationProcess: string;
-    localValueAdded: number;
-    inputInvoicesUrls?: string[];
-    productionPhotosUrls?: string[];
+    localValueAdded?: number;
+    inputInvoices?: File[];
+    productionPhotos?: File[];
+    proof?: File[];
   }): Promise<unknown> => {
-    const res = await request<{ success: boolean; data: unknown }>(
+    const fd = new FormData();
+    fd.append("productId", body.productId);
+    fd.append("badgeType", body.badgeType);
+    fd.append("transformationProcess", body.transformationProcess);
+    if (body.localValueAdded !== undefined) fd.append("localValueAdded", String(body.localValueAdded));
+    (body.inputInvoices ?? []).forEach((f) => fd.append("inputInvoices", f));
+    (body.productionPhotos ?? []).forEach((f) => fd.append("productionPhotos", f));
+    (body.proof ?? []).forEach((f) => fd.append("proof", f));
+    return requestMultipart<{ success: boolean; data: unknown }>(
       "/api/marketplace/made-in-ci/requests",
-      { method: "POST", body: JSON.stringify(body) }
+      fd,
+      "POST"
     );
-    return res.data;
   },
 };
 
@@ -1461,7 +1509,7 @@ export const createEvenementApi = async (formData: FormData): Promise<Evenement>
   const token = getToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const API_BASE = import.meta.env.VITE_API_URL_DEV || "";
+  const API_BASE = import.meta.env.VITE_API_URL || "";
   const res = await fetch(`${API_BASE}/api/evenements`, {
     method: "POST",
     headers,
@@ -1662,7 +1710,93 @@ export interface CertificationProductBadge {
   source: string; // "none" | "boutique" | "product"
 }
 
+export interface CertificationChecklistDocument {
+  id: string;
+  nom: string;
+  type: string;
+  status: "pending" | "validated" | "rejected" | string;
+  dateUpload: string;
+  fileUrls: string[];
+}
+
+export interface CertificationChecklistItem {
+  id: string;
+  label: string;
+  description: string;
+  required: boolean;
+  document: CertificationChecklistDocument | null;
+  status: "missing" | "pending" | "validated" | "rejected" | string;
+  submittedAt: string | null;
+  fileUrls: string[];
+}
+
+export interface CertificationStep {
+  step: number;
+  label: string;
+  desc: string;
+  done: boolean;
+}
+
+export interface CertificationBadgeLevelInfo {
+  label: string;
+  minScore: number;
+  desc: string;
+}
+
+export interface CertificationHistoryEvent {
+  date: string;
+  action: string;
+  detail: string;
+  type: string;
+}
+
+export interface CertificationDashboardProduct {
+  id: string;
+  nom: string;
+  image: string;
+  badgeBoutique: boolean;
+  badgeProduit: string | null;
+  badgeEffectif: string | null;
+  scoreLocal: number;
+  source: string;
+}
+
+export interface CertificationDashboardData {
+  boutiqueId: string;
+  certification: {
+    status: string; // NonCertifie | EnCours | Audit | Certifie | Refuse | Expire
+    niveau: string | null;
+    dateDebut: string | null;
+    dateExpiration: string | null;
+    scoreLocal: number;
+    progression: number;
+    documents: CertificationChecklistDocument[];
+    requestId: string | null;
+  };
+  checklist: CertificationChecklistItem[];
+  produits: CertificationDashboardProduct[];
+  produitsAvecBadge: number;
+  produitsTotal: number;
+  steps: CertificationStep[];
+  badgeLevels: Record<string, CertificationBadgeLevelInfo>;
+  historique: CertificationHistoryEvent[];
+}
+
 export const boutiqueCertificationApi = {
+  getDashboard: async (boutiqueId: string): Promise<CertificationDashboardData> => {
+    const res = await request<{ success: boolean; data: CertificationDashboardData }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/dashboard`
+    );
+    return res.data;
+  },
+
+  getHistory: async (boutiqueId: string): Promise<CertificationHistoryEvent[]> => {
+    const res = await request<{ success: boolean; data: { data: CertificationHistoryEvent[] } }>(
+      `/api/marketplace/boutiques/${boutiqueId}/certification/history`
+    );
+    return res.data?.data ?? [];
+  },
+
   getCertification: async (boutiqueId: string): Promise<BoutiqueCertificationStatus> => {
     const res = await request<{ success: boolean; data: BoutiqueCertificationStatus }>(
       `/api/marketplace/boutiques/${boutiqueId}/certification`
@@ -1670,20 +1804,20 @@ export const boutiqueCertificationApi = {
     return res.data;
   },
 
+  /** POST .../certification/request — multipart/form-data (requestedBadgeType, note, files[]). */
   submitRequest: async (
     boutiqueId: string,
-    body: {
-      badgeType: string;
-      processDescription: string;
-      scoreLocal: number;
-      documentsUrls?: string[];
-    }
+    body: { requestedBadgeType: string; note?: string; files?: File[] }
   ): Promise<unknown> => {
-    const res = await request<{ success: boolean; data: unknown }>(
+    const fd = new FormData();
+    fd.append("requestedBadgeType", body.requestedBadgeType);
+    if (body.note) fd.append("note", body.note);
+    (body.files ?? []).forEach((f) => fd.append("files", f));
+    return requestMultipart<{ success: boolean; data: unknown }>(
       `/api/marketplace/boutiques/${boutiqueId}/certification/request`,
-      { method: "POST", body: JSON.stringify(body) }
+      fd,
+      "POST"
     );
-    return res;
   },
 
   getDocuments: async (boutiqueId: string): Promise<CertificationDocumentsData> => {
@@ -1785,47 +1919,40 @@ export const productUnitsApi = {
 
 export interface RegulatedProductsStats {
   total: number;
-  conforme: number;
-  enAttente: number;
-  nonConforme: number;
-  expirentBientot: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  expiringSoon: number;
+}
+
+export interface RegulatedProductDocumentApi {
+  id: string;
+  type: string;
+  nom?: string;
+  fichier?: string | null;
+  status: string;
+  dateUpload?: string | null;
+  dateExpiration?: string | null;
+  commentaire?: string | null;
+  templateKey?: string;
 }
 
 export interface RegulatedProductApi {
   id: string;
   productId: string;
-  productName: string;
-  productCategory?: string;
-  productSubCategory?: string;
-  regulatedCategoryType: string;
-  regulatedCategoryLabel?: string;
-  complianceStatus: string;
+  nom: string;
+  categorie?: string;
+  typeReglementation: string;
+  typeReglementationLabel?: string;
+  typeReglementationIcon?: string;
+  status: string;
+  documents: RegulatedProductDocumentApi[];
+  dateExpiration?: string | null;
+  dernierAudit?: string | null;
+  commentaireAdmin?: string | null;
+  image?: string | null;
   documentsValidated: number;
   documentsRequired: number;
-  nearestExpiry?: string | null;
-  alertMessage?: string | null;
-  [key: string]: unknown;
-}
-
-export interface RegulatedProductDocumentApi {
-  id: string;
-  templateKey?: string;
-  name?: string;
-  fileName?: string | null;
-  fileUrl?: string | null;
-  status?: string;
-  hasExpiry?: boolean;
-  expiresAt?: string | null;
-  rejectionReason?: string | null;
-  [key: string]: unknown;
-}
-
-export interface RegulatedProductDocumentsResponse {
-  regulatedProductId: string;
-  productName: string;
-  categoryLabel: string;
-  requiredCount: number;
-  documents: RegulatedProductDocumentApi[];
 }
 
 export interface RegulatedProductsPage {
@@ -1838,13 +1965,6 @@ export interface RegulatedProductsPage {
 }
 
 export const regulatedProductsApi = {
-  getStats: async (): Promise<RegulatedProductsStats> => {
-    const res = await request<{ success: boolean; data: RegulatedProductsStats }>(
-      "/api/regulated-products/stats"
-    );
-    return res.data ?? { total: 0, conforme: 0, enAttente: 0, nonConforme: 0, expirentBientot: 0 };
-  },
-
   getAll: async (params?: {
     status?: string;
     categoryType?: string;
@@ -1861,7 +1981,7 @@ export const regulatedProductsApi = {
     const res = await request<{ success: boolean; data: RegulatedProductsPage }>(
       `/api/regulated-products?${qs.toString()}`
     );
-    return res.data ?? { data: [], total: 0, page: 1, limit: 20, totalPages: 0, stats: { total: 0, conforme: 0, enAttente: 0, nonConforme: 0, expirentBientot: 0 } };
+    return res.data ?? { data: [], total: 0, page: 1, limit: 20, totalPages: 0, stats: { total: 0, approved: 0, pending: 0, rejected: 0, expiringSoon: 0 } };
   },
 
   create: async (payload: { productId: string; categoryType?: string; regulatedCategoryId?: string }): Promise<RegulatedProductApi> => {
@@ -1878,12 +1998,278 @@ export const regulatedProductsApi = {
     if (expiresAt) fd.append("expiresAt", expiresAt);
     return requestMultipart<unknown>(`/api/regulated-products/documents/${docId}/upload`, fd);
   },
+};
 
-  getDocuments: async (id: string): Promise<RegulatedProductDocumentApi[]> => {
-    const res = await request<{ success: boolean; data: RegulatedProductDocumentsResponse }>(
-      `/api/regulated-products/${id}/documents`
+export interface StockVendorKpis {
+  totalProduits: number;
+  enRupture: number;
+  alerteBasse: number;
+  alerteCritique: number;
+  autoReapproActif: number;
+  commandesEnCours: number;
+  valeurStock: number;
+}
+
+export interface StockAlerteUrgente {
+  id?: string;
+  productId?: string;
+  nom?: string;
+  sku?: string;
+  stockActuel?: number;
+  seuilAlerte?: number;
+  seuilCritique?: number;
+  unite?: string;
+  image?: string;
+  niveau?: string;
+  [key: string]: unknown;
+}
+
+export interface StockVendorDashboard {
+  kpis: StockVendorKpis;
+  alertesUrgentes: StockAlerteUrgente[];
+  boutiqueId?: string;
+}
+
+export interface StockVendorItem {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  boutiqueId: string;
+  nom: string;
+  sku: string;
+  categorie: string;
+  stockActuel: number;
+  seuilAlerte: number;
+  seuilCritique: number;
+  stockOptimal: number;
+  unite: string;
+  prixAchat: number;
+  fournisseur: string;
+  delaiReappro: number;
+  autoReappro: boolean;
+  dernierMouvement: string | null;
+  tendance: string;
+  image: string;
+}
+
+export interface StockVendorItemsResponse {
+  items: StockVendorItem[];
+  total: number;
+  boutiqueId?: string;
+}
+
+export interface StockSettingsPayload {
+  alertThreshold?: number;
+  criticalThreshold?: number;
+  optimalStock?: number;
+  supplierName?: string;
+  replenishmentDelayDays?: number;
+  purchasePrice?: number;
+  autoReplenishment?: boolean;
+}
+
+export interface StockVendorMovementApi {
+  id: string;
+  produitId: string;
+  produitNom: string;
+  type: string;
+  quantite: number;
+  motif: string;
+  reference: string;
+  date: string;
+  utilisateur: string;
+}
+
+export interface StockVendorMovementsResponse {
+  movements: StockVendorMovementApi[];
+  pagination: { page: number; limit: number; total: number };
+  boutiqueId?: string;
+}
+
+export interface ReplenishmentOrderApi {
+  id: string;
+  produitId: string;
+  produitNom: string;
+  quantite: number;
+  fournisseur: string;
+  statut: string;
+  dateCommande: string;
+  dateEstimee: string;
+  type: string;
+}
+
+export interface ReplenishmentOrdersResponse {
+  orders: ReplenishmentOrderApi[];
+  boutiqueId?: string;
+}
+
+export interface StockVendorSettingsNotifications {
+  emailStockBas: boolean;
+  emailRupture: boolean;
+  smsUrgences: boolean;
+  notificationApp: boolean;
+}
+
+export interface StockVendorSettings {
+  autoReapproGlobal: boolean;
+  seuilDeclenchement: string;
+  quantiteCommande: string;
+  quantiteFixe: number | null;
+  notifications: StockVendorSettingsNotifications;
+}
+
+export interface StockVendorSettingsResponse {
+  settings: StockVendorSettings;
+  boutiqueId?: string;
+}
+
+export interface UpdateStockVendorSettingsPayload {
+  autoReplenishmentEnabled?: boolean;
+  triggerThreshold?: string;
+  orderQuantityMode?: string;
+  fixedOrderQuantity?: number;
+  emailLowStock?: boolean;
+  emailOutOfStock?: boolean;
+  smsUrgency?: boolean;
+  appNotification?: boolean;
+}
+
+export const stockApi = {
+  getVendorDashboard: async (params?: { search?: string; level?: string; boutiqueId?: string }): Promise<StockVendorDashboard> => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set("search", params.search);
+    qs.set("level", params?.level ?? "all");
+    if (params?.boutiqueId) qs.set("boutiqueId", params.boutiqueId);
+    const res = await request<{ success: boolean; data: StockVendorDashboard }>(
+      `/api/marketplace/stock/vendor/dashboard?${qs.toString()}`
     );
-    return res.data?.documents ?? [];
+    return res.data ?? {
+      kpis: { totalProduits: 0, enRupture: 0, alerteBasse: 0, alerteCritique: 0, autoReapproActif: 0, commandesEnCours: 0, valeurStock: 0 },
+      alertesUrgentes: [],
+    };
+  },
+
+  getVendorItems: async (params?: { search?: string; level?: string; boutiqueId?: string }): Promise<StockVendorItemsResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set("search", params.search);
+    qs.set("level", params?.level ?? "all");
+    if (params?.boutiqueId) qs.set("boutiqueId", params.boutiqueId);
+    const res = await request<{ success: boolean; data: StockVendorItemsResponse }>(
+      `/api/marketplace/stock/vendor/items?${qs.toString()}`
+    );
+    return res.data ?? { items: [], total: 0 };
+  },
+
+  toggleAutoReappro: async (productId: string, enabled: boolean, variantId?: string): Promise<unknown> => {
+    const qs = variantId ? `?variantId=${encodeURIComponent(variantId)}` : "";
+    return request<unknown>(
+      `/api/marketplace/stock/vendor/items/${encodeURIComponent(productId)}/auto-reappro${qs}`,
+      { method: "PATCH", body: JSON.stringify({ enabled }) }
+    );
+  },
+
+  updateSettings: async (productId: string, payload: StockSettingsPayload, variantId?: string): Promise<unknown> => {
+    const qs = variantId ? `?variantId=${encodeURIComponent(variantId)}` : "";
+    return request<unknown>(
+      `/api/marketplace/stock/vendor/items/${encodeURIComponent(productId)}/settings${qs}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
+    );
+  },
+
+  recordMovement: async (payload: {
+    productId: string;
+    variantId?: string;
+    type: "entree" | "sortie" | "ajustement" | "retour";
+    quantity: number;
+    reason?: string;
+    reference?: string;
+    boutiqueId?: string;
+  }): Promise<unknown> => {
+    return request<unknown>(
+      "/api/marketplace/stock/vendor/movements",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
+  createReplenishment: async (payload: {
+    productId: string;
+    variantId?: string;
+    quantity: number;
+    boutiqueId?: string;
+  }): Promise<unknown> => {
+    return request<unknown>(
+      "/api/marketplace/stock/vendor/replenishments",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
+  getVendorMovements: async (params?: {
+    productId?: string;
+    variantId?: string;
+    page?: number;
+    limit?: number;
+    boutiqueId?: string;
+  }): Promise<StockVendorMovementsResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.productId) qs.set("productId", params.productId);
+    if (params?.variantId) qs.set("variantId", params.variantId);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 50));
+    if (params?.boutiqueId) qs.set("boutiqueId", params.boutiqueId);
+    const res = await request<{ success: boolean; data: StockVendorMovementsResponse }>(
+      `/api/marketplace/stock/vendor/movements?${qs.toString()}`
+    );
+    return res.data ?? { movements: [], pagination: { page: 1, limit: 50, total: 0 } };
+  },
+
+  getVendorReplenishments: async (params?: { boutiqueId?: string }): Promise<ReplenishmentOrdersResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.boutiqueId) qs.set("boutiqueId", params.boutiqueId);
+    const res = await request<{ success: boolean; data: ReplenishmentOrdersResponse }>(
+      `/api/marketplace/stock/vendor/replenishments?${qs.toString()}`
+    );
+    return res.data ?? { orders: [] };
+  },
+
+  cancelReplenishment: async (id: string): Promise<unknown> => {
+    return request<unknown>(`/api/marketplace/stock/vendor/replenishments/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  },
+
+  confirmReplenishment: async (id: string): Promise<unknown> => {
+    return request<unknown>(`/api/marketplace/stock/vendor/replenishments/${encodeURIComponent(id)}/confirm`, { method: "POST" });
+  },
+
+  receiveReplenishment: async (id: string): Promise<unknown> => {
+    return request<unknown>(`/api/marketplace/stock/vendor/replenishments/${encodeURIComponent(id)}/receive`, { method: "POST" });
+  },
+
+  shipReplenishment: async (id: string): Promise<unknown> => {
+    return request<unknown>(`/api/marketplace/stock/vendor/replenishments/${encodeURIComponent(id)}/ship`, { method: "POST" });
+  },
+
+  getVendorSettings: async (params?: { boutiqueId?: string }): Promise<StockVendorSettingsResponse> => {
+    const qs = new URLSearchParams();
+    if (params?.boutiqueId) qs.set("boutiqueId", params.boutiqueId);
+    const res = await request<{ success: boolean; data: StockVendorSettingsResponse }>(
+      `/api/marketplace/stock/vendor/settings?${qs.toString()}`
+    );
+    return res.data ?? {
+      settings: {
+        autoReapproGlobal: true,
+        seuilDeclenchement: "alerte",
+        quantiteCommande: "optimal",
+        quantiteFixe: null,
+        notifications: { emailStockBas: true, emailRupture: true, smsUrgences: false, notificationApp: true },
+      },
+    };
+  },
+
+  updateVendorSettings: async (payload: UpdateStockVendorSettingsPayload, boutiqueId?: string): Promise<unknown> => {
+    const qs = boutiqueId ? `?boutiqueId=${encodeURIComponent(boutiqueId)}` : "";
+    return request<unknown>(
+      `/api/marketplace/stock/vendor/settings${qs}`,
+      { method: "PUT", body: JSON.stringify(payload) }
+    );
   },
 };
 
@@ -4227,38 +4613,56 @@ export const mailingApi = {
 export type RFQApiType = "B2B Volume" | "Service" | "Sur mesure" | "Prix variable" | "Standard";
 export type RFQApiCategory = string;
 
-export interface RFQFromAPI {
+export interface RFQAttachment {
   id: string;
-  rfqNumber: string;
-  buyerId: string;
-  type: string;
-  productNeed: string;
-  category: string;
-  quantity: string;
-  unit: string;
-  deliveryZone: string;
-  deadline: string;
-  estimatedBudget: number | null;
-  specifications: string | null;
-  status: string;
+  rfqId: string;
+  fileUrl: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: string | number;
   createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-  quotes: unknown[];
-  attachments: unknown[];
-  offersCount: number;
 }
 
+export interface RFQFromAPI {
+  id: string;
+  rfqId: string;
+  besoin: string;
+  quantite: number;
+  unite: string;
+  zone: string;
+  deadline: string;
+  dateCreation: string;
+  status: string;
+  statut?: string;
+  budget: number | null;
+  offresRecues?: number;
+  offersCount: number;
+  type: string;
+  recurrence?: string | null;
+  proformaRequired?: boolean;
+  depositPercent?: number | null;
+  categorie?: string;
+  details?: string | null;
+  attachments: RFQAttachment[];
+  canViewOffers?: boolean;
+}
+
+export type RFQTypeCode = "b2b_volume" | "service" | "custom_product" | "variable_price" | "standard";
+
 export interface RFQCreatePayload {
-  title: string;
+  type: RFQTypeCode;
   productNeed: string;
-  description?: string;
-  category: string;
+  category?: string;
   quantity: number;
   unit: string;
-  deadline: string;
-  type: RFQApiType;
   deliveryZone: string;
+  deadline: string;
+  estimatedBudget?: number;
+  specifications?: string;
+  recurrence?: string;
+  options?: string[];
+  proformaRequired?: boolean;
+  depositPercent?: number;
   publishNow?: boolean;
   files?: File[];
 }
@@ -4333,26 +4737,22 @@ export const rfqApi = {
   },
 
   create: async (payload: RFQCreatePayload): Promise<unknown> => {
-    const jsonBody = {
-      title: payload.title,
-      productNeed: payload.productNeed,
-      ...(payload.description ? { description: payload.description } : {}),
-      category: payload.category,
-      quantity: payload.quantity,
-      unit: payload.unit,
-      deadline: payload.deadline,
-      type: payload.type,
-      deliveryZone: payload.deliveryZone,
-      ...(payload.publishNow !== undefined ? { publishNow: payload.publishNow } : {}),
-    };
-
-    // Toujours envoyer en multipart pour être compatible avec le FilesInterceptor backend.
-    // On encode les champs dans un champ "data" JSON pour préserver les types numériques.
     const fd = new FormData();
-    fd.append("data", JSON.stringify(jsonBody));
-    if (payload.files?.length) {
-      payload.files.forEach((f) => fd.append("files", f));
-    }
+    fd.append("type", payload.type);
+    fd.append("productNeed", payload.productNeed);
+    if (payload.category) fd.append("category", payload.category);
+    fd.append("quantity", String(payload.quantity));
+    fd.append("unit", payload.unit);
+    fd.append("deliveryZone", payload.deliveryZone);
+    fd.append("deadline", payload.deadline);
+    if (payload.estimatedBudget !== undefined) fd.append("estimatedBudget", String(payload.estimatedBudget));
+    if (payload.specifications) fd.append("specifications", payload.specifications);
+    if (payload.recurrence) fd.append("recurrence", payload.recurrence);
+    if (payload.options?.length) fd.append("options", JSON.stringify(payload.options));
+    if (payload.proformaRequired !== undefined) fd.append("proformaRequired", String(payload.proformaRequired));
+    if (payload.depositPercent !== undefined) fd.append("depositPercent", String(payload.depositPercent));
+    if (payload.publishNow !== undefined) fd.append("publishNow", String(payload.publishNow));
+    (payload.files ?? []).forEach((f) => fd.append("files", f));
     return requestMultipart<unknown>("/api/marketplace/rfq", fd);
   },
 
@@ -4362,6 +4762,14 @@ export const rfqApi = {
       { method: "POST" }
     );
     return (res as { data: RFQFromAPI }).data ?? (res as RFQFromAPI);
+  },
+
+  cancel: async (id: string): Promise<void> => {
+    await request<unknown>(`/api/marketplace/rfq/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  },
+
+  confirmDeposit: async (id: string): Promise<void> => {
+    await request<unknown>(`/api/marketplace/rfq/${encodeURIComponent(id)}/confirm-deposit`, { method: "POST" });
   },
 
   getOffers: async (rfqId: string): Promise<RFQOffer[]> => {
@@ -4386,6 +4794,10 @@ export const rfqApi = {
     deadline?: string;
     estimatedBudget?: number | null;
     specifications?: string | null;
+    recurrence?: string;
+    options?: string[];
+    proformaRequired?: boolean;
+    depositPercent?: number;
     publishNow?: boolean;
     attachments?: { fileUrl: string; originalName: string; mimeType: string; fileSize: number }[];
   }): Promise<RFQFromAPI> => {
@@ -4579,14 +4991,94 @@ export interface ReturnVendorStats {
   refundExposure: number;
 }
 
-export type ReturnReason = "Produit endommagé" | "Non conforme" | "Quantité incorrecte" | "Mauvais produit" | "Produit défectueux" | "Autre";
+export interface ReturnVendorPage {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: ReturnVendor[];
+}
+
+export interface ReturnBuyerStats {
+  enCours: number;
+  propositionsAttente: number;
+  litiges: number;
+  resolues: number;
+  montantRecupere: number;
+  total: number;
+  byStatus: Record<string, number>;
+  refundedAmount: number;
+  pendingProposals: number;
+}
+
+export interface ReturnBuyerProposition {
+  type?: string;
+  montant?: number;
+  pourcentage?: number;
+  commentaire?: string;
+  dateProposition?: string;
+}
+
+export interface ReturnBuyerItem {
+  id: string;
+  returnNumber: string;
+  orderId: string;
+  buyerId?: string;
+  vendorId?: string;
+  productId?: string;
+  quantity?: number;
+  requestType?: string;
+  type?: string;
+  motif?: string;
+  reason?: string;
+  description: string | null;
+  requestedAmount?: number;
+  amount?: number;
+  refundedAmount?: number;
+  status: string;
+  decisionReason?: string | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  returnedAt?: string | null;
+  refundedAt?: string | null;
+  closedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  media?: string[];
+  product?: { id: string; name: string } | null;
+  order?: { id: string; orderNumber?: string } | null;
+  vendor?: { id: string; name?: string; nom?: string } | null;
+  boutique?: { id: string; name?: string; nom?: string } | null;
+  proposition?: ReturnBuyerProposition | null;
+  messageCount?: number;
+}
+
+export interface ReturnBuyerPage {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: ReturnBuyerItem[];
+}
+
+export type ReturnRequestType = "retour" | "reclamation" | "litige";
+
+export type ReturnMotif =
+  | "produit_endommage"
+  | "non_conforme"
+  | "quantite_incorrecte"
+  | "retard_livraison"
+  | "produit_manquant"
+  | "qualite_insuffisante"
+  | "erreur_commande"
+  | "autre";
 
 export interface CreateReturnPayload {
   orderId: string;
-  productId?: string;
-  quantity?: number;
-  reason?: ReturnReason;
+  requestType?: ReturnRequestType;
+  motif?: ReturnMotif;
   description?: string;
+  requestedAmount?: number;
   media?: File[];
 }
 
@@ -4594,10 +5086,10 @@ export const returnsApi = {
   create: async (payload: CreateReturnPayload): Promise<ReturnVendor> => {
     const fd = new FormData();
     fd.append("orderId", payload.orderId);
-    if (payload.productId) fd.append("productId", payload.productId);
-    if (payload.quantity !== undefined) fd.append("quantity", String(payload.quantity));
-    if (payload.reason) fd.append("reason", payload.reason);
+    if (payload.requestType) fd.append("requestType", payload.requestType);
+    if (payload.motif) fd.append("motif", payload.motif);
     if (payload.description) fd.append("description", payload.description);
+    if (payload.requestedAmount !== undefined) fd.append("requestedAmount", String(payload.requestedAmount));
     (payload.media ?? []).forEach((file) => fd.append("media", file));
     const res = await requestMultipart<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
       "/api/marketplace/returns", fd
@@ -4605,11 +5097,94 @@ export const returnsApi = {
     return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
   },
 
-  getVendorList: async (): Promise<ReturnVendor[]> => {
-    const res = await request<{ success: boolean; data: ReturnVendor[] } | ReturnVendor[]>(
-      "/api/marketplace/returns/vendor/list"
+  acceptProposal: async (id: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/buyer/${encodeURIComponent(id)}/accept-proposal`,
+      { method: "POST" }
     );
-    return Array.isArray(res) ? res : ((res as { data: ReturnVendor[] }).data ?? []);
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  rejectProposal: async (id: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/buyer/${encodeURIComponent(id)}/reject-proposal`,
+      { method: "POST" }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  confirmReturned: async (id: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/buyer/${encodeURIComponent(id)}/confirm-returned`,
+      { method: "POST" }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  escalateBuyer: async (id: string, reason: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/buyer/${encodeURIComponent(id)}/escalate`,
+      { method: "POST", body: JSON.stringify({ reason }) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  getBuyerReturnsList: async (params?: { q?: string; status?: string; type?: string; page?: number; limit?: number }): Promise<ReturnBuyerPage> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.type && params.type !== "all") qs.set("type", params.type);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: ReturnBuyerPage }>(
+      `/api/marketplace/returns?${qs.toString()}`
+    );
+    return res.data ?? { page: 1, limit: 20, total: 0, totalPages: 1, data: [] };
+  },
+
+  getBuyerReturnDetail: async (id: string): Promise<ReturnBuyerItem> => {
+    const res = await request<{ success: boolean; data: ReturnBuyerItem } | ReturnBuyerItem>(
+      `/api/marketplace/returns/buyer/${encodeURIComponent(id)}`
+    );
+    return (res as { data: ReturnBuyerItem }).data ?? (res as ReturnBuyerItem);
+  },
+
+  getBuyerStats: async (): Promise<ReturnBuyerStats> => {
+    const res = await request<{ success: boolean; data: ReturnBuyerStats }>(
+      "/api/marketplace/returns/buyer/stats"
+    );
+    return res.data ?? {
+      enCours: 0,
+      propositionsAttente: 0,
+      litiges: 0,
+      resolues: 0,
+      montantRecupere: 0,
+      total: 0,
+      byStatus: {},
+      refundedAmount: 0,
+      pendingProposals: 0,
+    };
+  },
+
+  getVendorList: async (params?: {
+    q?: string;
+    vendorStatus?: string;
+    status?: string;
+    type?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<ReturnVendorPage> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.vendorStatus && params.vendorStatus !== "all") qs.set("vendorStatus", params.vendorStatus);
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.type && params.type !== "all") qs.set("type", params.type);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: ReturnVendorPage }>(
+      `/api/marketplace/returns/vendor/list?${qs.toString()}`
+    );
+    return res.data ?? { page: 1, limit: 20, total: 0, totalPages: 1, data: [] };
   },
 
   getVendorStats: async (): Promise<ReturnVendorStats> => {
@@ -4657,11 +5232,33 @@ export const returnsApi = {
     );
     return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
   },
+
+  confirmReception: async (id: string, comment?: string): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/confirm-reception`,
+      { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  inspect: async (id: string, payload: { inspectionNotes?: string; decision: string; proposedAmount?: number }): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/inspect`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
+
+  propose: async (id: string, payload: { type: string; amount?: number; percentage?: number; comment?: string }): Promise<ReturnVendor> => {
+    const res = await request<{ success: boolean; data: ReturnVendor } | ReturnVendor>(
+      `/api/marketplace/returns/vendor/${encodeURIComponent(id)}/propose`,
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+    return (res as { data: ReturnVendor }).data ?? (res as ReturnVendor);
+  },
 };
 
 // ── Litiges (Vendeur) ─────────────────────────────────────────────────────────
-
-export type LitigeStatusApi = "Ouvert" | "En médiation" | "Résolu" | "Remboursé" | "Rejeté" | "Clôturé";
 
 export interface LitigeMessage {
   id: string;
@@ -4699,12 +5296,25 @@ export interface LitigeVendor {
   medias?: { id: string; url: string; name?: string }[];
 }
 
+export interface LitigeVendorPage {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: LitigeVendor[];
+}
+
 export const litigesApi = {
-  getVendorList: async (): Promise<LitigeVendor[]> => {
-    const res = await request<{ success: boolean; data: LitigeVendor[] } | LitigeVendor[]>(
-      "/api/marketplace/litiges/vendor/list"
+  getVendorList: async (params?: { q?: string; status?: string; page?: number; limit?: number }): Promise<LitigeVendorPage> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: LitigeVendorPage }>(
+      `/api/marketplace/litiges/vendor/list?${qs.toString()}`
     );
-    return Array.isArray(res) ? res : ((res as { data: LitigeVendor[] }).data ?? []);
+    return res.data ?? { page: 1, limit: 20, total: 0, totalPages: 1, data: [] };
   },
 
   getVendorById: async (id: string): Promise<LitigeVendor> => {
@@ -4724,10 +5334,18 @@ export const litigesApi = {
     return (res as { data: LitigeMessage }).data ?? (res as LitigeMessage);
   },
 
-  updateStatus: async (id: string, status: LitigeStatusApi, comment?: string): Promise<LitigeVendor> => {
+  acceptMediation: async (id: string, comment?: string): Promise<LitigeVendor> => {
     const res = await request<{ success: boolean; data: LitigeVendor } | LitigeVendor>(
-      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}/status`,
-      { method: "PATCH", body: JSON.stringify({ status, ...(comment ? { comment } : {}) }) }
+      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}/accept-mediation`,
+      { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
+    );
+    return (res as { data: LitigeVendor }).data ?? (res as LitigeVendor);
+  },
+
+  contestMediation: async (id: string, comment?: string): Promise<LitigeVendor> => {
+    const res = await request<{ success: boolean; data: LitigeVendor } | LitigeVendor>(
+      `/api/marketplace/litiges/vendor/${encodeURIComponent(id)}/contest-mediation`,
+      { method: "POST", body: JSON.stringify({ comment: comment ?? "" }) }
     );
     return (res as { data: LitigeVendor }).data ?? (res as LitigeVendor);
   },
@@ -4814,7 +5432,169 @@ export interface BuyerOrdersPage {
   data: BuyerOrder[];
 }
 
+export interface ShipmentVendorItem {
+  id: string;
+  commandeId?: string;
+  orderId?: string;
+  orderNumber?: string;
+  acheteur?: string;
+  buyerName?: string;
+  telephone?: string;
+  phone?: string;
+  adresse?: string;
+  address?: string;
+  ville?: string;
+  city?: string;
+  produits?: { nom?: string; name?: string; quantite?: number; quantity?: number }[];
+  status: string;
+  modeLivraison?: string;
+  deliveryMode?: string;
+  dateCommande?: string;
+  orderDate?: string;
+  dateExpedition?: string | null;
+  shippedAt?: string | null;
+  dateLivraisonEstimee?: string;
+  estimatedDeliveryDate?: string;
+  transporteur?: string | null;
+  carrier?: string | null;
+  numeroSuivi?: string | null;
+  trackingNumber?: string | null;
+  notes?: string | null;
+}
+
+export interface ShipmentVendorStats {
+  aPreparer: number;
+  prepares: number;
+  enCours: number;
+  livres: number;
+}
+
+export interface ShipmentVendorListPage {
+  stats: ShipmentVendorStats;
+  data: ShipmentVendorItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface BuyerHistoryKpiBlock {
+  count: number;
+  montantTotal: number;
+  montantFormattedM: number;
+}
+
+export interface BuyerHistoryKpis {
+  totalTransactions: number;
+  achats: BuyerHistoryKpiBlock;
+  ventes: BuyerHistoryKpiBlock;
+  balanceNette: { montant: number; montantFormattedM: number; positive: boolean };
+}
+
+export interface BuyerHistoryItem {
+  id: string;
+  type?: string;
+  reference?: string;
+  orderNumber?: string;
+  date?: string;
+  createdAt?: string;
+  produit?: string;
+  productNeed?: string;
+  imageProduit?: string;
+  quantite?: number;
+  quantity?: number;
+  prixUnitaire?: number;
+  unitPrice?: number;
+  montantTotal?: number;
+  totalPrice?: number;
+  status: string;
+  partenaire?: string;
+  vendeur?: string;
+  acheteur?: string;
+  livraison?: string;
+  deliveryMode?: string;
+  paiement?: string;
+  paymentMethod?: string;
+}
+
+export interface BuyerHistoryPage {
+  kpis: BuyerHistoryKpis;
+  counts: { achats: number; ventes: number; total: number };
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  data: BuyerHistoryItem[];
+}
+
 export const ordersApi = {
+  getBuyerHistory: async (params?: {
+    type?: "all" | "achat" | "vente";
+    status?: string;
+    period?: string;
+    q?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<BuyerHistoryPage> => {
+    const qs = new URLSearchParams();
+    qs.set("type", params?.type ?? "all");
+    qs.set("status", params?.status ?? "all");
+    qs.set("period", params?.period ?? "all");
+    if (params?.q) qs.set("q", params.q);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: BuyerHistoryPage }>(
+      `/api/marketplace/orders/buyer/history?${qs.toString()}`
+    );
+    return res.data ?? {
+      kpis: {
+        totalTransactions: 0,
+        achats: { count: 0, montantTotal: 0, montantFormattedM: 0 },
+        ventes: { count: 0, montantTotal: 0, montantFormattedM: 0 },
+        balanceNette: { montant: 0, montantFormattedM: 0, positive: true },
+      },
+      counts: { achats: 0, ventes: 0, total: 0 },
+      page: 1, limit: 20, total: 0, totalPages: 1, data: [],
+    };
+  },
+
+  getVendorHistory: async (params?: {
+    type?: "all" | "achat" | "vente";
+    status?: string;
+    period?: string;
+    q?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<BuyerHistoryPage> => {
+    const qs = new URLSearchParams();
+    qs.set("type", params?.type ?? "all");
+    qs.set("status", params?.status ?? "all");
+    qs.set("period", params?.period ?? "all");
+    if (params?.q) qs.set("q", params.q);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: BuyerHistoryPage }>(
+      `/api/marketplace/orders/vendor/history?${qs.toString()}`
+    );
+    return res.data ?? {
+      kpis: {
+        totalTransactions: 0,
+        achats: { count: 0, montantTotal: 0, montantFormattedM: 0 },
+        ventes: { count: 0, montantTotal: 0, montantFormattedM: 0 },
+        balanceNette: { montant: 0, montantFormattedM: 0, positive: true },
+      },
+      counts: { achats: 0, ventes: 0, total: 0 },
+      page: 1, limit: 20, total: 0, totalPages: 1, data: [],
+    };
+  },
+
+  getTransactionDetail: async (orderId: string, type: "achat" | "vente"): Promise<BuyerHistoryItem> => {
+    const res = await request<{ success: boolean; data: BuyerHistoryItem } | BuyerHistoryItem>(
+      `/api/marketplace/orders/transactions/history/${encodeURIComponent(orderId)}?type=${type}`
+    );
+    return (res as { data: BuyerHistoryItem }).data ?? (res as BuyerHistoryItem);
+  },
+
   getBuyerList: async (params?: { status?: string; q?: string; page?: number; limit?: number }): Promise<BuyerOrdersPage> => {
     const qs = new URLSearchParams();
     if (params?.status && params.status !== "all") qs.set("status", params.status);
@@ -4905,6 +5685,54 @@ export const ordersApi = {
       `/api/marketplace/orders/buyer-orders/${encodeURIComponent(id)}/cancel`,
       { method: "POST" }
     );
+  },
+
+  // ── Expéditions (vendeur) ──────────────────────────────────────────
+  getVendorShipmentsList: async (params?: { q?: string; shipmentStatus?: string; page?: number; limit?: number }): Promise<ShipmentVendorListPage> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.shipmentStatus && params.shipmentStatus !== "all") qs.set("shipmentStatus", params.shipmentStatus);
+    qs.set("page", String(params?.page ?? 1));
+    qs.set("limit", String(params?.limit ?? 20));
+    const res = await request<{ success: boolean; data: ShipmentVendorListPage }>(
+      `/api/marketplace/orders/vendor/shipments/list?${qs.toString()}`
+    );
+    return res.data ?? {
+      stats: { aPreparer: 0, prepares: 0, enCours: 0, livres: 0 },
+      data: [], total: 0, page: 1, limit: 20, totalPages: 1,
+    };
+  },
+
+  getVendorShipmentById: async (id: string): Promise<ShipmentVendorItem> => {
+    const res = await request<{ success: boolean; data: ShipmentVendorItem } | ShipmentVendorItem>(
+      `/api/marketplace/orders/vendor/shipments/${encodeURIComponent(id)}`
+    );
+    return (res as { data: ShipmentVendorItem }).data ?? (res as ShipmentVendorItem);
+  },
+
+  prepareShipment: async (id: string): Promise<ShipmentVendorItem> => {
+    const res = await request<{ success: boolean; data: ShipmentVendorItem } | ShipmentVendorItem>(
+      `/api/marketplace/orders/vendor/shipments/${encodeURIComponent(id)}/prepare`,
+      { method: "POST" }
+    );
+    return (res as { data: ShipmentVendorItem }).data ?? (res as ShipmentVendorItem);
+  },
+
+  shipShipment: async (id: string, payload: {
+    transporteur: string;
+    numeroSuivi?: string;
+    notes?: string;
+    deliverySlip?: File;
+  }): Promise<ShipmentVendorItem> => {
+    const fd = new FormData();
+    fd.append("transporteur", payload.transporteur);
+    if (payload.numeroSuivi) fd.append("numeroSuivi", payload.numeroSuivi);
+    if (payload.notes) fd.append("notes", payload.notes);
+    if (payload.deliverySlip) fd.append("deliverySlip", payload.deliverySlip);
+    const res = await requestMultipart<{ success: boolean; data: ShipmentVendorItem } | ShipmentVendorItem>(
+      `/api/marketplace/orders/vendor/shipments/${encodeURIComponent(id)}/ship`, fd
+    );
+    return (res as { data: ShipmentVendorItem }).data ?? (res as ShipmentVendorItem);
   },
 };
 
