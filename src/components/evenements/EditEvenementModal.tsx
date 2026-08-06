@@ -174,7 +174,7 @@ export function EditEvenementModal({ event, open, onClose, onSaved }: Props) {
     const ip = safeParseObj<InfosPratiques>(event.informations_pratiques, emptyInfosPratiques());
     setInformationsPratiques({ parking: ip.parking ?? "", restauration: ip.restauration ?? "", accessibilite: ip.accessibilite ?? "" });
 
-    const apiUrl = import.meta.env.VITE_API_URL || "";
+    const apiUrl = import.meta.env.VITE_API_URL_DEV || "";
     const ivRaw = safeParseArray<{ nom_complet?: string; titre_fonction?: string; entreprise_organisation?: string; image?: string | null }>(event.intervenants, []);
     setIntervenants(ivRaw.length > 0
       ? ivRaw.map((iv) => {
